@@ -33,9 +33,9 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Verify GitHub repo access (read + push permission)
 - [x] Verify server SSH, Docker, resources, GitHub reachability
 - [x] Spike: Thai trigram search in Postgres 17 (synthetic text)
-- [ ] `git init` locally, first commit, push to `main`
-- [ ] Server: deploy key `~/.ssh/dbresearch_deploy` + host alias `github-dbresearch`, added as **read-only** deploy key
-- [ ] Server: clone to `~/dbresearch`, then test the push → pull round trip
+- [x] `git init` locally, first commit, push to `main`
+- [x] Server: deploy key `~/.ssh/dbresearch_deploy` + host alias `github-dbresearch`, added as **read-only** deploy key
+- [x] Server: clone to `~/dbresearch`, then test the push → pull round trip
 
 ## Decisions still open
 
@@ -68,4 +68,5 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-10-27 — Git workflow verified end to end: local push → GitHub → server `git pull` (read-only deploy key; server push is refused).
 - 2026-10-27 — Design agreed. Repo + server verified. Thai pg_trgm spike passed (synthetic text).

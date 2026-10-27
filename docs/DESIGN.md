@@ -144,7 +144,12 @@ CREATE TABLE documents (
   funding_type       funding_type NOT NULL,
   title              text NOT NULL,       -- Thai title
   title_en           text,
-  reference_no       text,                -- contract no.: R + B.E. year + E(internal)/A(external) + running no.
+  reference_no       text,                -- contract no., normalised: uppercase, no spaces (e.g. R2568A001)
+  -- Parsed parts: R + B.E. year + series letter (E internal / A external) + running no. within that year+series.
+  -- NULL when reference_no doesn't follow the pattern (still allowed, e.g. old or odd documents).
+  ref_year_be        int  GENERATED ALWAYS AS (substring(reference_no FROM '^R(\d{4})[A-Z]\d+$')::int) STORED,
+  ref_series         text GENERATED ALWAYS AS (substring(reference_no FROM '^R\d{4}([A-Z])\d+$')) STORED,
+  ref_seq            int  GENERATED ALWAYS AS (substring(reference_no FROM '^R\d{4}[A-Z](\d+)$')::int) STORED,
   document_date      date,
   effective_from     date,
   effective_to       date,
@@ -373,7 +378,9 @@ CREATE TABLE jobs (
 
 -- ───────────── Indexes ─────────────
 CREATE INDEX documents_live_idx      ON documents (kind, funding_type, fiscal_year) WHERE deleted_at IS NULL;
-CREATE INDEX documents_ref_idx       ON documents (reference_no);
+-- One live document per contract no.; a re-upload of the same contract becomes a new version instead.
+CREATE UNIQUE INDEX documents_ref_uniq ON documents (reference_no) WHERE deleted_at IS NULL AND reference_no IS NOT NULL;
+CREATE INDEX documents_ref_seq_idx   ON documents (ref_year_be, ref_series, ref_seq) WHERE deleted_at IS NULL;
 CREATE INDEX documents_title_trgm    ON documents USING gin (title gin_trgm_ops);
 CREATE INDEX documents_ref_trgm      ON documents USING gin (reference_no gin_trgm_ops);
 CREATE INDEX documents_text_trgm     ON documents USING gin (search_text gin_trgm_ops);
@@ -465,6 +472,7 @@ Observations that shape the design:
    - fiscal year in the header ≠ year in the contract no. (`R2568…`)
    - funding type from the contract no. letter ≠ funding type implied by the header text
    - contract no. differs between pages
+   - contract no. already exists on a live document → suggest *new version* instead
    - required field missing
 9. Write `document_sections` and `extracted_fields`, set `status = needs_review`.
 
@@ -477,6 +485,12 @@ Format: `R` + B.E. year + funding letter + running number.
 | `R2568A001` | 2568 (FY 2025) | `A` | external |
 
 Parse with `R(\d{4})([A-Z])(\d+)`, after normalising Thai digits and fixing common OCR mix-ups (`O`→`0` and `I`/`l`→`1` inside the digit groups). The letter sets `funding_type` (the strongest signal), and the year cross-checks `fiscal_year`. An unknown letter → no funding type + warning; the user picks it.
+
+**Running number:** counts up separately for each year + series. `R2568E001` is the first internal contract of 2568, and `R2568A001` is the first external one. (This is the department's understanding; confirm it against more samples.) The system only **stores** numbers issued by the department; it never generates them. What it's used for:
+- **Sorting**: order lists by `(ref_year_be, ref_series, ref_seq)` so `E002` comes before `E010`, not by the raw text.
+- **Duplicate upload**: if the extracted number matches a live document, the review screen offers *"add as a new version of R2568A001"* instead of creating a duplicate. The partial unique index enforces it.
+- **Missing numbers report** (ADMIN): for each year + series, list the gaps between 1 and the highest `ref_seq` (e.g. internal 2568: E004, E007 missing). Shows which contracts haven't been archived yet.
+- Search accepts both the short and padded forms (`A1` → `A001`).
 
 ### Seed data from the sample (ADMIN can edit)
 
@@ -503,7 +517,8 @@ POST   /documents/{id}/confirm     (accept reviewed auto-fill → ready)
 POST   /documents/{id}/versions    GET /documents/{id}/versions/{n}/download
 POST   /documents/{id}/shares      GET /shares (mine)            DELETE /shares/{id} (revoke)
 GET    /s/{token}                  POST /s/{token}/unlock        GET /s/{token}/file   (guest)
-ADMIN: /admin/users · /admin/shares (all active + logs) · /admin/trash (restore/purge)
+ADMIN: /admin/reports/missing-numbers?year=2568&series=E
+       /admin/users · /admin/shares (all active + logs) · /admin/trash (restore/purge)
        /admin/categories · /admin/templates · /admin/settings · /admin/audit
 ```
 

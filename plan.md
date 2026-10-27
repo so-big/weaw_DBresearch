@@ -45,6 +45,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Auto-tags from **checked** boxes, matched to ADMIN categories; unmatched → suggested tag; unchecked ignored (DESIGN §6).
 - [x] Check marks can be typed ☑ or pen ticks → detect by ink inside the box, not by OCR.
 - [x] Contract no. = `R` + B.E. year + funding letter + running no.: `E` = internal (`R2568E999`), `A` = external (`R2568A001`). The letter sets `funding_type`.
+- [x] Running number counts per year + series (`R2568E001` = first internal of 2568). Used for sorting, duplicate-upload detection (unique per live doc), and an ADMIN missing-numbers report. The system stores numbers, never issues them.
 - [x] External funding uses the same document format as internal → same section templates; funding type comes from the contract no.
 - [x] Budget: auto-fill only `budget_total`. Line items / installments (`งวด`) are typed manually into `budget_lines`.
 - [x] Production uploads: **scanner PDFs only**. Auto-fill is assistive; anything wrong or missing is typed by the user on the review screen.
@@ -85,6 +86,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-10-27 — Contract running number is per year + series → parsed columns, unique live contract no., missing-numbers report.
 - 2026-10-27 — External funding uses the internal format; contract letter E=internal/A=external. Budget breakdown is manual. Production uploads are scanner PDFs only.
 - 2026-10-27 — Internal-funding sample reviewed: PDF is a bundle of sections; titles use several labels/layouts; checked boxes drive auto-tags. Decided: SSH tunnel, push to `main`.
 - 2026-10-27 — Git workflow verified end to end: local push → GitHub → server `git pull` (read-only deploy key; server push is refused).

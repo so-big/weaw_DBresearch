@@ -1,0 +1,25 @@
+# Secrets — live only on the server
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+*.pem
+
+# Real documents are confidential — never commit scans
+samples/
+*.pdf
+!tests/fixtures/**/*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Claude Code personal files
+.claude/settings.local.json
+CLAUDE.local.md

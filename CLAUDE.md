@@ -5,6 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Department web app for encrypted storage of contracts and research-grant documents (mostly scanned Thai/English PDFs).
 The agreed design, schema, and open questions live in @docs/DESIGN.md. Read it before changing the data model, and update it when a decision changes.
 
+## Workflow
+- Track tasks and open decisions in `plan.md`. Update its checkboxes and log as work lands.
+- This machine has no Docker and is too weak for the stack: run only ruff and quick unit tests here. Push to `origin main`, then deploy and test on the server: `ssh cs31@100.104.87.92 'cd ~/dbresearch && git pull && docker compose up -d --build'`.
+- The server is shared with other projects. Bind DBresearch ports to `127.0.0.1` only, and never touch other projects' containers.
+
 ## Stack
 - Python 3 + FastAPI, PostgreSQL, SQLAlchemy 2 + Alembic, MinIO (S3 API), Docker Compose.
 - Use `uv` for everything (`uv add`, `uv run pytest`, `uv run alembic ...`). Do not use pip directly.

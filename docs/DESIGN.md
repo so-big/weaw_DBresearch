@@ -3,7 +3,7 @@
 Department web app for storing **contracts** and **research grant** documents (mostly scanned PDFs),
 encrypted at rest, with OCR auto-fill, search, and expiring share links.
 
-Status: design agreed 2026-10-27 (grill session). Internal-funding sample reviewed (§6). External-funding format and frontend layout still pending.
+Status: design agreed 2026-10-27 (grill session). Internal-funding sample reviewed (§6); external funding uses the same format. Scanned samples and frontend layout still pending.
 
 ---
 
@@ -23,6 +23,9 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 | Accounts | ADMIN creates accounts. Credentials live in `auth_identities`, so SSO/LDAP can be added later. |
 | Encryption | App-level envelope encryption: one random key (DEK) per file version, wrapped by a master key (KEK). |
 | Auto-fill | Per page: OCR with word positions (Tesseract `tha+eng`), split the PDF into sections, then apply **section templates stored in the DB** (several label variants per field: inline / right / below). User confirms. Nothing leaves the server. See §6. |
+| Uploads | **Scanner PDFs only** (`application/pdf`; other types rejected). Phone photos are used only as test samples, taken in a scanner app's document mode. |
+| Funding type | Taken from the contract number letter: `R2568`**`E`**`999` = internal, `R2568`**`A`**`001` = external. Cross-checked with the header text. |
+| Budget | `budget_total` is auto-filled from `งบประมาณรวม`. Line items (internal) and installments `งวด` (external) are **typed by the user** into `budget_lines`; no table parsing. |
 | Checkboxes | Detect boxes visually (OpenCV) and treat ink inside a box as checked (works for typed ☑ and pen ticks). **Checked** options → fuzzy-matched to ADMIN categories; unmatched → *suggested* free tag. **Unchecked boxes are ignored.** |
 | Versions | Keep version history. Share links serve the latest version unless pinned. |
 | Search | Metadata + OCR text, using PostgreSQL `pg_trgm` (substring match, no Thai word splitting needed). |
@@ -141,7 +144,7 @@ CREATE TABLE documents (
   funding_type       funding_type NOT NULL,
   title              text NOT NULL,       -- Thai title
   title_en           text,
-  reference_no       text,                -- contract no., e.g. R2568E999 (R+B.E. year, E+running no.)
+  reference_no       text,                -- contract no.: R + B.E. year + E(internal)/A(external) + running no.
   document_date      date,
   effective_from     date,
   effective_to       date,
@@ -149,7 +152,7 @@ CREATE TABLE documents (
   -- else computed from document_date by the service. UI shows +543.
   fiscal_year        int,
   budget_total       numeric(14,2),
-  extra              jsonb NOT NULL DEFAULT '{}',   -- template-specific fields (budget_items, agency…)
+  extra              jsonb NOT NULL DEFAULT '{}',   -- template-specific fields (agency…)
   status             doc_status NOT NULL DEFAULT 'processing',
   current_version_id uuid,                -- FK added below (circular)
   uploaded_by        uuid NOT NULL REFERENCES users(id),
@@ -160,6 +163,23 @@ CREATE TABLE documents (
   deleted_by         uuid REFERENCES users(id),
   CHECK (effective_to IS NULL OR effective_from IS NULL OR effective_to >= effective_from)
 );
+
+-- Budget breakdown, typed manually by the user (too varied to auto-parse).
+-- Internal funding: items grouped by หมวด. External funding: installments (งวด) with due dates.
+CREATE TYPE budget_line_type AS ENUM ('item', 'installment');
+
+CREATE TABLE budget_lines (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  line_type   budget_line_type NOT NULL,
+  group_label text,                       -- 'หมวด 1' for items; NULL for installments
+  label       text NOT NULL,              -- 'ค่าตอบแทน…' or 'งวดที่ 1'
+  amount      numeric(14,2) NOT NULL CHECK (amount >= 0),
+  due_date    date,                       -- installments only
+  condition   text,                       -- installment condition, e.g. 'เมื่อส่งรายงานความก้าวหน้า'
+  sort        int NOT NULL DEFAULT 0
+);
+-- Service warns (doesn't block) when SUM(amount) ≠ documents.budget_total.
 
 CREATE TYPE ocr_status AS ENUM ('pending', 'running', 'done', 'failed', 'skipped');
 
@@ -376,6 +396,7 @@ documents *─* people     (document_people, with role: owner/co_investigator/pa
 documents *─* categories (document_categories, source manual/auto) ── categories *─1 category_groups
 documents *─* tags       (document_tags, source manual/auto)
 documents 1─* share_links 1─* share_access_log
+documents 1─* budget_lines   (manual: items or installments)
 ```
 
 ---
@@ -410,7 +431,7 @@ documents 1─* share_links 1─* share_access_log
 | Page | Section | Useful content |
 |---|---|---|
 | 1 | Main body: `สัญญารับทุนอุดหนุนการวิจัย จากงบประมาณรายได้คณะ… ประจำปีงบประมาณ พ.ศ. 2568` | kind = contract/grant, funding = **internal** (`งบประมาณรายได้คณะ`), fiscal year, `โครงการ : <title>` (inline) |
-| 2 | `เอกสารแนบหมายเลข 1` (budget) | `สัญญาเลขที่`, `โครงการ <title>` (bold, no colon, wraps to 2 lines), `งบประมาณรวม ในวงเงิน 10,000 บาท(หนึ่งแสนบาทถ้วน)`, budget item table |
+| 2 | `เอกสารแนบหมายเลข 1` (budget) | `สัญญาเลขที่`, `โครงการ <title>` (bold, no colon, wraps to 2 lines), `งบประมาณรวม ในวงเงิน 10,000 บาท(หนึ่งแสนบาทถ้วน)`, budget item table (**not parsed**; user types it) |
 | 3 | `เอกสารแนบหมายเลข 5` (proposal form) | `ชื่อโครงการวิจัย (ภาษาไทย) … (ภาษาอังกฤษ) …` (value in a right-hand column), **checkbox groups**: ประเภททุน, 1. ประเภทวิจัย, 2. กลุ่มการวิจัย, 3. สาขาวิชาการ |
 | every | Footer | `สัญญาเลขที่ R2568E999` · `หน้า N` · `“<owner name>”` (quoted, may wrap) |
 
@@ -423,7 +444,7 @@ Observations that shape the design:
 
 ### Steps (worker)
 
-1. **Render** each page at 300 dpi (`pdftoppm`) into tmpfs. Deskew and denoise with OpenCV.
+1. **Render** each page at 300 dpi (`pdftoppm`) into tmpfs. Light deskew and denoise with OpenCV (input is scanner PDFs, so no perspective correction).
 2. **Checkbox detection** (OpenCV): find small near-square contours (≈ 2–6 mm) with a hollow border. Fill ratio = dark pixels inside the box after trimming its border. Above the threshold → checked; inside an uncertainty band → `checked: null` + warning. This works for typed ☑ and pen ✓/✗.
 3. **Line removal + OCR**: remove long horizontal strokes (strikethrough, table rules) with a morphological opening, then `tesseract -l tha+eng` with **TSV output** (words + boxes + confidence). Normalise the text (§5). Store it in `document_pages`.
 4. **Sectioning**: split on the regex `เอกสารแนบ\s*หมายเลข\s*(ที่)?\s*([0-9๐-๙]+)` near the top of a page. Pages without a marker continue the previous section; pages before the first marker are the main body.
@@ -442,12 +463,20 @@ Observations that shape the design:
 8. **Validation warnings** (shown in the review UI, never block):
    - amount in digits ≠ amount in Thai words (`thaiword_to_num` from PyThaiNLP)
    - fiscal year in the header ≠ year in the contract no. (`R2568…`)
+   - funding type from the contract no. letter ≠ funding type implied by the header text
    - contract no. differs between pages
    - required field missing
 9. Write `document_sections` and `extracted_fields`, set `status = needs_review`.
 
 ### Contract number
-`R2568E999` = `R` + B.E. year + `E` + running number (per the department; not yet confirmed with more samples). Parse it loosely: `[A-Z]\d{4}[A-Z]\d+`, used for search and as a cross-check of the fiscal year. Do **not** derive the funding type from it.
+Format: `R` + B.E. year + funding letter + running number.
+
+| Example | Year | Letter | Funding type |
+|---|---|---|---|
+| `R2568E999` | 2568 (FY 2025) | `E` | internal |
+| `R2568A001` | 2568 (FY 2025) | `A` | external |
+
+Parse with `R(\d{4})([A-Z])(\d+)`, after normalising Thai digits and fixing common OCR mix-ups (`O`→`0` and `I`/`l`→`1` inside the digit groups). The letter sets `funding_type` (the strongest signal), and the year cross-checks `fiscal_year`. An unknown letter → no funding type + warning; the user picks it.
 
 ### Seed data from the sample (ADMIN can edit)
 
@@ -494,9 +523,6 @@ ADMIN: /admin/users · /admin/shares (all active + logs) · /admin/trash (restor
 
 ## 9. Open questions
 
-- External-funding document format (no sample yet).
-- A real **scanned** internal sample, ideally with pen ticks, to tune checkbox thresholds.
-- Contract number format: confirm `R`+year / `E`+running number across more samples. Do external contracts use a different prefix?
-- Budget item table (เอกสารแนบ 1): store line items in `extra.budget_items`, or only the total?
+- Real **scanned** samples (phone scanner app, censored, key pages only), ideally with pen ticks, to tune OCR and checkbox thresholds. Include one external (`A`) sample.
 - Backup policy and retention period (affects crypto-shred guarantees).
 - Is the plaintext OCR text in the DB acceptable to the department (see §2 trade-off)?

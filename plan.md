@@ -44,13 +44,13 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] One PDF = one full package with attachments (`เอกสารแนบหมายเลข N`). No separate Project table in v1 (DESIGN §1, §3).
 - [x] Auto-tags from **checked** boxes, matched to ADMIN categories; unmatched → suggested tag; unchecked ignored (DESIGN §6).
 - [x] Check marks can be typed ☑ or pen ticks → detect by ink inside the box, not by OCR.
-- [x] Contract no. `R2568E999` = `R`+B.E. year, `E`+running number. Not used for funding type.
+- [x] Contract no. = `R` + B.E. year + funding letter + running no.: `E` = internal (`R2568E999`), `A` = external (`R2568A001`). The letter sets `funding_type`.
+- [x] External funding uses the same document format as internal → same section templates; funding type comes from the contract no.
+- [x] Budget: auto-fill only `budget_total`. Line items / installments (`งวด`) are typed manually into `budget_lines`.
+- [x] Production uploads: **scanner PDFs only**. Auto-fill is assistive; anything wrong or missing is typed by the user on the review screen.
 
 ## Decisions still open
 
-- [?] **External-funding format**: no sample yet.
-- [?] **Scanned sample with pen ticks**: needed to tune checkbox thresholds (current sample is born-digital).
-- [?] **Budget line items** (เอกสารแนบ 1): store them in `extra.budget_items`, or only the total?
 - [?] **OCR text plaintext in DB**: does the department accept this trade-off? (DESIGN §2)
 - [?] **Backup policy + retention**: affects the crypto-shred guarantee.
 - [?] **Frontend stack**: decide when the frontend phase starts (must work well on low-end phones).
@@ -58,6 +58,12 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 ## Phase 1 — Foundation (not started, no coding yet)
 
 - [x] Review internal-funding sample → DESIGN §6 (sections, label variants, checkbox groups, seed categories)
+- [ ] **Collect test samples** (user): key pages only, captured with a phone scanner app in document mode → PDF:
+  - page 1 (header with fiscal year + funding source) and any page showing the footer
+  - a page with an `เอกสารแนบหมายเลข N` marker
+  - the checkbox page, ideally with **pen ticks**
+  - at least one **external** (`A`) contract
+  - Censoring: replace names/amounts with fake text, or white them out. Don't black out checkboxes, their labels, headings, attachment markers, or the contract no. (swap in a fake one like `R2568A001`).
 - [ ] Copy samples to the server: `scp "docs/sample document-1.pdf" cs31@100.104.87.92:~/dbresearch/samples/`
 - [ ] Spike: Tesseract `tha+eng` on rendered pages vs. the PDF text layer (on the server)
 - [ ] Spike: checkbox detection + fill threshold + strikethrough removal (on the server)
@@ -79,6 +85,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-10-27 — External funding uses the internal format; contract letter E=internal/A=external. Budget breakdown is manual. Production uploads are scanner PDFs only.
 - 2026-10-27 — Internal-funding sample reviewed: PDF is a bundle of sections; titles use several labels/layouts; checked boxes drive auto-tags. Decided: SSH tunnel, push to `main`.
 - 2026-10-27 — Git workflow verified end to end: local push → GitHub → server `git pull` (read-only deploy key; server push is refused).
 - 2026-10-27 — Design agreed. Repo + server verified. Thai pg_trgm spike passed (synthetic text).

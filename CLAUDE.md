@@ -27,4 +27,10 @@ The agreed design, schema, and open questions live in @docs/DESIGN.md. Read it b
 - Create the DB with `LOCALE_PROVIDER icu ICU_LOCALE 'th-TH' LOCALE 'C.UTF-8'` (verified). With a plain `C` ctype, pg_trgm silently ignores Thai text.
 - Search uses `ILIKE '%q%'` backed by `gin_trgm_ops` indexes. Don't switch to `to_tsvector` with a language config (it can't split Thai words).
 - Normalise text before storing and searching: NFC, Thai digits ๐–๙ → 0–9, collapse whitespace.
-- Store dates in the Gregorian calendar. Convert to พ.ศ. (+543) only at the API/UI edge. Fiscal year (Oct–Sep) is a generated column; don't compute it in Python.
+- Store dates and years in the Gregorian calendar. Convert to พ.ศ. (+543) only at the API/UI edge. `fiscal_year` comes from the document text when stated, otherwise from `document_date` (Oct–Sep).
+- One PDF is a bundle of sections (`เอกสารแนบหมายเลข N`). Auto-fill works per section with several label variants per field (DESIGN §6). Don't assume a field appears once or uses one fixed label.
+- Auto-tagging uses **checked** boxes only (unchecked ones are ignored). Map them to categories by fuzzy match. Never create categories automatically; unmatched labels become *suggested* tags.
+
+## Sample documents
+- Real PDFs are confidential and gitignored (`*.pdf`, `samples/`). Never commit them or paste their contents into tests. Use redacted text fixtures.
+- Copy samples to the server with `scp` into `~/dbresearch/samples/` for OCR tests. Don't go through git.

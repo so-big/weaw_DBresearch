@@ -3,7 +3,7 @@
 Department web app for storing **contracts** and **research grant** documents (mostly scanned PDFs),
 encrypted at rest, with OCR auto-fill, search, and expiring share links.
 
-Status: design agreed 2026-10-27 (grill session). Frontend layout and sample documents are still pending.
+Status: design agreed 2026-10-27 (grill session). Internal-funding sample reviewed (§6). External-funding format and frontend layout still pending.
 
 ---
 
@@ -13,20 +13,22 @@ Status: design agreed 2026-10-27 (grill session). Frontend layout and sample doc
 |---|---|
 | Deliverable | DB design + working backend (API). Frontend later. |
 | Stack | Python 3 + FastAPI, PostgreSQL, SQLAlchemy 2 + Alembic, S3-compatible object storage (MinIO). |
-| Hosting | Portable: everything in Docker Compose. Demo server details TBD. |
-| Core model | **Document** is the core record. A document may optionally belong to a **Project** (grant grouping). Contracts usually stand alone. |
+| Hosting | Docker Compose on the shared test server `cs31@100.104.87.92`. Ports bound to `127.0.0.1`; testers reach it through an **SSH tunnel**. |
+| Git | Single branch: commit and push straight to `main`. |
+| Core model | **Document = one PDF = one complete package** (e.g. a grant contract plus its numbered attachments `เอกสารแนบหมายเลข N`). Detected attachments are stored as **sections** with page ranges. There's no separate Project table in v1. |
 | Classification | Every document has `kind` (contract / grant) **and** `funding_type` (external / internal). |
 | Visibility | Every USER can view/download **all** documents. |
 | Edit rights | Only the **uploader or ADMIN** can edit metadata, add versions, delete. |
 | Roles | ADMIN, USER. **GUEST is not an account**: a guest is anyone holding a valid share link. |
 | Accounts | ADMIN creates accounts. Credentials live in `auth_identities`, so SSO/LDAP can be added later. |
 | Encryption | App-level envelope encryption: one random key (DEK) per file version, wrapped by a master key (KEK). |
-| Auto-fill | OCR (Tesseract `tha+eng`), then **template rules stored in the DB** (keywords + regex). User confirms. Nothing leaves the server. |
+| Auto-fill | Per page: OCR with word positions (Tesseract `tha+eng`), split the PDF into sections, then apply **section templates stored in the DB** (several label variants per field: inline / right / below). User confirms. Nothing leaves the server. See §6. |
+| Checkboxes | Detect boxes visually (OpenCV) and treat ink inside a box as checked (works for typed ☑ and pen ticks). **Checked** options → fuzzy-matched to ADMIN categories; unmatched → *suggested* free tag. **Unchecked boxes are ignored.** |
 | Versions | Keep version history. Share links serve the latest version unless pinned. |
 | Search | Metadata + OCR text, using PostgreSQL `pg_trgm` (substring match, no Thai word splitting needed). |
 | Tags | ADMIN-managed category groups (used for filters) + free user tags. |
 | Owner | The **person named in the document** (PI / contract party), kept in a `people` table, separate from the uploader. |
-| Dates | Store Gregorian dates. Parse/display Buddhist Era (พ.ศ. = year + 543). Thai fiscal year (Oct–Sep) is computed. |
+| Dates | Store Gregorian dates and years. Parse/display Buddhist Era (พ.ศ. = year + 543). Fiscal year is a normal column: taken from the document text ("ประจำปีงบประมาณ พ.ศ. 2568") when present, otherwise computed from `document_date` (Oct–Sep). |
 | Delete | Soft delete → trash (share links die right away). ADMIN purges: deletes the object and its wrapped key (crypto-shred). |
 | Share links | One document per link. Default 24h; USER max 7 days, ADMIN max 30 days (values in `settings`). Public or password (auto-generated). Optional download limit, view-only mode, full access log. |
 | Scale | Small: < 10k docs, < 30 users. One server. OCR runs in a background worker. |
@@ -51,21 +53,22 @@ Status: design agreed 2026-10-27 (grill session). Frontend layout and sample doc
     wrapped DEKs, jobs)            │
            ▲                       │
            └──── worker (OCR) ─────┘
-                 decrypt to tmpfs → ocrmypdf -l tha+eng
-                 → text → template match → extracted fields
+                 decrypt to tmpfs → render pages 300 dpi
+                 → tesseract tha+eng (word boxes) + checkbox detection
+                 → sections → section templates → extracted fields
 ```
 
 ### Upload flow
 1. `POST /documents` (multipart) → API generates a DEK, stream-encrypts to MinIO, stores the wrapped DEK on the version row.
 2. Version gets `ocr_status = pending`; a job is queued.
-3. The worker decrypts the file to **tmpfs only**, runs OCR, stores `ocr_text`, matches a template, and writes `extracted_fields` (+ a confidence score per field).
-4. The document moves to `needs_review`. The UI shows the pre-filled form, and the user confirms or edits it → `ready`.
+3. The worker decrypts the file to **tmpfs only** and runs the auto-fill pipeline (§6). It stores per-page text + word boxes, detected sections, and `extracted_fields` (value + confidence + source page per field, checked-box suggestions, validation warnings).
+4. The document moves to `needs_review`. The UI shows the pre-filled form with warnings highlighted, and the user confirms or edits it → `ready`. Confirmed checkbox suggestions become `document_categories` / `document_tags` rows with `source = 'auto'`.
 
 ### Encryption details
 - **KEK**: 32-byte master key loaded from a file or env var, with a `key_id`. The `kek_id` column on each version allows rotation (re-wrap the DEKs; the files are untouched). It can move to Vault/KMS later.
 - **DEK**: random 256-bit key per file version. Use **Tink Streaming AEAD (AES256_GCM_HKDF_1MB)** rather than custom chunking; associated data = `version_id`.
 - Only ciphertext ever goes to MinIO. Plaintext exists only in memory or on the worker's tmpfs.
-- **Known trade-off:** `ocr_text` and metadata are **plaintext in PostgreSQL** (required for pg_trgm search and auto-fill). Mitigations: put the DB volume on disk encryption, restrict DB access, encrypt backups. A stolen MinIO bucket alone reveals nothing; a stolen DB dump reveals OCR text but not the files.
+- **Known trade-off:** OCR text (`document_pages`, `documents.search_text`) and metadata are **plaintext in PostgreSQL** (required for pg_trgm search and auto-fill). Mitigations: put the DB volume on disk encryption, restrict DB access, encrypt backups. A stolen MinIO bucket alone reveals nothing; a stolen DB dump reveals OCR text but not the files.
 - **Crypto-shred caveat:** a purge deletes the wrapped DEK from the live DB, but older DB backups still hold it until they expire. Document the backup retention period.
 
 ---
@@ -127,43 +130,26 @@ CREATE TABLE people (
   CHECK (name_th IS NOT NULL OR name_en IS NOT NULL)
 );
 
--- ───────────── Projects (optional grouping for grants) ─────────────
+-- ───────────── Documents (one PDF = one package) ─────────────
 CREATE TYPE funding_type AS ENUM ('external', 'internal');
 CREATE TYPE doc_kind     AS ENUM ('contract', 'grant');
-
-CREATE TABLE projects (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  code          text UNIQUE,              -- project/grant number
-  title_th      text,
-  title_en      text,
-  funding_type  funding_type NOT NULL,
-  pi_person_id  uuid REFERENCES people(id),
-  budget        numeric(14,2),
-  start_date    date,
-  end_date      date,
-  created_by    uuid NOT NULL REFERENCES users(id),
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  updated_at    timestamptz NOT NULL DEFAULT now(),
-  deleted_at    timestamptz
-);
-
--- ───────────── Documents ─────────────
-CREATE TYPE doc_status AS ENUM ('processing', 'needs_review', 'ready', 'failed');
+CREATE TYPE doc_status   AS ENUM ('processing', 'needs_review', 'ready', 'failed');
 
 CREATE TABLE documents (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   kind               doc_kind     NOT NULL,
   funding_type       funding_type NOT NULL,
-  project_id         uuid REFERENCES projects(id),
-  title              text NOT NULL,
-  reference_no       text,                -- contract / grant number
+  title              text NOT NULL,       -- Thai title
+  title_en           text,
+  reference_no       text,                -- contract no., e.g. R2568E999 (R+B.E. year, E+running no.)
   document_date      date,
   effective_from     date,
   effective_to       date,
-  -- Thai fiscal year (Oct–Sep), Gregorian; UI shows +543.
-  fiscal_year        int GENERATED ALWAYS AS
-                       (extract(year FROM document_date + interval '3 months')::int) STORED,
-  extra              jsonb NOT NULL DEFAULT '{}',   -- template-specific fields (budget, agency…)
+  -- Thai fiscal year (Oct–Sep), Gregorian (2568 B.E. → 2025). From document text if stated,
+  -- else computed from document_date by the service. UI shows +543.
+  fiscal_year        int,
+  budget_total       numeric(14,2),
+  extra              jsonb NOT NULL DEFAULT '{}',   -- template-specific fields (budget_items, agency…)
   status             doc_status NOT NULL DEFAULT 'processing',
   current_version_id uuid,                -- FK added below (circular)
   uploaded_by        uuid NOT NULL REFERENCES users(id),
@@ -189,10 +175,8 @@ CREATE TABLE document_versions (
   page_count        int,
   wrapped_dek       bytea NOT NULL,                 -- DEK encrypted by KEK
   kek_id            text  NOT NULL,                 -- which master key wrapped it
-  ocr_status        ocr_status NOT NULL DEFAULT 'pending',
-  ocr_text          text,
-  template_id       uuid,                           -- FK below
-  extracted_fields  jsonb,                          -- {"title": {"value":…, "confidence":0.92}, …}
+  ocr_status        ocr_status NOT NULL DEFAULT 'pending',   -- page text lives in document_pages
+  extracted_fields  jsonb,   -- {"fields": {"title": {"value":…, "confidence":0.92, "page":3}}, "checks": […], "warnings": […]}
   uploaded_by       uuid NOT NULL REFERENCES users(id),
   created_at        timestamptz NOT NULL DEFAULT now(),
   UNIQUE (document_id, version_no)
@@ -200,6 +184,30 @@ CREATE TABLE document_versions (
 
 ALTER TABLE documents ADD FOREIGN KEY (current_version_id)
   REFERENCES document_versions(id) DEFERRABLE INITIALLY DEFERRED;
+
+-- Attachments detected inside one PDF ("เอกสารแนบหมายเลข 5" → attachment_no 5).
+-- Pages before the first marker form the main section (attachment_no NULL).
+CREATE TABLE document_sections (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  version_id    uuid NOT NULL REFERENCES document_versions(id) ON DELETE CASCADE,
+  attachment_no int,                      -- NULL = main body
+  heading       text,                     -- e.g. 'แบบเสนอโครงการวิจัย …'
+  page_from     int NOT NULL,
+  page_to       int NOT NULL,
+  template_id   uuid,                     -- FK below; NULL = no template matched
+  match_score   real,
+  CHECK (page_to >= page_from)
+);
+
+CREATE TABLE document_pages (
+  version_id     uuid NOT NULL REFERENCES document_versions(id) ON DELETE CASCADE,
+  page_no        int  NOT NULL,
+  text           text NOT NULL,           -- normalised OCR text
+  words          jsonb,                   -- [{t, x, y, w, h, conf, line}] for re-extraction without re-OCR
+  checkboxes     jsonb,                   -- [{x, y, size, fill, checked, label, group_heading}]
+  ocr_confidence real,
+  PRIMARY KEY (version_id, page_no)
+);
 
 CREATE TYPE person_role AS ENUM ('owner', 'co_investigator', 'party', 'signer');
 
@@ -211,11 +219,12 @@ CREATE TABLE document_people (
 );
 
 -- ───────────── Categories (ADMIN) + free tags (USER) ─────────────
-CREATE TABLE category_groups (            -- e.g. 'agency', 'status', 'research_area'
+CREATE TABLE category_groups (            -- e.g. 'grant_type', 'research_type', 'research_group', 'discipline'
   id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   key       text NOT NULL UNIQUE,
   name_th   text NOT NULL,
   name_en   text,
+  aliases   text[] NOT NULL DEFAULT '{}', -- heading variants seen on forms: {'ประเภทวิจัย','ประเภทการวิจัย'}
   multi     boolean NOT NULL DEFAULT false, -- can a document have several from this group?
   sort      int NOT NULL DEFAULT 0
 );
@@ -231,9 +240,12 @@ CREATE TABLE categories (
   UNIQUE (group_id, name_th)
 );
 
+CREATE TYPE label_source AS ENUM ('manual', 'auto');   -- 'auto' = from a checked box, confirmed by user
+
 CREATE TABLE document_categories (
   document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   category_id uuid NOT NULL REFERENCES categories(id),
+  source      label_source NOT NULL DEFAULT 'manual',
   PRIMARY KEY (document_id, category_id)
 );
 -- "multi = false" (one category per group) is enforced in the service layer.
@@ -248,24 +260,28 @@ CREATE TABLE tags (
 CREATE TABLE document_tags (
   document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   tag_id      uuid NOT NULL REFERENCES tags(id),
+  source      label_source NOT NULL DEFAULT 'manual',
   PRIMARY KEY (document_id, tag_id)
 );
 
--- ───────────── Auto-fill templates ─────────────
+-- ───────────── Auto-fill templates (one per section type) ─────────────
+-- e.g. 'internal_grant_contract' (main body), 'att_budget' (เอกสารแนบ 1), 'att_proposal_form' (เอกสารแนบ 5).
 CREATE TABLE extraction_templates (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name         text NOT NULL UNIQUE,
-  kind         doc_kind,
-  funding_type funding_type,
-  match_rules  jsonb NOT NULL,   -- keywords/regex that identify this layout + min score
-  field_rules  jsonb NOT NULL,   -- per field: regex, anchor keyword, post-processing (date_be, thai_digits…)
-  priority     int NOT NULL DEFAULT 0,
-  active       boolean NOT NULL DEFAULT true,
-  created_by   uuid REFERENCES users(id),
-  updated_at   timestamptz NOT NULL DEFAULT now()
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          text NOT NULL UNIQUE,
+  attachment_no int,             -- expected attachment number; NULL = main body or any
+  kind          doc_kind,        -- set when matching this section implies the kind…
+  funding_type  funding_type,    -- …or the funding type (e.g. 'งบประมาณรายได้คณะ' → internal)
+  match_rules   jsonb NOT NULL,  -- keywords/regex that identify this section + min score
+  field_rules   jsonb NOT NULL,  -- per field: list of label variants, layout (inline/right/below), regex, post-processing
+  checkbox_groups boolean NOT NULL DEFAULT false, -- run checkbox → category mapping on this section
+  priority      int NOT NULL DEFAULT 0,
+  active        boolean NOT NULL DEFAULT true,
+  created_by    uuid REFERENCES users(id),
+  updated_at    timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE document_versions ADD FOREIGN KEY (template_id) REFERENCES extraction_templates(id);
+ALTER TABLE document_sections ADD FOREIGN KEY (template_id) REFERENCES extraction_templates(id);
 
 -- ───────────── Share links ─────────────
 CREATE TYPE share_access AS ENUM ('public', 'password');
@@ -337,7 +353,7 @@ CREATE TABLE jobs (
 
 -- ───────────── Indexes ─────────────
 CREATE INDEX documents_live_idx      ON documents (kind, funding_type, fiscal_year) WHERE deleted_at IS NULL;
-CREATE INDEX documents_project_idx   ON documents (project_id);
+CREATE INDEX documents_ref_idx       ON documents (reference_no);
 CREATE INDEX documents_title_trgm    ON documents USING gin (title gin_trgm_ops);
 CREATE INDEX documents_ref_trgm      ON documents USING gin (reference_no gin_trgm_ops);
 CREATE INDEX documents_text_trgm     ON documents USING gin (search_text gin_trgm_ops);
@@ -354,12 +370,12 @@ CREATE INDEX jobs_queue_idx          ON jobs (run_after) WHERE state = 'queued';
 ```
 users 1─* auth_identities        users 1─* sessions
 users 1─* documents (uploaded_by) people 0..1─1 users
-projects 1─* documents            documents 1─* document_versions
+documents 1─* document_versions 1─* document_pages
+                                  document_versions 1─* document_sections *─0..1 extraction_templates
 documents *─* people     (document_people, with role: owner/co_investigator/party/signer)
-documents *─* categories (document_categories) ── categories *─1 category_groups
-documents *─* tags       (document_tags)
+documents *─* categories (document_categories, source manual/auto) ── categories *─1 category_groups
+documents *─* tags       (document_tags, source manual/auto)
 documents 1─* share_links 1─* share_access_log
-extraction_templates 1─* document_versions
 ```
 
 ---
@@ -381,13 +397,73 @@ extraction_templates 1─* document_versions
 
 - **DB locale (verified 2026-10-27 on postgres:17):** `CREATE DATABASE … TEMPLATE template0 ENCODING UTF8 LOCALE_PROVIDER icu ICU_LOCALE 'th-TH' LOCALE 'C.UTF-8'`. With this, pg_trgm keeps Thai words (combining marks included) intact and the GIN index serves `ILIKE '%ทุนวิจัย%'`. A plain `C` (non-UTF-8) ctype makes pg_trgm **ignore Thai**.
 - Always use `ILIKE '%q%'` for correctness; the trigram index only speeds it up. For ranking long OCR text, use `word_similarity()` / `strict_word_similarity()`, not `similarity()` (a short query against a long document scores near 0). Fallback if results are poor on real OCR text: pre-tokenise with PyThaiNLP into a `tsvector` column using the `simple` config.
-- Normalise text before storing and searching: Unicode NFC, Thai digits ๐–๙ → 0–9, collapse whitespace.
+- Normalise text before storing and searching: Unicode NFC, strip zero-width chars (U+200B/200C/200D/FEFF), recompose `ํ`+`า` → `ำ`, remove stray spaces before Thai combining marks (`ช ื่อ` → `ชื่อ`), Thai digits ๐–๙ → 0–9, collapse whitespace.
 - Date parser for the extractor: `12 มีนาคม 2567`, `12 มี.ค. 67`, `12/03/2567` → Gregorian `2024-03-12`.
 - Display: years as พ.ศ. (+543); fiscal year label `ปีงบประมาณ 2568`.
 
 ---
 
-## 6. API sketch
+## 6. Auto-fill pipeline (from the internal-funding sample)
+
+### What the sample shows (`docs/sample document-1.pdf`, 3 pages, gitignored)
+
+| Page | Section | Useful content |
+|---|---|---|
+| 1 | Main body: `สัญญารับทุนอุดหนุนการวิจัย จากงบประมาณรายได้คณะ… ประจำปีงบประมาณ พ.ศ. 2568` | kind = contract/grant, funding = **internal** (`งบประมาณรายได้คณะ`), fiscal year, `โครงการ : <title>` (inline) |
+| 2 | `เอกสารแนบหมายเลข 1` (budget) | `สัญญาเลขที่`, `โครงการ <title>` (bold, no colon, wraps to 2 lines), `งบประมาณรวม ในวงเงิน 10,000 บาท(หนึ่งแสนบาทถ้วน)`, budget item table |
+| 3 | `เอกสารแนบหมายเลข 5` (proposal form) | `ชื่อโครงการวิจัย (ภาษาไทย) … (ภาษาอังกฤษ) …` (value in a right-hand column), **checkbox groups**: ประเภททุน, 1. ประเภทวิจัย, 2. กลุ่มการวิจัย, 3. สาขาวิชาการ |
+| every | Footer | `สัญญาเลขที่ R2568E999` · `หน้า N` · `“<owner name>”` (quoted, may wrap) |
+
+Observations that shape the design:
+- **One PDF = many sections.** Attachment numbers have gaps (1 and 5 only), and the marker wording varies (`เอกสารแนบหมายเลข 5` / `เอกสารแนบหมายเลขที่ 5`).
+- **The same field has different labels and layouts** in different sections. Some sections lack a field entirely.
+- **Checked labels are struck through** in the sample, which damages OCR of the label text.
+- **The sample's figures and words disagree** (`10,000` vs `หนึ่งแสน` = 100,000). Real documents may too, so cross-check and warn.
+- **The PDF's embedded text layer garbles Thai** (`ช ื่อ`, `สญั ญา`, zero-width spaces). Default to OCR of rendered pages; whether to use a text layer at all is decided by a spike.
+
+### Steps (worker)
+
+1. **Render** each page at 300 dpi (`pdftoppm`) into tmpfs. Deskew and denoise with OpenCV.
+2. **Checkbox detection** (OpenCV): find small near-square contours (≈ 2–6 mm) with a hollow border. Fill ratio = dark pixels inside the box after trimming its border. Above the threshold → checked; inside an uncertainty band → `checked: null` + warning. This works for typed ☑ and pen ✓/✗.
+3. **Line removal + OCR**: remove long horizontal strokes (strikethrough, table rules) with a morphological opening, then `tesseract -l tha+eng` with **TSV output** (words + boxes + confidence). Normalise the text (§5). Store it in `document_pages`.
+4. **Sectioning**: split on the regex `เอกสารแนบ\s*หมายเลข\s*(ที่)?\s*([0-9๐-๙]+)` near the top of a page. Pages without a marker continue the previous section; pages before the first marker are the main body.
+5. **Template match per section**: score each active template's `match_rules` against the section text. The best one above its minimum score is assigned. The template may imply `kind` / `funding_type`.
+6. **Field extraction**: each field rule lists **label variants** and, for each, a layout:
+   - `inline`: value after the label on the same line (`โครงการ : X`)
+   - `right`: value in the column to the right, possibly continuing on following lines (`(ภาษาไทย)  X`)
+   - `below`: value on the next line(s)
+   - `footer`: majority vote over all pages' footers (contract no., owner)
+
+   When several sections produce a value, the highest confidence wins. The losing candidates are kept for the review UI.
+7. **Checkbox → categories** (sections whose template has `checkbox_groups = true`):
+   - For each **checked** box: label = OCR words to the right of the box on the same line. Group heading = the nearest line above that sits further left (with numbering like `1.` stripped).
+   - Heading → `category_groups` by fuzzy match against `name_th` + `aliases`. Label → `categories` within that group by fuzzy match against `name_th` + `aliases` (RapidFuzz on normalised text, threshold ~85).
+   - Matched → category suggestion. Unmatched (or heading unknown) → suggested free tag. **Unchecked boxes are ignored.**
+8. **Validation warnings** (shown in the review UI, never block):
+   - amount in digits ≠ amount in Thai words (`thaiword_to_num` from PyThaiNLP)
+   - fiscal year in the header ≠ year in the contract no. (`R2568…`)
+   - contract no. differs between pages
+   - required field missing
+9. Write `document_sections` and `extracted_fields`, set `status = needs_review`.
+
+### Contract number
+`R2568E999` = `R` + B.E. year + `E` + running number (per the department; not yet confirmed with more samples). Parse it loosely: `[A-Z]\d{4}[A-Z]\d+`, used for search and as a cross-check of the fiscal year. Do **not** derive the funding type from it.
+
+### Seed data from the sample (ADMIN can edit)
+
+| Group (`key`) | Heading variants | Options |
+|---|---|---|
+| `grant_type` | ประเภททุน | นักวิจัยรุ่นใหม่ · ทุนวิจัยสำหรับนักวิจัยที่มีประสบการณ์ด้านการวิจัย |
+| `research_type` | ประเภทวิจัย, ประเภทการวิจัย | พื้นฐาน · ทดลองและพัฒนา · เพื่อการวางแผนพัฒนา |
+| `research_group` | กลุ่มการวิจัย | วิทยาศาสตร์เทคโนโลยี · วิทยาศาสตร์สุขภาพ |
+| `discipline` | สาขาวิชาการ | วิศวกรรมศาสตร์และอุตสาหกรรมวิจัย · นิติศาสตร์ |
+
+### Python libraries
+`opencv-python-headless`, `pytesseract` (+ `tesseract-ocr-tha` in the image), `pdf2image`/`pdftoppm` (poppler), `rapidfuzz`, `pythainlp`.
+
+---
+
+## 7. API sketch
 
 ```
 POST   /auth/login                 POST /auth/logout             GET /me
@@ -404,22 +480,23 @@ ADMIN: /admin/users · /admin/shares (all active + logs) · /admin/trash (restor
 
 ---
 
-## 7. Build order
+## 8. Build order
 
 1. **Spike: Thai search.** ICU `th-TH` + pg_trgm basics verified on synthetic text (2026-10-27). Still to do: re-test on real Thai OCR output and decide whether the PyThaiNLP fallback is needed.
-2. **Spike: OCR quality.** `ocrmypdf -l tha+eng` on the sample scans. Measure accuracy before writing templates.
+2. **Spike: OCR + checkboxes.** On the server: Tesseract `tha+eng` accuracy on the sample (rendered vs. text layer), checkbox detection + fill threshold, and strikethrough removal. Needs a **scanned** sample with pen ticks too.
 3. Docker Compose (postgres, minio, api, worker) + Alembic baseline migration from §3.
 4. Auth (local identities, sessions, roles) + admin user CLI bootstrap.
 5. Upload/download with envelope encryption + versions.
-6. OCR worker + jobs queue + template engine + review/confirm flow.
+6. Worker + jobs queue + auto-fill pipeline (§6) + review/confirm flow.
 7. Search & filters.
 8. Share links + access log + admin active-links screen.
 9. Trash/purge, audit views, settings.
 
-## 8. Open questions
+## 9. Open questions
 
-- Sample documents for External/Internal funding (needed for templates and the frontend).
-- Demo server details (OS, RAM, Docker available?, domain/HTTPS).
-- Do grants really span several files? (Decides whether the Project UI is first-class or hidden.)
+- External-funding document format (no sample yet).
+- A real **scanned** internal sample, ideally with pen ticks, to tune checkbox thresholds.
+- Contract number format: confirm `R`+year / `E`+running number across more samples. Do external contracts use a different prefix?
+- Budget item table (เอกสารแนบ 1): store line items in `extra.budget_items`, or only the total?
 - Backup policy and retention period (affects crypto-shred guarantees).
 - Is the plaintext OCR text in the DB acceptable to the department (see §2 trade-off)?

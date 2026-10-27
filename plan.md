@@ -37,30 +37,41 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Server: deploy key `~/.ssh/dbresearch_deploy` + host alias `github-dbresearch`, added as **read-only** deploy key
 - [x] Server: clone to `~/dbresearch`, then test the push → pull round trip
 
+## Decisions made
+
+- [x] Test access: **SSH tunnel**. The API binds `127.0.0.1:8120` on the server; open it locally with `ssh -N -L 8120:127.0.0.1:8120 cs31@100.104.87.92`, then browse `http://localhost:8120`.
+- [x] Git: **push straight to `main`**.
+- [x] One PDF = one full package with attachments (`เอกสารแนบหมายเลข N`). No separate Project table in v1 (DESIGN §1, §3).
+- [x] Auto-tags from **checked** boxes, matched to ADMIN categories; unmatched → suggested tag; unchecked ignored (DESIGN §6).
+- [x] Check marks can be typed ☑ or pen ticks → detect by ink inside the box, not by OCR.
+- [x] Contract no. `R2568E999` = `R`+B.E. year, `E`+running number. Not used for funding type.
+
 ## Decisions still open
 
-- [?] **Sample documents**: External/Internal funding scans (needed for templates, OCR test, frontend).
-- [?] **Port + access for testing**: SSH tunnel (`ssh -L 8120:127.0.0.1:8120 cs31@…`, recommended, nothing exposed), bind to the Tailscale IP, or route through the existing reverse proxy on :443 with a domain.
-- [?] **Branching**: push straight to `main` (solo), or feature branches + PRs.
+- [?] **External-funding format**: no sample yet.
+- [?] **Scanned sample with pen ticks**: needed to tune checkbox thresholds (current sample is born-digital).
+- [?] **Budget line items** (เอกสารแนบ 1): store them in `extra.budget_items`, or only the total?
 - [?] **OCR text plaintext in DB**: does the department accept this trade-off? (DESIGN §2)
 - [?] **Backup policy + retention**: affects the crypto-shred guarantee.
-- [?] **Projects UI**: first-class, or hidden until we know grants span several files.
 - [?] **Frontend stack**: decide when the frontend phase starts (must work well on low-end phones).
 
 ## Phase 1 — Foundation (not started, no coding yet)
 
-- [ ] Spike: OCR quality with `ocrmypdf -l tha+eng` on real samples (on the server)
+- [x] Review internal-funding sample → DESIGN §6 (sections, label variants, checkbox groups, seed categories)
+- [ ] Copy samples to the server: `scp "docs/sample document-1.pdf" cs31@100.104.87.92:~/dbresearch/samples/`
+- [ ] Spike: Tesseract `tha+eng` on rendered pages vs. the PDF text layer (on the server)
+- [ ] Spike: checkbox detection + fill threshold + strikethrough removal (on the server)
 - [ ] Re-test Thai search on real OCR text, then decide on the PyThaiNLP fallback
-- [ ] Project scaffold: `pyproject.toml` (uv), ruff config, FastAPI skeleton, Dockerfile
-- [ ] `docker-compose.yml`: postgres (ICU th-TH), minio, api, worker. Ports bound to 127.0.0.1 only
-- [ ] Alembic baseline migration from DESIGN §3
+- [ ] Project scaffold: `pyproject.toml` (uv), ruff config, FastAPI skeleton, Dockerfile (with `tesseract-ocr-tha`, poppler)
+- [ ] `docker-compose.yml`: postgres (ICU th-TH), minio, api (`127.0.0.1:8120`), worker
+- [ ] Alembic baseline migration from DESIGN §3 + seed categories from DESIGN §6
 - [ ] pytest against a throwaway Postgres on the server
 
-## Phase 2+ — Features (order from DESIGN §7)
+## Phase 2+ — Features (order from DESIGN §8)
 
 - [ ] Auth: local identities, sessions, roles, admin bootstrap CLI
 - [ ] Upload/download with envelope encryption + versions
-- [ ] OCR worker + jobs queue + template engine + review/confirm flow
+- [ ] Worker + jobs queue + auto-fill pipeline (sections, fields, checkboxes, warnings) + review/confirm flow
 - [ ] Search & filters
 - [ ] Share links + access log + admin active-links screen
 - [ ] Trash/purge, audit views, settings
@@ -68,5 +79,6 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-10-27 — Internal-funding sample reviewed: PDF is a bundle of sections; titles use several labels/layouts; checked boxes drive auto-tags. Decided: SSH tunnel, push to `main`.
 - 2026-10-27 — Git workflow verified end to end: local push → GitHub → server `git pull` (read-only deploy key; server push is refused).
 - 2026-10-27 — Design agreed. Repo + server verified. Thai pg_trgm spike passed (synthetic text).

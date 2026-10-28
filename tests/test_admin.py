@@ -28,8 +28,7 @@ def test_admin_routes_need_admin(client, login):
         "/admin/users",
         "/admin/trash",
         "/admin/audit",
-        "/admin/reports/overview",
-        "/admin/reports/charts",
+        "/admin/settings",
     ):
         assert client.get(path).status_code == 403
 
@@ -169,13 +168,12 @@ def test_reports_and_audit(client, login):
     login(UserRole.ADMIN)
     for ref in ("R2568E001", "R2568E004", "R2568A002"):
         upload(client, reference_no=ref, categories=[], people=[], tags=[])
-    report = {
-        (r["year_be"], r["series"]): r for r in client.get("/admin/reports/missing-numbers").json()
-    }
+    report = {(r["year_be"], r["series"]): r for r in client.get("/reports/missing-numbers").json()}
     assert report[(2568, "E")]["missing"] == ["R2568E002", "R2568E003"]
     assert report[(2568, "A")]["missing"] == ["R2568A001"]
-    overview = client.get("/admin/reports/overview").json()
+    overview = client.get("/reports/overview").json()
     assert overview["documents"]["ready"] == 3 and overview["stored_bytes"] > 0
+    assert overview["users"] == 1 and overview["in_trash"] == 0
     entries = client.get("/admin/audit", params={"action": "document."}).json()
     assert {e["action"] for e in entries} >= {"document.upload", "document.confirm"}
     assert all(e["actor_name"] for e in entries)
@@ -202,7 +200,7 @@ def test_chart_data(client, login):
     client.get(f"/documents/{a}/file")
     client.get(f"/documents/{a}/file", params={"inline": True})
 
-    data = client.get("/admin/reports/charts", params={"months": 3, "days": 7}).json()
+    data = client.get("/reports/charts", params={"months": 3, "days": 7}).json()
     by_year = {y["fiscal_year_be"]: y for y in data["by_year"]}
     assert list(by_year) == [2567, 2568]
     assert (by_year[2568]["internal"], by_year[2568]["external"]) == (1, 1)
@@ -218,3 +216,16 @@ def test_chart_data(client, login):
     }
     types = {g["key"]: g for g in data["categories"]}["research_type"]["items"]
     assert {(t["name"], t["count"]) for t in types} >= {("พื้นฐาน", 1)}
+
+
+def test_reports_are_open_to_users_without_system_figures(client, login):
+    login(UserRole.USER)
+    mine = upload(client, reference_no="R2568E002", categories=[], people=[], tags=[])
+    client.delete(f"/documents/{mine}")
+    overview = client.get("/reports/overview")
+    assert overview.status_code == 200
+    data = overview.json()
+    assert data["my_trash"] == 1 and data["documents"]["ready"] == 0
+    assert not {"users", "in_trash", "stored_bytes", "active_share_links"} & set(data)
+    assert client.get("/reports/charts").status_code == 200
+    assert client.get("/reports/missing-numbers").status_code == 200

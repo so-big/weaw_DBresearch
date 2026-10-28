@@ -17,6 +17,8 @@
   import Shares from './pages/Shares.svelte';
   import Account from './pages/Account.svelte';
   import Admin from './pages/admin/Admin.svelte';
+  import Overview from './pages/Overview.svelte';
+  import Trash from './pages/Trash.svelte';
   import NotFound from './pages/NotFound.svelte';
 
   const guestToken = $derived(match('/s/:token')?.token);
@@ -49,6 +51,8 @@
       navigate(`/login${next}`, { replace: true });
     } else if (session.user && (route.path === '/' || route.path === '/login')) {
       navigate(route.query.get('next') || '/documents', { replace: true });
+    } else if (session.user && route.path === '/admin/overview') {
+      navigate('/overview', { replace: true }); // the overview is open to everyone now
     }
   });
 
@@ -58,7 +62,9 @@
     if (p === '/review') return { C: ReviewQueue };
     if (p === '/shares') return { C: Shares };
     if (p === '/account') return { C: Account };
-    if (p === '/admin' || p.startsWith('/admin/')) return { C: Admin, props: { section: p.split('/')[2] || 'overview' } };
+    if (p === '/overview') return { C: Overview };
+    if (p === '/trash') return { C: Trash };
+    if (p === '/admin' || p.startsWith('/admin/')) return { C: Admin, props: { section: p.split('/')[2] || 'users' } };
     let m;
     if ((m = match('/documents/:id/review'))) return { C: ReviewForm, props: { id: m.id }, key: `r${m.id}` };
     if ((m = match('/documents/:id'))) return { C: DocumentDetail, props: { id: m.id }, key: `d${m.id}` };

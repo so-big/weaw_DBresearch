@@ -55,7 +55,7 @@
         <div class="item">
           <div class="grow">
             <b>{d.title}</b>
-            <div class="muted meta">{#if d.reference_no}<span class="cno">{d.reference_no}</span> · {/if}แก้ไขล่าสุด {thDate(d.updated_at)}</div>
+            <div class="muted meta">{#if d.reference_no}<span class="cno">{d.reference_no}</span> · {/if}ลบเมื่อ {thDate(d.deleted_at)}{#if d.deleted_by_name} โดย {d.deleted_by_name}{/if}</div>
           </div>
           <button class="btn small ghost" onclick={() => restore(d)}>กู้คืน</button>
           <button class="btn small danger" onclick={() => ((confirmText = ''), (purging = d))}>ลบถาวร</button>

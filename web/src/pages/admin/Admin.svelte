@@ -1,7 +1,6 @@
 <script>
   // Admin area: the only place with a side menu (many sub-pages). Phones get scrollable chips.
   import { isAdmin, screen } from '../../lib/state.svelte.js';
-  import Overview from './Overview.svelte';
   import Users from './Users.svelte';
   import AllShares from './AllShares.svelte';
   import Trash from './Trash.svelte';
@@ -11,7 +10,6 @@
 
   let { section } = $props();
   const SECTIONS = [
-    { key: 'overview', label: 'ภาพรวม', C: Overview },
     { key: 'users', label: 'ผู้ใช้', C: Users },
     { key: 'shares', label: 'ลิงก์แชร์ทั้งหมด', C: AllShares },
     { key: 'trash', label: 'ถังขยะ', C: Trash },

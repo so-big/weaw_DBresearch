@@ -1,13 +1,16 @@
 <script>
-  import { get, errorText } from '../../lib/api.js';
-  import { bytes, STATUS } from '../../lib/format.js';
-  import ChartCard from '../../components/charts/ChartCard.svelte';
-  import Columns from '../../components/charts/Columns.svelte';
-  import Trend from '../../components/charts/Trend.svelte';
-  import StatusMeter from '../../components/charts/StatusMeter.svelte';
-  import RankBars from '../../components/charts/RankBars.svelte';
-  import NumberGrid from '../../components/charts/NumberGrid.svelte';
-  import { monthLabel, dayLabel, short, full } from '../../components/charts/scale.js';
+  // Overview for everyone: library figures and charts. Admins also get the system figures
+  // (users, all share links, the whole trash, storage); the API only sends those to them.
+  import { get, errorText } from '../lib/api.js';
+  import { bytes, STATUS } from '../lib/format.js';
+  import { isAdmin } from '../lib/state.svelte.js';
+  import ChartCard from '../components/charts/ChartCard.svelte';
+  import Columns from '../components/charts/Columns.svelte';
+  import Trend from '../components/charts/Trend.svelte';
+  import StatusMeter from '../components/charts/StatusMeter.svelte';
+  import RankBars from '../components/charts/RankBars.svelte';
+  import NumberGrid from '../components/charts/NumberGrid.svelte';
+  import { monthLabel, dayLabel, short, full } from '../components/charts/scale.js';
 
   let data = $state(null);
   let charts = $state(null);
@@ -15,7 +18,7 @@
   let error = $state('');
   let group = $state('research_type');
 
-  Promise.all([get('/admin/reports/overview'), get('/admin/reports/charts'), get('/admin/reports/missing-numbers')])
+  Promise.all([get('/reports/overview'), get('/reports/charts'), get('/reports/missing-numbers')])
     .then(([o, c, m]) => {
       data = o;
       charts = c;
@@ -38,6 +41,8 @@
   const baht = (n) => `${full(n)} บาท`;
 </script>
 
+<div class="overview">
+<h1 class="title">ภาพรวม</h1>
 {#if error}<div class="notice bad">{error}</div>{/if}
 
 {#if !data || !charts}
@@ -63,10 +68,13 @@
     </div>
     <dl class="facts">
       <div><dt>เปิดดูและดาวน์โหลด 30 วัน</dt><dd class="num">{views30.toLocaleString('th-TH')}</dd></div>
-      <div><dt><a href="/admin/shares">ลิงก์แชร์ที่ใช้งานอยู่</a></dt><dd class="num">{data.active_share_links}</dd></div>
-      <div><dt><a href="/admin/users">ผู้ใช้</a></dt><dd class="num">{data.users}</dd></div>
-      <div><dt><a href="/admin/trash">ในถังขยะ</a></dt><dd class="num">{data.in_trash}</dd></div>
-      <div><dt>พื้นที่ไฟล์ (เข้ารหัส)</dt><dd class="num">{bytes(data.stored_bytes)}</dd></div>
+      <div><dt><a href="/trash">ในถังขยะของฉัน</a></dt><dd class="num">{data.my_trash}</dd></div>
+      {#if isAdmin() && data.users !== undefined}
+        <div><dt><a href="/admin/shares">ลิงก์แชร์ที่ใช้งานอยู่</a></dt><dd class="num">{data.active_share_links}</dd></div>
+        <div><dt><a href="/admin/users">ผู้ใช้</a></dt><dd class="num">{data.users}</dd></div>
+        <div><dt><a href="/admin/trash">ในถังขยะทั้งระบบ</a></dt><dd class="num">{data.in_trash}</dd></div>
+        <div><dt>พื้นที่ไฟล์ (เข้ารหัส)</dt><dd class="num">{bytes(data.stored_bytes)}</dd></div>
+      {/if}
     </dl>
   </section>
 
@@ -144,8 +152,11 @@
     </ChartCard>
   </div>
 {/if}
+</div>
 
 <style>
+  .overview { max-width: 1240px; margin: 0 auto; }
+  .title { font-size: 24px; margin-bottom: 14px; }
   .hero {
     display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr); gap: 14px 32px; align-items: center;
     padding: 22px 24px; margin-bottom: 16px; position: relative; overflow: hidden;

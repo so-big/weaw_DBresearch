@@ -2,10 +2,12 @@
 
 import hashlib
 import uuid
-from collections.abc import Iterator
+import zipfile
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import PurePath
 from typing import BinaryIO
+from zoneinfo import ZoneInfo
 
 import pypdfium2 as pdfium
 from sqlalchemy import func, select
@@ -41,6 +43,13 @@ class DuplicateUpload(UploadError):
 
 def can_edit(user: User, document: Document) -> bool:
     return user.role == UserRole.ADMIN or document.uploaded_by == user.id
+
+
+def can_restore(user: User, document: Document) -> bool:
+    """Uploaders undo their own deletes; something an admin removed stays with the admin."""
+    return user.role == UserRole.ADMIN or (
+        document.uploaded_by == user.id and document.deleted_by == user.id
+    )
 
 
 def _inspect_pdf(file: BinaryIO) -> int:
@@ -187,6 +196,73 @@ def read_version(version: DocumentVersion) -> Iterator[bytes]:
         yield from decrypt_chunks(cipher, source, associated_data)
 
 
+# ───────────── Several files as one zip ─────────────
+MAX_BUNDLE = 100
+
+
+def bundle_names(items: Iterable[tuple[str | None, str]]) -> list[str]:
+    """File names inside the zip: contract no. first (scanner names say little), no clashes.
+
+    `items` are (reference_no, original_filename) pairs, in order.
+    """
+    names, used = [], set()
+    for reference_no, filename in items:
+        name = PurePath(filename.replace("\\", "/")).name or "document.pdf"
+        if reference_no and reference_no.lower() not in name.lower():
+            name = f"{reference_no}_{name}"
+        stem, dot, ext = name.rpartition(".")
+        if not dot:
+            stem, ext = name, ""
+        candidate, n = name, 1
+        while candidate.lower() in used:
+            n += 1
+            candidate = f"{stem} ({n}).{ext}" if ext else f"{name} ({n})"
+        used.add(candidate.lower())
+        names.append(candidate)
+    return names
+
+
+class _Sink:
+    """Write-only buffer for ZipFile. Not seekable, so the zip is written in streaming form."""
+
+    def __init__(self) -> None:
+        self.parts: list[bytes] = []
+
+    def write(self, data) -> int:
+        self.parts.append(bytes(data))
+        return len(data)
+
+    def flush(self) -> None:
+        pass
+
+    def take(self) -> bytes:
+        data = b"".join(self.parts)
+        self.parts.clear()
+        return data
+
+
+def zip_versions(entries: list[tuple[str, DocumentVersion]]) -> Iterator[bytes]:
+    """Decrypt each version into a deflated zip, chunk by chunk, all in memory.
+
+    Plaintext never touches disk: each 1 MiB chunk is decrypted, compressed and sent on.
+    """
+    stamp = datetime.now(ZoneInfo("Asia/Bangkok")).timetuple()[:6]
+    sink = _Sink()
+    with zipfile.ZipFile(sink, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, version in entries:
+            info = zipfile.ZipInfo(name, date_time=stamp)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.file_size = version.size_bytes  # lets zipfile pick zip64 only when needed
+            with archive.open(info, "w") as out:
+                for chunk in read_version(version):
+                    out.write(chunk)
+                    if data := sink.take():
+                        yield data
+            if data := sink.take():
+                yield data
+    yield sink.take()
+
+
 # ───────────── Trash ─────────────
 class TrashError(ValueError):
     pass
@@ -221,7 +297,9 @@ def restore(db: Session, user: User, document: Document, ip: str | None) -> None
             Document.id != document.id,
         )
     ):
-        raise TrashError("Another live document has the same contract number")
+        raise TrashError(
+            f"Another live document has the same contract number ({document.reference_no})"
+        )
     document.deleted_at = None
     document.deleted_by = None
     audit.record(db, "document.restore", "document", document.id, actor_id=user.id, ip=ip)

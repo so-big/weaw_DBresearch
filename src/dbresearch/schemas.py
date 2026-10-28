@@ -187,6 +187,7 @@ class DocumentSummary(BaseModel):
     reference_no: str | None
     fiscal_year: int | None
     status: DocStatus
+    uploaded_by: uuid.UUID
     updated_at: datetime
     owners: list[str] = []
     snippet: str | None = None  # match wrapped in [[ ]] for highlighting
@@ -195,6 +196,19 @@ class DocumentSummary(BaseModel):
     @property
     def fiscal_year_be(self) -> int | None:
         return self.fiscal_year + BE_OFFSET if self.fiscal_year else None
+
+
+class TrashItem(DocumentSummary):
+    deleted_at: datetime
+    deleted_by: uuid.UUID | None
+    deleted_by_name: str | None = None
+    can_restore: bool = False
+
+
+class DocumentIds(BaseModel):
+    """Several documents at once (select mode): move to the trash or restore."""
+
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
 
 
 class SearchOut(BaseModel):

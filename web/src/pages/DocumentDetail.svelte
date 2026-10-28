@@ -1,6 +1,7 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { get, del, uploadFile, errorText, fileUrl, thai } from '../lib/api.js';
+  import { get, uploadFile, errorText, fileUrl, thai } from '../lib/api.js';
+  import { trashDocs } from '../lib/trash.js';
   import { navigate } from '../lib/router.svelte.js';
   import { toast, screen, bumpReviewCount } from '../lib/state.svelte.js';
   import { STATUS, KIND, FUNDING, ROLE, thDate, thDateTime, money, bytes, personName } from '../lib/format.js';
@@ -54,9 +55,7 @@
   async function remove() {
     busy = true;
     try {
-      await del(`/documents/${id}`);
-      bumpReviewCount();
-      toast('ย้ายเอกสารไปถังขยะแล้ว');
+      await trashDocs([id], () => navigate(`/documents/${id}`));
       navigate('/documents');
     } catch (err) {
       toast(errorText(err), 'bad');
@@ -214,7 +213,7 @@
   {#if sharing}<ShareDialog {doc} onclose={() => (sharing = false)} />{/if}
   {#if confirmDelete}
     <Modal title="ย้ายเอกสารไปถังขยะ?" onclose={() => (confirmDelete = false)}>
-      <p>“{doc.title}” จะหายไปจากการค้นหา และลิงก์แชร์ทั้งหมดของเอกสารนี้จะใช้ไม่ได้ทันที ผู้ดูแลระบบกู้คืนได้จากถังขยะ</p>
+      <p>“{doc.title}” จะหายไปจากการค้นหา และลิงก์แชร์ทั้งหมดของเอกสารนี้จะใช้ไม่ได้ทันที กู้คืนได้จาก “ถังขยะของฉัน” ในเมนูบัญชี</p>
       {#snippet footer()}
         <button class="btn ghost" onclick={() => (confirmDelete = false)}>ยกเลิก</button>
         <button class="btn danger" onclick={remove} disabled={busy}>ย้ายไปถังขยะ</button>

@@ -23,7 +23,7 @@
   </div>
 </header>
 
-<nav class="bottom" aria-label="เมนูหลัก">
+<nav class="bottom" class:away={ui.bar} aria-label="เมนูหลัก" inert={ui.bar}>
   <a href="/documents" aria-current={on('/documents') ? 'page' : undefined}><Icon name="doc" size={22} />เอกสาร</a>
   <a href="/review" aria-current={on('/review') ? 'page' : undefined}>
     <Icon name="check" size={22} />รอตรวจ
@@ -33,7 +33,7 @@
     <span class="circle"><Icon name="search" size={26} stroke={2.3} /></span>ค้นหา
   </button>
   <a href="/shares" aria-current={on('/shares') ? 'page' : undefined}><Icon name="link" size={22} />แชร์</a>
-  <a href="/account" aria-current={on('/account') || on('/admin') ? 'page' : undefined}><Icon name="user" size={22} />บัญชี</a>
+  <a href="/account" aria-current={on('/account') || on('/admin') || on('/overview') || on('/trash') ? 'page' : undefined}><Icon name="user" size={22} />บัญชี</a>
 </nav>
 
 <style>
@@ -49,7 +49,10 @@
     height: calc(var(--bottom-h) + env(safe-area-inset-bottom));
     padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     background: var(--surface); border-top: 1px solid var(--border);
+    transition: transform var(--t-med) var(--ease-out);
   }
+  /* select mode: its action bar takes this place */
+  .bottom.away { transform: translateY(calc(100% + 40px)); }
   .bottom a, .fab {
     position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
     padding: 8px 0 9px; font-size: 11px; color: var(--muted); text-decoration: none;

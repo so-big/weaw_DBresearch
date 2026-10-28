@@ -1,21 +1,29 @@
 import uuid
+from datetime import datetime
 from typing import Annotated
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from dbresearch import audit, jobs
 from dbresearch.auth import DB, CurrentUser, client_ip
 from dbresearch.documents import (
+    MAX_BUNDLE,
     DuplicateUpload,
+    TrashError,
     UploadError,
+    bundle_names,
     can_edit,
+    can_restore,
     read_version,
+    restore,
     soft_delete,
     store_version,
+    zip_versions,
 )
 from dbresearch.metadata import MetadataError, ReferenceTaken, apply_metadata
 from dbresearch.models import (
@@ -40,11 +48,14 @@ from dbresearch.schemas import (
     BudgetLineOut,
     CategoryOut,
     DocumentDetail,
+    DocumentIds,
     MetadataIn,
     PersonOut,
     TagOut,
+    TrashItem,
     VersionOut,
 )
+from dbresearch.search import owners as document_owners
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -153,6 +164,140 @@ def upload(
         return _upload_errors(exc)
     db.commit()
     return document_detail(db, db.get(Document, version.document_id), user)
+
+
+# ───────────── Several documents at once (select mode) ─────────────
+# Declared before /{document_id} so "zip" and "trash" are not read as ids.
+@router.get("/zip")
+def download_zip(
+    request: Request,
+    db: DB,
+    user: CurrentUser,
+    id: Annotated[list[uuid.UUID], Query(min_length=1, max_length=MAX_BUNDLE)],
+):
+    """The current version of each `?id=` as one zip, decrypted and compressed on the fly.
+
+    A plain GET so the browser streams it straight to disk. Documents deleted meanwhile are
+    left out; 404 only when none is left. One `document.download` audit row per file."""
+    wanted = list(dict.fromkeys(id))
+    rows = {
+        document.id: (document, version)
+        for document, version in db.execute(
+            select(Document, DocumentVersion)
+            .join(DocumentVersion, DocumentVersion.id == Document.current_version_id)
+            .where(Document.id.in_(wanted), Document.deleted_at.is_(None))
+        )
+    }
+    found = [rows[i] for i in wanted if i in rows]
+    if not found:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
+    names = bundle_names((d.reference_no, v.original_filename) for d, v in found)
+    ip = client_ip(request)
+    for document, version in found:
+        audit.record(
+            db,
+            "document.download",
+            "document",
+            document.id,
+            actor_id=user.id,
+            ip=ip,
+            version=version.version_no,
+            bundle=len(found),
+        )
+    db.commit()
+    today = datetime.now(ZoneInfo("Asia/Bangkok")).date().isoformat()
+    return StreamingResponse(
+        zip_versions([(name, v) for name, (_, v) in zip(names, found, strict=True)]),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": content_disposition("attachment", f"documents-{today}.zip"),
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/trash", response_model=list[TrashItem])
+def my_trash(db: DB, user: CurrentUser):
+    """My bin: documents I uploaded or deleted that are in the trash (admins see all of
+    them under /admin/trash). Kept until an admin purges them."""
+    documents = db.scalars(
+        select(Document)
+        .where(
+            Document.deleted_at.is_not(None),
+            or_(Document.uploaded_by == user.id, Document.deleted_by == user.id),
+        )
+        .order_by(Document.deleted_at.desc())
+    ).all()
+    return trash_items(db, documents, user)
+
+
+def trash_items(db: Session, documents, user: User) -> list[TrashItem]:
+    names = dict(
+        db.execute(
+            select(User.id, User.display_name).where(
+                User.id.in_({d.deleted_by for d in documents if d.deleted_by})
+            )
+        ).all()
+    )
+    owners = document_owners(db, [d.id for d in documents])
+    out = []
+    for document in documents:
+        item = TrashItem.model_validate(document)
+        item.owners = owners.get(document.id, [])
+        item.deleted_by_name = names.get(document.deleted_by)
+        item.can_restore = can_restore(user, document)
+        out.append(item)
+    return out
+
+
+def _locked(db: Session, ids: list[uuid.UUID]) -> list[Document]:
+    """The documents, row-locked so two people acting at once can't both move them."""
+    wanted = list(dict.fromkeys(ids))
+    documents = db.scalars(
+        select(Document).where(Document.id.in_(wanted)).order_by(Document.id).with_for_update()
+    ).all()
+    if len(documents) != len(wanted):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
+    return documents
+
+
+@router.post("/trash")
+def trash_many(body: DocumentIds, request: Request, db: DB, user: CurrentUser) -> dict:
+    """Move several documents to the trash, all or none (each needs edit rights).
+
+    Their share links stop working in the same transaction."""
+    documents = _locked(db, body.ids)
+    if any(d.deleted_at is not None for d in documents):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
+    if not all(can_edit(user, d) for d in documents):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the uploader or an admin can do this")
+    ip = client_ip(request)
+    revoked = sum(soft_delete(db, user, d, ip) for d in documents)
+    db.commit()
+    return {"deleted": len(documents), "revoked_links": revoked}
+
+
+@router.post("/trash/restore")
+def restore_many(body: DocumentIds, request: Request, db: DB, user: CurrentUser) -> dict:
+    """Take documents back out of the trash, all or none. Old share links stay revoked."""
+    documents = _locked(db, body.ids)
+    if any(d.deleted_at is None for d in documents):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not in the trash")
+    if not all(can_restore(user, d) for d in documents):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only the person who deleted it or an admin can restore it"
+        )
+    ip = client_ip(request)
+    try:
+        for document in documents:
+            restore(db, user, document, ip)
+            db.flush()  # the next restore's contract-number check must see this one
+    except TrashError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    db.commit()
+    return {"restored": len(documents)}
 
 
 @router.post(

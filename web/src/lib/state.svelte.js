@@ -8,13 +8,15 @@ export const isAdmin = () => session.user?.role === 'admin';
 // ───────── Toasts ─────────
 export const toasts = $state([]);
 let toastId = 0;
-export function toast(text, kind = 'ok', ms = 3200) {
+/** Show a short message. `action` = { label, run } adds a button (e.g. undo a delete). */
+export function toast(text, kind = 'ok', ms = 3200, action = null) {
   const id = ++toastId;
-  toasts.push({ id, text, kind });
-  setTimeout(() => {
-    const i = toasts.findIndex((t) => t.id === id);
-    if (i >= 0) toasts.splice(i, 1);
-  }, ms);
+  toasts.push({ id, text, kind, action });
+  setTimeout(() => dismissToast(id), action ? Math.max(ms, 7000) : ms);
+}
+export function dismissToast(id) {
+  const i = toasts.findIndex((t) => t.id === id);
+  if (i >= 0) toasts.splice(i, 1);
 }
 
 // ───────── Review queue count (badge on the รอตรวจสอบ tab) ─────────
@@ -75,4 +77,5 @@ export const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matc
 export const ms = (n) => (reduced() ? 0 : n);
 
 // Phone: the center search button asks the documents page to focus its search box.
-export const ui = $state({ searchFocus: 0 });
+// `bar`: a bottom action bar is showing (select mode), so toasts sit above it.
+export const ui = $state({ searchFocus: 0, bar: false });

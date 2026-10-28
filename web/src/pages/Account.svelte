@@ -1,5 +1,5 @@
 <script>
-  // Phone "บัญชี" tab: who am I, theme, admin entry, log out.
+  // Phone "บัญชี" tab: who am I, overview, my bin, admin entry, theme, log out.
   import Icon from '../components/Icon.svelte';
   import { session, isAdmin, theme, setTheme } from '../lib/state.svelte.js';
   import { logout } from '../lib/auth.js';
@@ -14,9 +14,13 @@
     </div>
   </section>
 
-  {#if isAdmin()}
-    <a class="card pad rowlink" href="/admin"><Icon name="shield" /><span>ผู้ดูแลระบบ</span><Icon name="chevron" size={18} /></a>
-  {/if}
+  <nav class="card links">
+    <a class="rowlink" href="/overview"><Icon name="chart" /><span>ภาพรวม</span><Icon name="chevron" size={18} /></a>
+    <a class="rowlink" href="/trash"><Icon name="trash" /><span>ถังขยะของฉัน</span><Icon name="chevron" size={18} /></a>
+    {#if isAdmin()}
+      <a class="rowlink" href="/admin"><Icon name="shield" /><span>ผู้ดูแลระบบ</span><Icon name="chevron" size={18} /></a>
+    {/if}
+  </nav>
 
   <section class="card pad stack">
     <span class="label">ธีม</span>
@@ -35,6 +39,9 @@
   .who { display: flex; gap: 14px; align-items: center; }
   .who p { font-size: 13px; overflow-wrap: anywhere; }
   .avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-text); display: grid; place-items: center; font-family: var(--f-display); font-size: 20px; flex: none; }
-  .rowlink { display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none; }
+  .links { overflow: hidden; }
+  .rowlink { display: flex; align-items: center; gap: 12px; padding: 14px 16px; min-height: 52px; color: var(--text); text-decoration: none; border-top: 1px solid var(--border); }
+  .rowlink:first-child { border-top: 0; }
+  .rowlink:active { background: var(--subtle); }
   .rowlink span { flex: 1; font-weight: 500; }
 </style>

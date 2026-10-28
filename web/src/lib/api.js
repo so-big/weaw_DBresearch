@@ -83,6 +83,19 @@ export function uploadFile(path, file, onProgress, onStart) {
 export const fileUrl = (id, { inline = false, version } = {}) =>
   `/api/documents/${id}/file${query({ inline: inline || undefined, version })}`;
 
+/** Several documents as one zip, built by the server. */
+export const zipUrl = (ids) => `/api/documents/zip${query({ id: ids })}`;
+
+/** Start a download without leaving the page (the browser streams it to disk). */
+export function downloadUrl(url) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '';
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
 // The API speaks English; show people Thai for the messages we know.
 const THAI = [
   [/^Only PDF files can be uploaded.*$/s, 'รับเฉพาะไฟล์ PDF'],
@@ -94,6 +107,10 @@ const THAI = [
   [/^Too many failed logins.*$/s, 'ใส่รหัสผิดหลายครั้ง กรุณารอ 15 นาทีแล้วลองใหม่'],
   [/^Only the uploader or an admin.*$/s, 'เฉพาะผู้อัปโหลดหรือผู้ดูแลระบบเท่านั้นที่ทำรายการนี้ได้'],
   [/^Document not found.*$/s, 'ไม่พบเอกสารนี้ อาจถูกลบไปแล้ว'],
+  [/^Not in the trash.*$/s, 'เอกสารนี้ไม่อยู่ในถังขยะแล้ว'],
+  [/^Only the person who deleted it or an admin.*$/s, 'กู้คืนได้เฉพาะผู้ที่ลบหรือผู้ดูแลระบบ'],
+  [/^Another live document has the same contract number \((.+)\).*$/s, 'กู้คืนไม่ได้: มีเอกสารเลขที่สัญญา $1 อยู่ในระบบแล้ว'],
+  [/^Another live document has the same contract number.*$/s, 'กู้คืนไม่ได้: มีเอกสารเลขที่สัญญาเดียวกันอยู่ในระบบแล้ว'],
   [/^This link is invalid or has expired.*$/s, 'ลิงก์นี้ใช้ไม่ได้หรือหมดอายุแล้ว'],
   [/^Not authenticated.*$|^Login required.*$/s, 'กรุณาเข้าสู่ระบบ'],
 ];

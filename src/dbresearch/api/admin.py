@@ -1,10 +1,9 @@
-"""ADMIN endpoints: users, all share links, trash, audit, settings, categories, templates,
-reports. Every change writes an audit row."""
+"""ADMIN endpoints: users, all share links, trash, audit, settings, categories, templates.
+Every change writes an audit row. Reports (open to every user) live in api/reports.py."""
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from typing import Annotated, Any
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -12,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from dbresearch import audit, documents, shares
+from dbresearch.api.documents import trash_items
 from dbresearch.api.shares import share_out
 from dbresearch.auth import DB, AdminUser, add_local_identity, client_ip, revoke_all_sessions
 from dbresearch.autofill.rules import validate_rules
@@ -20,19 +20,16 @@ from dbresearch.models import (
     AuthIdentity,
     Category,
     CategoryGroup,
-    DocStatus,
     Document,
     DocumentCategory,
-    DocumentVersion,
     ExtractionTemplate,
-    OcrStatus,
     Setting,
     ShareLink,
     User,
     UserRole,
     UserStatus,
 )
-from dbresearch.schemas import DocumentSummary, IpText, ShareOut, UserOut
+from dbresearch.schemas import IpText, ShareOut, TrashItem, UserOut
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -147,13 +144,14 @@ def all_shares(db: DB, admin: AdminUser, state: str | None = "active"):
 
 
 # ───────────── Trash ─────────────
-@router.get("/trash", response_model=list[DocumentSummary])
+@router.get("/trash", response_model=list[TrashItem])
 def trash(db: DB, admin: AdminUser):
-    return db.scalars(
+    documents = db.scalars(
         select(Document)
         .where(Document.deleted_at.is_not(None))
         .order_by(Document.deleted_at.desc())
     ).all()
+    return trash_items(db, documents, admin)
 
 
 def _trashed(db, document_id: uuid.UUID) -> Document:
@@ -467,182 +465,3 @@ def update_template(
         "template",
         fields=sorted(body.model_dump(exclude_none=True)),
     )
-
-
-# ───────────── Reports ─────────────
-@router.get("/reports/missing-numbers")
-def missing_numbers(
-    db: DB, admin: AdminUser, year_be: int | None = None, series: str | None = None
-) -> list[dict]:
-    """Gaps in each year + series of contract numbers, e.g. internal 2568: E004, E007."""
-    query = (
-        select(
-            Document.ref_year_be,
-            Document.ref_series,
-            func.array_agg(Document.ref_seq),
-            func.max(Document.ref_seq),
-        )
-        .where(Document.deleted_at.is_(None), Document.ref_seq.is_not(None))
-        .group_by(Document.ref_year_be, Document.ref_series)
-        .order_by(Document.ref_year_be.desc(), Document.ref_series)
-    )
-    if year_be:
-        query = query.where(Document.ref_year_be == year_be)
-    if series:
-        query = query.where(Document.ref_series == series.upper())
-    report = []
-    for year, letter, seqs, highest in db.execute(query):
-        present = set(seqs)
-        missing = [n for n in range(1, highest + 1) if n not in present]
-        report.append(
-            {
-                "year_be": year,
-                "series": letter,
-                "highest": highest,
-                "stored": len(present),
-                "missing": [f"R{year}{letter}{n:03d}" for n in missing],
-            }
-        )
-    return report
-
-
-@router.get("/reports/overview")
-def overview(db: DB, admin: AdminUser) -> dict:
-    live = Document.deleted_at.is_(None)
-    by_status = dict(
-        db.execute(
-            select(Document.status, func.count()).where(live).group_by(Document.status)
-        ).all()
-    )
-    active_links = sum(
-        1
-        for link in db.scalars(select(ShareLink).where(ShareLink.revoked_at.is_(None)))
-        if shares.state(db, link) == shares.LinkState.ACTIVE
-    )
-    return {
-        "documents": {s.value: by_status.get(s, 0) for s in DocStatus},
-        "in_trash": db.scalar(
-            select(func.count()).select_from(Document).where(Document.deleted_at.is_not(None))
-        ),
-        "ocr_failed": db.scalar(
-            select(func.count())
-            .select_from(DocumentVersion)
-            .where(DocumentVersion.ocr_status == OcrStatus.FAILED)
-        ),
-        "stored_bytes": int(
-            db.scalar(select(func.coalesce(func.sum(DocumentVersion.size_bytes), 0)))
-        ),
-        "active_share_links": active_links,
-        "users": db.scalar(
-            select(func.count()).select_from(User).where(User.status == UserStatus.ACTIVE)
-        ),
-    }
-
-
-# Charts group by the department's local calendar, not UTC.
-LOCAL_TZ = "Asia/Bangkok"
-
-
-def _month_keys(count: int) -> list[str]:
-    """The last `count` months as 'YYYY-MM', oldest first, ending with this month (Bangkok)."""
-    today = datetime.now(ZoneInfo(LOCAL_TZ)).date()
-    year, month = today.year, today.month
-    keys = []
-    for _ in range(count):
-        keys.append(f"{year:04d}-{month:02d}")
-        year, month = (year, month - 1) if month > 1 else (year - 1, 12)
-    return keys[::-1]
-
-
-def _day_keys(count: int) -> list[date]:
-    today = datetime.now(ZoneInfo(LOCAL_TZ)).date()
-    return [today - timedelta(days=n) for n in range(count - 1, -1, -1)]
-
-
-@router.get("/reports/charts")
-def charts(
-    db: DB,
-    admin: AdminUser,
-    months: Annotated[int, Query(ge=1, le=36)] = 12,
-    days: Annotated[int, Query(ge=7, le=180)] = 30,
-) -> dict:
-    """Data for the overview charts. Live documents only; counts, not file contents."""
-    live = Document.deleted_at.is_(None)
-
-    years: dict[int, dict] = {}
-    for fiscal_year, funding, count, budget in db.execute(
-        select(
-            Document.fiscal_year,
-            Document.funding_type,
-            func.count(),
-            func.coalesce(func.sum(Document.budget_total), 0),
-        )
-        .where(live, Document.fiscal_year.is_not(None))
-        .group_by(Document.fiscal_year, Document.funding_type)
-    ):
-        row = years.setdefault(
-            fiscal_year,
-            {
-                "fiscal_year": fiscal_year,
-                "fiscal_year_be": fiscal_year + 543,
-                "internal": 0,
-                "external": 0,
-                "unset": 0,
-                "budget_internal": 0.0,
-                "budget_external": 0.0,
-                "budget_unset": 0.0,
-            },
-        )
-        key = funding.value if funding else "unset"
-        row[key] += count
-        row[f"budget_{key}"] += float(budget)
-
-    month = func.to_char(func.timezone(LOCAL_TZ, DocumentVersion.created_at), "YYYY-MM")
-    month_keys = _month_keys(months)
-    uploads = dict(
-        db.execute(
-            select(month, func.count())
-            .join(Document, Document.id == DocumentVersion.document_id)
-            .where(live, month >= month_keys[0])
-            .group_by(month)
-        ).all()
-    )
-
-    day = func.date(func.timezone(LOCAL_TZ, AuditEvent.at))
-    day_keys = _day_keys(days)
-    activity: dict[date, dict[str, int]] = {d: {"download": 0, "view": 0} for d in day_keys}
-    for when, action, count in db.execute(
-        select(day, AuditEvent.action, func.count())
-        .where(
-            AuditEvent.action.in_(("document.download", "document.view")),
-            day >= day_keys[0],
-        )
-        .group_by(day, AuditEvent.action)
-    ):
-        if when in activity:
-            activity[when][action.split(".")[1]] = count
-
-    groups: dict[str, dict] = {}
-    group_cols = (CategoryGroup.key, CategoryGroup.name_th, Category.id, Category.name_th)
-    for key, group_name, category_id, name, count in db.execute(
-        select(*group_cols, func.count())
-        .join(Category, Category.group_id == CategoryGroup.id)
-        .join(DocumentCategory, DocumentCategory.category_id == Category.id)
-        .join(Document, Document.id == DocumentCategory.document_id)
-        .where(live)
-        .group_by(*group_cols, CategoryGroup.sort)
-        .order_by(CategoryGroup.sort, func.count().desc(), Category.name_th)
-    ):
-        groups.setdefault(key, {"key": key, "name": group_name, "items": []})["items"].append(
-            {"id": str(category_id), "name": name, "count": count}
-        )
-
-    return {
-        "by_year": [years[y] for y in sorted(years)],
-        "no_fiscal_year": db.scalar(
-            select(func.count()).select_from(Document).where(live, Document.fiscal_year.is_(None))
-        ),
-        "uploads_by_month": [{"month": m, "count": uploads.get(m, 0)} for m in month_keys],
-        "activity_by_day": [{"day": d.isoformat(), **activity[d]} for d in day_keys],
-        "categories": list(groups.values()),
-    }

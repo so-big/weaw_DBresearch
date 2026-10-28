@@ -4,9 +4,12 @@
   import { onMount, tick, untrack } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { get, errorText, fileUrl } from '../lib/api.js';
+  import { SvelteMap } from 'svelte/reactivity';
+  import { get, errorText, fileUrl, zipUrl, downloadUrl } from '../lib/api.js';
   import { route, setQuery } from '../lib/router.svelte.js';
-  import { screen, ui, ms, session } from '../lib/state.svelte.js';
+  import { screen, ui, ms, session, isAdmin, toast } from '../lib/state.svelte.js';
+  import { trashDocs } from '../lib/trash.js';
+  import Modal from '../components/Modal.svelte';
   import { openUpload } from '../lib/uploads.svelte.js';
   import { categoryGroups } from '../lib/catalog.js';
   import { STATUS, KIND, FUNDING, BE, thDate, snippetHtml } from '../lib/format.js';
@@ -215,7 +218,80 @@
   }
   const activeCount = $derived(chips.length);
   const hasFilters = $derived(chips.length > 0);
+
+  // ───── Select mode: pick documents (across searches) to zip-download or trash together ─────
+  const MAX_PICK = 100; // the server's limit for one zip / one trash request
+  let selecting = $state(false);
+  const picked = new SvelteMap(); // id → the summary row, so picks survive a new search
+  let confirmTrash = $state(false);
+  let trashing = $state(false);
+  const editable = (d) => isAdmin() || d.uploaded_by === session.user?.id;
+  const pickedList = $derived([...picked.values()]);
+  const deletable = $derived(pickedList.filter(editable));
+  const allShown = $derived(items.length > 0 && items.every((d) => picked.has(d.id)));
+
+  function startSelect() {
+    selecting = true;
+  }
+  function stopSelect() {
+    selecting = false;
+    picked.clear();
+  }
+  function toggle(d) {
+    if (picked.has(d.id)) picked.delete(d.id);
+    else if (picked.size >= MAX_PICK) toast(`เลือกได้ครั้งละไม่เกิน ${MAX_PICK} รายการ`, 'bad');
+    else picked.set(d.id, d);
+  }
+  function toggleAll() {
+    if (allShown) {
+      for (const d of items) picked.delete(d.id);
+      return;
+    }
+    for (const d of items) {
+      if (picked.size >= MAX_PICK) {
+        toast(`เลือกได้ครั้งละไม่เกิน ${MAX_PICK} รายการ`, 'bad');
+        break;
+      }
+      picked.set(d.id, d);
+    }
+  }
+  function downloadPicked() {
+    const ids = [...picked.keys()];
+    if (ids.length === 1) {
+      downloadUrl(fileUrl(ids[0]));
+      return;
+    }
+    downloadUrl(zipUrl(ids));
+    toast(`กำลังรวม ${ids.length.toLocaleString('th-TH')} ไฟล์เป็น .zip ให้ดาวน์โหลด…`, 'ok', 4000);
+  }
+  async function trashPicked() {
+    const ids = deletable.map((d) => d.id);
+    trashing = true;
+    try {
+      await trashDocs(ids, () => load(filters));
+      for (const id of ids) picked.delete(id);
+      confirmTrash = false;
+      if (!picked.size) selecting = false;
+      load(filters);
+    } catch (err) {
+      toast(errorText(err), 'bad', 5000);
+    } finally {
+      trashing = false;
+    }
+  }
+
+  // The phone's bottom bar gives way to the action bar; toasts move above it on PC.
+  $effect(() => {
+    ui.bar = selecting;
+    return () => (ui.bar = false);
+  });
+  function onKey(e) {
+    // Esc leaves select mode, unless it is closing a dialog or sheet first.
+    if (e.key === 'Escape' && selecting && !document.querySelector('[aria-modal="true"]')) stopSelect();
+  }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <header class="mast" class:wide={screen.wide}>
   <div class="mast-in">
@@ -282,6 +358,11 @@
         {#if filters.q}<span class="muted"> สำหรับ “{filters.q}”</span>{/if}
       </span>
       <span class="spacer"></span>
+      {#if items.length}
+        <button class="btn small ghost pick-btn" aria-pressed={selecting} onclick={() => (selecting ? stopSelect() : startSelect())}>
+          <Icon name="select" size={16} />{selecting ? 'เลิกเลือก' : 'เลือก'}
+        </button>
+      {/if}
       <label class="sort">
         <span class="muted">เรียงตาม</span>
         <select id="sort" value={filters.sort} onchange={(e) => update({ ...filters, sort: e.currentTarget.value })}>
@@ -322,12 +403,22 @@
         {/if}
       </div>
     {:else}
-      <div class="list card" class:dim={refreshing}>
+      <div class="list card" class:dim={refreshing} class:selecting>
         {#each items as d (d.id)}
-          <div class="item">
-            <a class="cover" href="/documents/{d.id}" aria-label={d.title}></a>
-            <span class="ftile f-{d.funding_type || 'unset'}" title={d.funding_type ? FUNDING[d.funding_type] : 'ยังไม่ระบุประเภทเงินทุน'} aria-hidden="true">
-              <small>ปีงบ</small>{d.fiscal_year_be ? String(d.fiscal_year_be).slice(2) : '–'}
+          {@const on = picked.has(d.id)}
+          <div class="item" class:on>
+            {#if selecting}
+              <button class="cover" aria-pressed={on} aria-label="เลือก {d.title}" onclick={() => toggle(d)}></button>
+            {:else}
+              <a class="cover" href="/documents/{d.id}" aria-label={d.title}></a>
+            {/if}
+            <span class="tilebox">
+              <span class="ftile f-{d.funding_type || 'unset'}" title={d.funding_type ? FUNDING[d.funding_type] : 'ยังไม่ระบุประเภทเงินทุน'} aria-hidden="true">
+                <small>ปีงบ</small>{d.fiscal_year_be ? String(d.fiscal_year_be).slice(2) : '–'}
+              </span>
+              {#if selecting}
+                <span class="tick" class:on aria-hidden="true" transition:fade={{ duration: ms(150) }}><Icon name="check-only" size={14} stroke={3} /></span>
+              {/if}
             </span>
             <div class="grow">
               <div class="topline">
@@ -345,7 +436,7 @@
             <div class="side-meta">
               <span class="badge {d.status}">{STATUS[d.status]}</span>
               <span class="muted date">{thDate(d.updated_at)}</span>
-              {#if !screen.wide}
+              {#if !screen.wide && !selecting}
                 <a class="btn small dl" href={fileUrl(d.id)} aria-label="ดาวน์โหลด {d.title}"><Icon name="download" size={15} /></a>
               {/if}
             </div>
@@ -356,8 +447,57 @@
         <button class="btn ghost more" onclick={() => load(filters, true)}>แสดงเพิ่ม ({(total - items.length).toLocaleString('th-TH')} รายการ)</button>
       {/if}
     {/if}
+    {#if selecting}<div class="bar-room" aria-hidden="true"></div>{/if}
   </section>
 </div>
+
+{#if selecting}
+  <div
+    class="selbar"
+    class:phone={!screen.wide}
+    role="toolbar"
+    aria-label="จัดการรายการที่เลือก"
+    transition:fly={{ y: 90, duration: ms(220), easing: cubicOut, opacity: 1 }}
+  >
+    <button class="icon-btn close" onclick={stopSelect} aria-label="เลิกเลือก"><Icon name="x" size={19} /></button>
+    <div class="count" aria-live="polite">
+      <b class="num">{picked.size.toLocaleString('th-TH')}</b>
+      <span>{screen.wide ? 'รายการที่เลือก' : 'เลือกแล้ว'}</span>
+    </div>
+    <button class="link-btn all" onclick={toggleAll} disabled={!items.length}>{allShown ? 'ไม่เลือกที่แสดง' : `เลือกที่แสดง (${items.length})`}</button>
+    <span class="spacer"></span>
+    <button class="act" onclick={downloadPicked} disabled={!picked.size} title={picked.size > 1 ? 'ดาวน์โหลดรวมเป็นไฟล์ .zip' : 'ดาวน์โหลด'}>
+      <Icon name={picked.size > 1 ? 'archive' : 'download'} size={19} /><span>{picked.size > 1 ? 'ดาวน์โหลด .zip' : 'ดาวน์โหลด'}</span>
+    </button>
+    <button
+      class="act bad"
+      onclick={() => (confirmTrash = true)}
+      disabled={!deletable.length}
+      title={picked.size && !deletable.length ? 'ลบได้เฉพาะเอกสารที่คุณอัปโหลด' : 'ย้ายไปถังขยะ'}
+    >
+      <Icon name="trash" size={19} /><span>ลบ</span>
+    </button>
+  </div>
+{/if}
+
+{#if confirmTrash}
+  <Modal title="ย้าย {deletable.length.toLocaleString('th-TH')} รายการไปถังขยะ?" onclose={() => (confirmTrash = false)}>
+    <ul class="picklist">
+      {#each deletable.slice(0, 8) as d (d.id)}
+        <li>{#if d.reference_no}<span class="cno">{d.reference_no}</span>{/if}<span>{d.title}</span></li>
+      {/each}
+    </ul>
+    {#if deletable.length > 8}<p class="muted">และอีก {(deletable.length - 8).toLocaleString('th-TH')} รายการ</p>{/if}
+    {#if deletable.length < picked.size}
+      <div class="notice warn">{(picked.size - deletable.length).toLocaleString('th-TH')} รายการที่คุณไม่ได้อัปโหลดจะไม่ถูกลบ (ลบได้เฉพาะผู้อัปโหลดหรือผู้ดูแลระบบ)</div>
+    {/if}
+    <p class="muted">เอกสารจะหายจากการค้นหา และลิงก์แชร์ของเอกสารเหล่านี้จะใช้ไม่ได้ทันที กู้คืนได้จาก <a href="/trash">ถังขยะของฉัน</a></p>
+    {#snippet footer()}
+      <button class="btn ghost" onclick={() => (confirmTrash = false)}>ยกเลิก</button>
+      <button class="btn danger" onclick={trashPicked} disabled={trashing || !deletable.length}>ย้ายไปถังขยะ</button>
+    {/snippet}
+  </Modal>
+{/if}
 
 {#if sheet}
   <div class="scrim" transition:fade={{ duration: ms(200) }} onclick={() => (sheet = false)} role="presentation"></div>
@@ -466,6 +606,51 @@
   .layout:not(.wide) .side-meta .dl { margin: 0 0 0 auto; }
   .layout:not(.wide) .t { font-size: 14.5px; }
   .dl { position: relative; z-index: 2; min-height: 34px; padding: 4px 10px; margin-top: 4px; }
+
+  /* ── select mode ── */
+  .pick-btn[aria-pressed='true'] { background: var(--primary-soft); border-color: var(--primary-soft); color: var(--primary-text); }
+  .tilebox { position: relative; display: block; width: 42px; }
+  .tick {
+    position: absolute; top: -6px; left: -6px; width: 22px; height: 22px; border-radius: 50%;
+    display: grid; place-items: center; background: var(--surface); color: transparent;
+    box-shadow: inset 0 0 0 2px var(--border-strong); z-index: 2; pointer-events: none;
+  }
+  .tick.on { background: var(--primary); color: var(--on-primary); box-shadow: 0 0 0 2px var(--surface); animation: tick-pop 220ms var(--ease-out); }
+  @keyframes tick-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+  .selecting .item { cursor: pointer; }
+  .item.on, .item.on:hover { background: var(--primary-soft); }
+  .item.on::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--primary); }
+  .bar-room { height: 64px; }
+  .selbar {
+    position: fixed; z-index: 30; left: 50%; bottom: 20px; translate: -50% 0; width: min(680px, calc(100vw - 40px));
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 8px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow);
+  }
+  .selbar .count { display: flex; align-items: baseline; gap: 6px; font-size: 13.5px; color: var(--muted); white-space: nowrap; }
+  .selbar .count b { font-family: var(--f-display); font-weight: 600; font-size: 20px; color: var(--primary-text); }
+  .selbar .all { font-size: 13.5px; white-space: nowrap; }
+  .act {
+    display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 6px 14px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 500; white-space: nowrap;
+    transition: background var(--t-fast), transform var(--t-fast) var(--ease-out);
+  }
+  .act:hover:not([disabled]) { background: var(--subtle); }
+  .act:active:not([disabled]) { transform: scale(0.97); }
+  .act.bad { color: var(--bad); }
+  .act[disabled] { opacity: 0.45; cursor: default; }
+  /* phone: the bar takes the bottom nav's place */
+  .selbar.phone {
+    left: 0; right: 0; bottom: 0; translate: none; width: auto; border-radius: 0; border-width: 1px 0 0;
+    min-height: calc(var(--bottom-h) + env(safe-area-inset-bottom)); gap: 6px;
+    padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+  }
+  .selbar.phone .count { flex-direction: column; gap: 0; line-height: 1.1; font-size: 11px; align-items: flex-start; }
+  .selbar.phone .count b { font-size: 18px; }
+  .selbar.phone .all { font-size: 12.5px; white-space: normal; max-width: 92px; text-align: left; line-height: 1.25; }
+  .selbar.phone .act { flex-direction: column; gap: 1px; min-height: 48px; padding: 4px 10px; border: 0; font-size: 11px; }
+  .picklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+  .picklist li { display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
+  .picklist .cno { flex: none; }
 
   .scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 40; }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-height: 88vh; background: var(--surface); border-radius: 20px 20px 0 0; display: flex; flex-direction: column; box-shadow: var(--shadow); }

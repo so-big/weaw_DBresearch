@@ -79,7 +79,21 @@ def run(p, tag, viewport, mobile, scheme):
     page.keyboard.press("Escape")
     page.wait_for_timeout(300)
 
+    # Select mode: pick the first row, show the action bar (nothing is deleted).
+    if doc_id:
+        page.get_by_role("button", name="เลือก", exact=True).click()
+        page.locator(".item button.cover").first.click()
+        shot(page, f"{tag}-04b-select-mode")
+        page.locator(".selbar button.act.bad").click()
+        shot(page, f"{tag}-04c-select-trash-confirm")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+
     for path, name in [
+        ("/overview", "04d-overview"),
+        ("/trash", "04e-my-trash"),
         ("/review", "05-review-queue"),
         ("/shares", "06-shares"),
         ("/admin", "07-admin"),

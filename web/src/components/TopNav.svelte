@@ -9,6 +9,7 @@
   const tabs = $derived([
     { href: '/documents', label: 'เอกสาร', on: route.path === '/documents' || route.path.startsWith('/documents/') },
     { href: '/review', label: 'รอตรวจสอบ', count: review.count, on: route.path === '/review' },
+    { href: '/overview', label: 'ภาพรวม', on: route.path === '/overview' },
     { href: '/shares', label: 'ลิงก์แชร์', on: route.path === '/shares' },
     ...(isAdmin() ? [{ href: '/admin', label: 'ผู้ดูแลระบบ', on: route.path.startsWith('/admin') }] : []),
   ]);
@@ -105,6 +106,7 @@
               <button aria-pressed={theme.value === v} onclick={() => setTheme(v)}>{l}</button>
             {/each}
           </div>
+          <a class="mlink" href="/trash" onclick={() => (menuOpen = false)}><Icon name="trash" size={17} />ถังขยะของฉัน</a>
           <button class="btn ghost" onclick={logout}><Icon name="logout" size={17} />ออกจากระบบ</button>
         </div>
       {/if}
@@ -137,6 +139,8 @@
   .backdrop { position: fixed; inset: 0; background: transparent; border: 0; z-index: 1; cursor: default; }
   .menu { position: absolute; right: 0; top: calc(100% + 8px); width: 260px; padding: 14px; display: flex; flex-direction: column; gap: 10px; z-index: 2; box-shadow: var(--shadow); }
   .who { display: flex; flex-direction: column; }
+  .mlink { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin: 0 -4px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: 14px; }
+  .mlink:hover { background: var(--subtle); }
   .who small { font-size: 12px; overflow-wrap: anywhere; }
   @media (max-width: 1020px) { .brand .sub { display: none; } .search kbd { display: none; } }
 </style>

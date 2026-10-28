@@ -112,6 +112,9 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Upload window: cancel any file (waiting, uploading, or undo a finished upload → trash)
 - [x] Overview with charts: status meter, documents + budget per fiscal year, uploads per month, views/downloads per day, top categories, contract-number coverage grid (each with a table view). `GET /api/admin/reports/charts`
 - [x] Visual refresh: maroon masthead with search + quick figures, funding-tinted file tiles, split login, guest band
+- [x] Select mode on the documents list: pick several → download as one zip (server decrypts + compresses on the fly) or move to the trash (all or none, with undo)
+- [x] Overview opened to every user (tab ภาพรวม; `GET /api/reports/*`); admin-only figures stay hidden from users
+- [x] ถังขยะของฉัน: each user sees what they uploaded or deleted and can restore their own deletes; admins still purge
 - [ ] Collect tester feedback on the live site and fix what feels off
 
 ## Demo environment
@@ -121,6 +124,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-10-28 — Select mode (zip download, bulk trash with undo), overview for every user, per-user bin with restore.
 - 2026-10-28 — Phase 4: public demo live; per-file upload cancel, chart overview, visual refresh.
 
 - 2026-10-28 — Phase 3: web app live on the demo server (`http://localhost:8120` through the SSH tunnel).

@@ -10,6 +10,7 @@ from dbresearch.api import admin as admin_api
 from dbresearch.api import auth as auth_api
 from dbresearch.api import catalog as catalog_api
 from dbresearch.api import documents as documents_api
+from dbresearch.api import reports as reports_api
 from dbresearch.api import shares as shares_api
 from dbresearch.config import get_settings
 from dbresearch.crypto import load_keyring
@@ -67,6 +68,7 @@ for router in (
     catalog_api.router,
     shares_api.router,
     shares_api.guest,
+    reports_api.router,
     admin_api.router,
 ):
     api.include_router(router)

@@ -440,6 +440,8 @@ documents 1─* budget_lines   (manual: items or installments)
 - View-only links stream the PDF inline or as rendered page images, without a download button. This is best effort (screenshots can't be blocked).
 - `multi = false` category groups allow at most one category per document.
 - Edit/delete/new version: `uploaded_by = me OR role = admin`. Purge: admin only.
+- Restore from the trash: an admin, or the uploader when they deleted it themselves (an admin's delete stays with the admin). Each user sees their own bin (documents they uploaded or deleted); restoring never revives old share links.
+- Bulk actions (select mode) are all-or-nothing in one transaction, at most 100 documents. A zip download writes one `document.download` audit row per file.
 - Every download (user or guest), share create/revoke, user admin action, and purge writes to `audit_events`.
 
 ---
@@ -607,16 +609,20 @@ Documents  POST /documents (multipart upload) · GET /documents (search: q, kind
            fiscal_year[], status[], category[], tag[], person, ref_year_be, ref_series, mine, sort,
            page, page_size, with_facets; several values in one filter = any of them; each facet
            group is counted without its own filter) · GET /documents/{id} · DELETE /documents/{id} (trash)
+           GET /documents/zip?id=…&id=… (≤ 100, current versions as one zip, streamed; deleted ones left out)
+           GET /documents/trash (my bin) · POST /documents/trash {ids} · POST /documents/trash/restore {ids}
            POST /documents/{id}/versions · GET /documents/{id}/file?version=&inline=
            GET /documents/{id}/autofill · PUT /documents/{id}/metadata · POST /documents/{id}/reprocess
 Pickers    GET /categories · GET /people?q=
+Reports    GET /reports/overview · /reports/charts · /reports/missing-numbers (every user; system
+           figures such as users, storage, all links and the whole trash only for admins)
 Shares     POST /documents/{id}/shares · GET /shares · GET /shares/{id}/log
            DELETE /shares/{id} · POST /shares/{id}/password
 Guest      GET /s/{token} · POST /s/{token}/unlock · GET /s/{token}/file?download=
            (the link people open is the web page /s/{token}; its grant cookie is scoped to /api/s/{token})
 Admin      /admin/users (+ PATCH, /password) · /admin/shares?state=active|all|… · /admin/trash (restore, purge)
            /admin/audit · /admin/settings · /admin/category-groups · /admin/categories
-           /admin/templates · /admin/reports/missing-numbers · /admin/reports/overview
+           /admin/templates
 ```
 
 ---
@@ -645,7 +651,8 @@ Mocks of the agreed direction: `docs/ui/` (palette, layout + upload, search filt
 | Stack | **Svelte 5 + Vite**, plain JS, in `web/`. Built in the Docker image (node stage) and served by FastAPI from `/app/web/dist`: hashed `/assets/*`, every other non-`/api` path gets `index.html` (`no-cache`, strict CSP: same-origin only). No extra container. |
 | Fonts | Kanit (headings) + IBM Plex Sans Thai (body), self-hosted via `@fontsource` (no CDN at runtime). |
 | Colors | Faculty maroon `#8B1538` as primary (~10 % of the screen), warm off-white base, gold highlight (fills only, never text), yellow search-hit mark, orange-red for errors (never confused with maroon). Light + dark (follows the device; user can pick). |
-| Layout | PC/tablet ≥ 768 px: header with tabs (เอกสาร · รอตรวจสอบ · ลิงก์แชร์ · ผู้ดูแลระบบ), search box (`/` focuses), upload button. Only Admin has a side menu. Phone: bottom bar with a raised **search** button in the center; upload sits in the top bar. |
+| Layout | PC/tablet ≥ 768 px: header with tabs (เอกสาร · รอตรวจสอบ · ภาพรวม · ลิงก์แชร์ · ผู้ดูแลระบบ), search box (`/` focuses), upload button; the account menu links to ถังขยะของฉัน. Only Admin has a side menu. Phone: bottom bar with a raised **search** button in the center; upload sits in the top bar; ภาพรวม and ถังขยะของฉัน are on the บัญชี tab. |
+| Select mode | "เลือก" on the results toolbar. Rows toggle instead of opening, a tick sits on the file tile, picks survive new searches (max 100). Action bar: count, select shown, download (one file = PDF, more = zip built by the server), move to trash (only the ones you may delete; confirm lists them; the toast offers undo). PC: floating bar at the bottom; phone: it takes the bottom nav's place. Esc leaves. |
 | Upload | One window (dialog on PC, bottom sheet on phone) or drop files anywhere. Several PDFs, 2 in parallel, per-file result (uploaded / duplicate → link / rejected). Closing keeps uploading (header pill). Then *review now* or *review later* (documents wait in รอตรวจสอบ, searchable meanwhile). |
 | Search | PC: filter column + removable chips + sort; filters live in the URL. Phone: quick chips + filter bottom sheet with a live "แสดง N รายการ" count. Zero-count options are disabled. |
 | Review | Pre-filled from auto-fill on the first review; afterwards the saved values, with the system's readings as clickable hints. Warnings never block. PDF beside the form on wide screens. Dates typed as `วว/ดด/ปปปป` in พ.ศ., stored Gregorian. |

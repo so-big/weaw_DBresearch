@@ -1,11 +1,13 @@
 // Tiny helpers shared by the hand-built SVG charts (no chart library: keeps the bundle small).
 
-/** Round axis maximum and evenly spaced ticks, e.g. 0, 5, 10, 15. */
-export function niceTicks(max, count = 4) {
+/** Round axis maximum and evenly spaced ticks, e.g. 0, 5, 10, 15.
+ * Counts (the default) only tick on whole numbers: no "0.5 documents". */
+export function niceTicks(max, count = 4, integer = true) {
   if (!max || max <= 0) return { max: 1, ticks: [0, 1] };
   const raw = max / count;
   const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag;
+  let step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag;
+  if (integer) step = Math.max(1, Math.round(step) === step ? step : Math.ceil(step));
   const top = Math.ceil(max / step) * step;
   const ticks = [];
   for (let v = 0; v <= top + step / 2; v += step) ticks.push(+v.toFixed(10));
@@ -19,8 +21,15 @@ export function topRounded(x, y, w, h, r = 4) {
   return `M${x},${y + h}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${y + h}Z`;
 }
 
-const compact = new Intl.NumberFormat('th-TH', { notation: 'compact', maximumFractionDigits: 1 });
-export const short = (n) => compact.format(n);
+// Thai reads big numbers in its own units: 2.9 แสน, 1.5 ล้าน.
+const one = (n) => n.toLocaleString('th-TH', { maximumFractionDigits: 1 });
+export function short(n) {
+  const a = Math.abs(n);
+  if (a >= 1e6) return `${one(n / 1e6)} ล้าน`;
+  if (a >= 1e5) return `${one(n / 1e5)} แสน`;
+  if (a >= 1e4) return `${one(n / 1e4)} หมื่น`;
+  return one(n);
+}
 export const full = (n) => Number(n).toLocaleString('th-TH', { maximumFractionDigits: 2 });
 
 const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];

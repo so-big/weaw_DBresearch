@@ -105,12 +105,23 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [ ] Try it on a real phone (guest link, search, upload from the phone's files) and collect feedback
 - [ ] Later: PDF preview inside the page on phones (pdf.js) if opening a new tab is not enough
 
+## Phase 4 — Polish and public demo
+
+- [x] Public demo at **https://dbresearch.promptjang.com** (Cloudflare Tunnel → `127.0.0.1:8120`). The college network blocks `promptjang.com`; testers there use a VPN. Visitor IP from `CF-Connecting-IP`, HTTPS-only cookies, login limit (5 per username / 15 min).
+- [x] Thai error messages for known API errors; drag & drop accepts every way desktops hand over files
+- [x] Upload window: cancel any file (waiting, uploading, or undo a finished upload → trash)
+- [x] Overview with charts: status meter, documents + budget per fiscal year, uploads per month, views/downloads per day, top categories, contract-number coverage grid (each with a table view). `GET /api/admin/reports/charts`
+- [x] Visual refresh: maroon masthead with search + quick figures, funding-tinted file tiles, split login, guest band
+- [ ] Collect tester feedback on the live site and fix what feels off
+
 ## Demo environment
 
 - Demo admin: username `admin`, password in `~/dbresearch/secrets/demo-admin-password` on the server (mode 600).
 - Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
 ## Log
+
+- 2026-10-28 — Phase 4: public demo live; per-file upload cancel, chart overview, visual refresh.
 
 - 2026-10-28 — Phase 3: web app live on the demo server (`http://localhost:8120` through the SSH tunnel).
 - 2026-10-28 — Phase 3: UI direction agreed (colors, layout, upload, filters; mocks in `docs/ui/`). Svelte web app built; API moved under `/api`.

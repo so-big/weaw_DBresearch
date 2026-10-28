@@ -14,9 +14,9 @@ Input: `$ARGUMENTS` = path to a sample PDF (plus kind/funding type if the user g
 4. Draft one `extraction_templates` row **per section type** (rule format: docstring of `dbresearch/autofill/rules.py`; validate with `validate_rules`). Ship it as a new data migration, like `…_tune_contract_body_rules.py`:
    - `attachment_no`, and `kind` / `funding_type` if the section implies them (e.g. `งบประมาณรายได้คณะ` → internal).
    - `match_rules`: 3–6 keywords/regexes unique to this section + a minimum score. Check they don't match other templates' sections.
-   - `field_rules`: for each field, a **list of label variants**, each with a layout (`inline` / `right` / `below` / `footer`), a value regex, and post-processing (`date_be`, `thai_digits`, `money`, `money_words`, `person_name`).
+   - `field_rules` = `{"rules": [...]}`. One rule per field and label variant. Layouts: `label` (value after a line-start label, or on the next line; `continue` = wrapped lines), `footer` (majority vote over all pages), `sentence` (regex over running text; `words_group` checks amounts written in Thai words), `team` (research-team block). Post-processors: `strip_leaders`, `compact`, `upper`, `be_year`, `thai_date`, `money`, `strip_brackets`.
    - `checkbox_groups = true` if the section has checkbox groups.
 5. Checkbox groups: for every heading and option seen (checked **or** unchecked), make sure a `category_groups` / `categories` row exists, or add the variant to `aliases`. Propose these as seed-data changes. **Ask before adding new categories.** Only checked boxes become tags at runtime.
-6. Create a **redacted** fixture in `tests/fixtures/templates/<name>.json`: page words/boxes with real names, IDs, and amounts swapped for fake ones, layout kept. Add a test that asserts every extracted field and every checked-box suggestion.
+6. Add a unit test in `tests/test_autofill_unit.py` style: synthetic `Page`/`Line` objects with the sample's **layout** but **fake values** (never real names, IDs or amounts). Assert every extracted field and every checked-box suggestion.
 7. Run all template tests to confirm the new rules don't steal matches from other templates.
 8. Report each field (value, confidence, source page), the checkbox suggestions, any validation warnings, and anything OCR misread.

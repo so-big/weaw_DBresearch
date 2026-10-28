@@ -17,6 +17,8 @@ from dbresearch.models import (
     LabelSource,
     OcrStatus,
     PersonRole,
+    ShareAccess,
+    ShareEvent,
     UserRole,
     UserStatus,
 )
@@ -222,3 +224,68 @@ class PersonBrief(BaseModel):
     prefix_th: str | None
     name_th: str | None
     name_en: str | None
+
+
+# ───────────── Share links ─────────────
+class ShareCreate(BaseModel):
+    access: ShareAccess = ShareAccess.PUBLIC
+    ttl_hours: int | None = Field(None, ge=1, le=24 * 365)  # default from settings (24 h)
+    allow_download: bool = True  # False = view-only (best effort)
+    max_downloads: int | None = Field(None, ge=1, le=1000)
+    version_no: int | None = None  # pin a version; default = always the latest
+    note: str | None = Field(None, max_length=300)
+
+
+class ShareOut(BaseModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_title: str
+    access: ShareAccess
+    allow_download: bool
+    max_downloads: int | None
+    download_count: int
+    failed_attempts: int
+    expires_at: datetime
+    created_at: datetime
+    created_by: uuid.UUID
+    revoked_at: datetime | None
+    note: str | None
+    state: str
+
+
+class ShareCreated(ShareOut):
+    """Returned once: the token and password are never retrievable again."""
+
+    token: str
+    path: str  # '/s/<token>' — the frontend prefixes its own origin
+    password: str | None
+
+
+class ShareLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    event: ShareEvent
+    reason: str | None
+    at: datetime
+    ip: str | None
+    user_agent: str | None
+
+
+class GuestInfo(BaseModel):
+    title: str
+    filename: str
+    pages: int | None
+    size_bytes: int
+    expires_at: datetime
+    requires_password: bool
+    unlocked: bool
+    allow_download: bool
+    downloads_left: int | None
+
+
+class UnlockIn(BaseModel):
+    password: str = Field(min_length=1, max_length=100)
+
+
+class PasswordOut(BaseModel):
+    password: str

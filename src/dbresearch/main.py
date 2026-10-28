@@ -7,6 +7,7 @@ from sqlalchemy import text
 from dbresearch.api import auth as auth_api
 from dbresearch.api import catalog as catalog_api
 from dbresearch.api import documents as documents_api
+from dbresearch.api import shares as shares_api
 from dbresearch.config import get_settings
 from dbresearch.crypto import load_keyring
 from dbresearch.db import get_engine
@@ -31,6 +32,16 @@ async def csrf_guard(request: Request, call_next) -> Response:
 
 
 @app.middleware("http")
+async def security_headers(request: Request, call_next) -> Response:
+    response = await call_next(request)
+    # Share tokens live in URLs: never leak them to other sites via Referer.
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    return response
+
+
+@app.middleware("http")
 async def upload_size_limit(request: Request, call_next) -> Response:
     """Reject oversized uploads before they are spooled (exact limit enforced while reading)."""
     length = request.headers.get("content-length")
@@ -43,6 +54,8 @@ async def upload_size_limit(request: Request, call_next) -> Response:
 app.include_router(auth_api.router)
 app.include_router(documents_api.router)
 app.include_router(catalog_api.router)
+app.include_router(shares_api.router)
+app.include_router(shares_api.guest)
 
 
 def _check_database() -> dict[str, str]:

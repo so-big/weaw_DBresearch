@@ -5,7 +5,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from dbresearch.api import auth as auth_api
+from dbresearch.api import documents as documents_api
 from dbresearch.config import get_settings
+from dbresearch.crypto import load_keyring
 from dbresearch.db import get_engine
 
 app = FastAPI(title="DBresearch")
@@ -27,7 +29,18 @@ async def csrf_guard(request: Request, call_next) -> Response:
     return await call_next(request)
 
 
+@app.middleware("http")
+async def upload_size_limit(request: Request, call_next) -> Response:
+    """Reject oversized uploads before they are spooled (exact limit enforced while reading)."""
+    length = request.headers.get("content-length")
+    limit = (get_settings().max_upload_mb + 1) << 20
+    if length and length.isdigit() and int(length) > limit:
+        return JSONResponse({"detail": "Upload too large"}, status_code=413)
+    return await call_next(request)
+
+
 app.include_router(auth_api.router)
+app.include_router(documents_api.router)
 
 
 def _check_database() -> dict[str, str]:
@@ -53,9 +66,17 @@ def _check_blob_store() -> dict[str, str]:
     return {"blob_store": "ok" if ok else "error: missing or not writable"}
 
 
+def _check_kek() -> dict[str, str]:
+    try:
+        load_keyring(get_settings().kek_path)
+    except Exception as exc:  # missing or unreadable master key
+        return {"kek": f"error: {type(exc).__name__}"}
+    return {"kek": "ok"}
+
+
 @app.get("/health")
 def health(response: Response) -> dict:
-    checks = _check_database() | _check_blob_store()
+    checks = _check_database() | _check_blob_store() | _check_kek()
     healthy = all(value == "ok" for value in checks.values())
     if not healthy:
         response.status_code = 503

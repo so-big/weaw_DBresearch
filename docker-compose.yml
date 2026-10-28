@@ -11,6 +11,8 @@ x-app: &app
     BLOB_DIR: /data/blobs
   volumes:
     - blobs:/data/blobs
+    # KEK (master key), created once with `dbresearch.cli kek-init`. Never in git/backups.
+    - ./secrets:/run/secrets:ro
   depends_on:
     db:
       condition: service_healthy
@@ -52,6 +54,9 @@ services:
     <<: *app
     ports:
       - "127.0.0.1:8120:8000"
+    # Uploads are spooled here before encryption: memory only, never disk.
+    tmpfs:
+      - /tmp:size=1g,mode=1777
 
   worker:
     <<: *app
@@ -61,6 +66,7 @@ services:
       - /tmp/work:size=1g,mode=0700,uid=10001,gid=10001
     volumes:
       - blobs:/data/blobs
+      - ./secrets:/run/secrets:ro
       # Confidential samples for OCR experiments; gitignored, never baked into the image.
       - ./samples:/samples:ro
 

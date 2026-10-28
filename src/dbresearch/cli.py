@@ -10,11 +10,13 @@ import argparse
 import getpass
 import os
 import sys
+from pathlib import Path
 
 from sqlalchemy import select
 
 from dbresearch import audit
 from dbresearch.auth import add_local_identity, normalize_username
+from dbresearch.crypto import generate_kek_json
 from dbresearch.db import new_session
 from dbresearch.models import AuthIdentity, User, UserRole
 
@@ -45,6 +47,18 @@ def create_user(args: argparse.Namespace, role: UserRole) -> None:
         print(f"Created {role.value} {username} ({user.id})")
 
 
+def kek_init(out: Path) -> None:
+    """Create the master key (KEK). Losing it makes every stored file unreadable: back it up
+    to two places outside the server, separately from the data backups (docs/OPERATIONS.md)."""
+    if out.exists():
+        sys.exit(f"{out} already exists; refusing to overwrite the master key")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        handle.write(generate_kek_json())
+    print(f"Wrote new KEK to {out}. Back it up NOW (two copies, outside the server).")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="dbresearch.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -53,11 +67,15 @@ def main(argv: list[str] | None = None) -> None:
         cmd.add_argument("--email", required=True)
         cmd.add_argument("--name", required=True)
         cmd.add_argument("--username", required=True)
+    kek = commands.add_parser("kek-init", help="create the master encryption key")
+    kek.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.command == "create-admin":
         create_user(args, UserRole.ADMIN)
     elif args.command == "create-user":
         create_user(args, UserRole.USER)
+    elif args.command == "kek-init":
+        kek_init(args.out)
 
 
 if __name__ == "__main__":

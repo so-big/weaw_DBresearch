@@ -62,12 +62,15 @@ def app_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     if not HAS_DB:
         pytest.skip("needs the compose stack (DATABASE_URL)")
     from dbresearch.config import get_settings
+    from dbresearch.crypto import generate_kek_json
     from dbresearch.db import configure_engine
 
     with temp_database() as url:
         command.upgrade(alembic_config(url), "head")
         os.environ["BLOB_DIR"] = str(tmp_path_factory.mktemp("blobs"))
-        os.environ["KEK_PATH"] = str(tmp_path_factory.mktemp("secrets") / "kek.json")
+        kek_path = tmp_path_factory.mktemp("secrets") / "kek.json"
+        kek_path.write_text(generate_kek_json())
+        os.environ["KEK_PATH"] = str(kek_path)
         get_settings.cache_clear()
         configure_engine(url)
         yield url
@@ -126,3 +129,18 @@ def login(client, make_user) -> Callable[..., uuid.UUID]:
         return user_id
 
     return do_login
+
+
+def make_pdf(pages: int = 1) -> bytes:
+    """A small valid PDF; random page width makes every call's bytes unique."""
+    import io
+    import random
+
+    import pypdfium2 as pdfium
+
+    pdf = pdfium.PdfDocument.new()
+    for _ in range(pages):
+        pdf.new_page(random.randint(500, 600), 842)
+    buffer = io.BytesIO()
+    pdf.save(buffer)
+    return buffer.getvalue()

@@ -232,6 +232,11 @@ class Document(Base):
             "effective_to IS NULL OR effective_from IS NULL OR effective_to >= effective_from",
             name="effective_range",
         ),
+        # kind / funding_type are found by auto-fill, so they may be empty until review.
+        CheckConstraint(
+            "status <> 'ready' OR (kind IS NOT NULL AND funding_type IS NOT NULL)",
+            name="ready_is_complete",
+        ),
         Index(
             "documents_live_idx",
             "kind",
@@ -274,8 +279,8 @@ class Document(Base):
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
-    kind: Mapped[DocKind] = mapped_column(pg_enum(DocKind, "doc_kind"))
-    funding_type: Mapped[FundingType] = mapped_column(pg_enum(FundingType, "funding_type"))
+    kind: Mapped[DocKind | None] = mapped_column(pg_enum(DocKind, "doc_kind"))
+    funding_type: Mapped[FundingType | None] = mapped_column(pg_enum(FundingType, "funding_type"))
     title: Mapped[str]  # main title as written (Thai, or English when that's all there is)
     title_en: Mapped[str | None]
     # Contract no., normalised (uppercase, no spaces): R + B.E. year + series + running no.

@@ -485,7 +485,7 @@ Observations that shape the design:
    - funding type from the contract no. letter ≠ funding type implied by the header text
    - contract no. differs between pages
    - contract no. already exists on a live document → suggest *new version* instead
-   - **more than one contract no. in one PDF** → warn *"this PDF seems to contain N contracts"* (the first real scan held two)
+   - **more than one contract no. in one PDF** → warn *"pages show different contract numbers"* (a real PDF is always one contract, so this means a wrong upload or an OCR misread; no auto-split)
    - more than one box checked in a single-choice group (`ระบุ…เพียงข้อเดียว`)
    - research-team shares don't add up to 100 %
    - installment amounts ≠ percent × total, or don't sum to the total (once typed)
@@ -510,7 +510,7 @@ Parse with `R(\d{4})([A-Z])(\d+)`, after normalising Thai digits and fixing comm
 
 ### Findings from the first real scan (`samples/`, 5 pages, confidential, gitignored)
 
-**Test capture only:** phone scanner app (ML Kit) → image-only PDF, colour JPEG, **149–191 dpi**, no text layer. Production uploads are office-scanner PDFs of the **same documents**, so the layout findings apply; the photo artifacts (marked *photo*) mostly don't. Pages 1–3 are an internal contract (`R2568E0xx`); pages 4–5 are an external contract (`R2568A0xx`). Footers show `หน้า 1/5/10`, so only selected pages were scanned.
+**Test capture only:** phone scanner app (ML Kit) → image-only PDF, colour JPEG, **149–191 dpi**, no text layer. Production uploads are office-scanner PDFs of the **same documents**, so the layout findings apply; the photo artifacts (marked *photo*) mostly don't. Pages 1–3 are an internal contract (`R2568E0xx`); pages 4–5 are an external contract (`R2568A0xx`). They were combined only as examples; **a real PDF always holds exactly one contract**. Footers show `หน้า 1/5/10`, so only selected pages were scanned.
 
 | Topic | What the scan shows | Design consequence |
 |---|---|---|
@@ -577,7 +577,6 @@ ADMIN: /admin/reports/missing-numbers?year=2568&series=E
 ## 9. Open questions
 
 - A scanned page with **pen ticks** (the first real scan has typed ☑ only).
-- Can a real upload contain **several contracts** in one PDF, or was the first scan combined only for testing? (Decides warn-only vs. offering to split.)
 - Why does the contract page itself carry `เอกสารแนบ 1`? Is the contract an attachment of a cover memo?
 - Backup policy and retention period (affects crypto-shred guarantees).
 - Is the plaintext OCR text in the DB acceptable to the department (see §2 trade-off)?

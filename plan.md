@@ -48,6 +48,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Running number counts per year + series (`R2568E001` = first internal of 2568). Used for sorting, duplicate-upload detection (unique per live doc), and an ADMIN missing-numbers report. The system stores numbers, never issues them.
 - [x] External funding uses the same document format as internal → same section templates; funding type comes from the contract no.
 - [x] Budget: auto-fill only `budget_total`. Line items / installments (`งวด`) are typed manually into `budget_lines`.
+- [x] One PDF = **exactly one contract** (one contract no.). Different numbers within a PDF → warning only, no split.
 - [x] Production uploads: **scanner PDFs only**. Auto-fill is assistive; anything wrong or missing is typed by the user on the review screen.
 
 ## Decisions still open

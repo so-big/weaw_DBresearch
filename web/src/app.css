@@ -16,6 +16,11 @@
   --scrim: rgba(34, 24, 27, 0.42);
   --shadow: 0 18px 40px -22px rgba(40, 10, 20, 0.45);
   --skeleton: #ebe6e7;
+  /* charts (validated: light surface #fff) */
+  --c-internal: #a8284a; --c-external: #b8861f; --c-unset: #a39599;
+  --grid: #eee8ea; --c-area: rgba(168, 40, 74, 0.1);
+  /* brand band (masthead, login, guest): white text on maroon in both themes */
+  --band-1: #6e0f2b; --band-2: #8b1538; --band-3: #a8284a;
 
   --f-display: 'Kanit', 'IBM Plex Sans Thai', system-ui, sans-serif;
   --f-body: 'IBM Plex Sans Thai', 'Noto Sans Thai', system-ui, sans-serif;
@@ -40,6 +45,9 @@
     --ok: #5bc48c; --ok-soft: #173226; --warn: #e9a23b; --warn-soft: #3a2a12;
     --bad: #f07a54; --bad-soft: #3d1d14; --info: #7aaee8; --info-soft: #18283c;
     --scrim: rgba(0, 0, 0, 0.55); --shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.7); --skeleton: #2c2427;
+    --c-internal: #c8456b; --c-external: #b8881f; --c-unset: #6f6367;
+    --grid: #33292d; --c-area: rgba(200, 69, 107, 0.14);
+    --band-1: #3f081a; --band-2: #5f0f28; --band-3: #7a1a38;
     color-scheme: dark;
   }
 }
@@ -53,6 +61,9 @@
   --ok: #5bc48c; --ok-soft: #173226; --warn: #e9a23b; --warn-soft: #3a2a12;
   --bad: #f07a54; --bad-soft: #3d1d14; --info: #7aaee8; --info-soft: #18283c;
   --scrim: rgba(0, 0, 0, 0.55); --shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.7); --skeleton: #2c2427;
+    --c-internal: #c8456b; --c-external: #b8881f; --c-unset: #6f6367;
+    --grid: #33292d; --c-area: rgba(200, 69, 107, 0.14);
+    --band-1: #3f081a; --band-2: #5f0f28; --band-3: #7a1a38;
   color-scheme: dark;
 }
 
@@ -97,7 +108,7 @@ mark { background: var(--mark); color: var(--mark-text); border-radius: 3px; pad
 .btn.ghost { background: var(--surface); color: var(--text); border-color: var(--border); font-weight: 500; }
 .btn.ghost:hover { background: var(--subtle); }
 .btn.soft { background: var(--primary-soft); color: var(--primary-text); }
-.btn.soft:hover { background: var(--m-100); }
+.btn.soft:hover { background: var(--subtle); }
 .btn.danger { background: var(--bad); }
 .btn.danger:hover { background: var(--bad); opacity: 0.9; }
 .btn.big { min-height: 50px; font-size: 16px; border-radius: 12px; width: 100%; }
@@ -177,6 +188,19 @@ mark { background: var(--mark); color: var(--mark-text); border-radius: 3px; pad
 
 @keyframes fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .enter { animation: fade-up var(--t-med) var(--ease-out); }
+
+/* file tile: folded corner, tinted by funding type, fiscal year printed like a folder label */
+.ftile {
+  width: 42px; height: 50px; border-radius: 4px 12px 4px 4px; display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-end; padding-bottom: 6px; line-height: 1;
+  font-family: var(--f-display); font-weight: 600; font-size: 17px; font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--c-unset) 18%, var(--surface)); color: var(--muted);
+}
+.ftile small { font-family: var(--f-body); font-weight: 500; font-size: 9.5px; margin-bottom: 3px; opacity: 0.85; }
+.ftile.f-internal { background: color-mix(in srgb, var(--c-internal) 15%, var(--surface)); color: var(--primary-text); }
+.ftile.f-external { background: color-mix(in srgb, var(--c-external) 20%, var(--surface)); color: var(--accent-text); }
+.ftile.lg { width: 58px; height: 70px; font-size: 24px; border-radius: 5px 16px 5px 5px; padding-bottom: 9px; }
+.ftile.lg small { font-size: 11px; }
 
 /* Table */
 .table-wrap { overflow-x: auto; }

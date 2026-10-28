@@ -94,6 +94,9 @@
     <div class="crumbs"><a href="/documents" onclick={(e) => history.length > 1 && (e.preventDefault(), history.back())}><Icon name="back" size={16} />เอกสารทั้งหมด</a></div>
 
     <header class="head">
+      <span class="ftile lg f-{doc.funding_type || 'unset'}" aria-hidden="true">
+        <small>ปีงบ</small>{doc.fiscal_year_be ? String(doc.fiscal_year_be).slice(2) : '–'}
+      </span>
       <div class="titles">
         <span class="badge {doc.status}">{STATUS[doc.status]}</span>
         <h1>{doc.title}</h1>
@@ -224,7 +227,8 @@
   .detail { display: flex; flex-direction: column; gap: 16px; max-width: 1100px; margin: 0 auto; }
   .crumbs a { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; text-decoration: none; }
   .head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
-  .titles { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; flex: 1 1 420px; }
+  .titles { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; flex: 1 1 360px; }
+  .head > .ftile { flex: none; }
   .titles h1 { font-size: 23px; line-height: 1.4; overflow-wrap: anywhere; }
   .en { font-size: 14.5px; overflow-wrap: anywhere; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -246,6 +250,8 @@
   .r { text-align: right; }
   .danger { display: flex; justify-content: flex-end; }
   @media (max-width: 640px) {
+    .head { flex-wrap: wrap; }
+    .titles { flex: 1 1 0; }
     .titles h1 { font-size: 19px; }
     .actions { width: 100%; }
     .actions > :first-child { flex: 1 1 100%; min-height: 46px; }

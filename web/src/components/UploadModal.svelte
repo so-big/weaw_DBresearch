@@ -2,7 +2,7 @@
   import { fade, fly, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import Icon from './Icon.svelte';
-  import { uploads, addFiles, closeUpload, clearFinished, busyCount, doneOk, retry, remove } from '../lib/uploads.svelte.js';
+  import { uploads, addFiles, closeUpload, clearFinished, busyCount, doneOk, retry, cancel, cancelAll } from '../lib/uploads.svelte.js';
   import { screen, ms } from '../lib/state.svelte.js';
   import { navigate } from '../lib/router.svelte.js';
   import { bytes } from '../lib/format.js';
@@ -75,30 +75,52 @@
       <input bind:this={input} class="sr-only" type="file" accept="application/pdf,.pdf" multiple onchange={pick} />
     </label>
 
+    {#if uploads.items.length}
+      <div class="list-head">
+        <span class="muted">ไฟล์ที่เลือก {uploads.items.length} ไฟล์</span>
+        {#if busy}<button class="link-btn" onclick={cancelAll}>ยกเลิกที่เหลือทั้งหมด</button>{/if}
+      </div>
+    {/if}
     <div class="list" bind:this={list}>
       {#each uploads.items as it (it.id)}
-        <div class="item enter" class:done={it.state !== 'wait' && it.state !== 'up'}>
-          <div class="line">
-            <span class="name" title={it.name}>{it.name}</span>
-            <span class="size num">{bytes(it.size)}</span>
+        {@const done = it.state !== 'wait' && it.state !== 'up'}
+        <div class="item enter" class:done class:gone={it.state === 'undone'}>
+          <span class="ficon" class:bad={it.state === 'bad'} aria-hidden="true">PDF</span>
+          <div class="info">
+            <div class="line">
+              <span class="name" title={it.name}>{it.name}</span>
+              <span class="size num">{bytes(it.size)}</span>
+            </div>
+            <div class="status">
+              {#if it.state === 'wait'}
+                <span class="muted">รอคิว</span>
+              {:else if it.state === 'up'}
+                <span class="muted num">กำลังอัปโหลด {Math.round(it.progress * 100)}%</span>
+              {:else if it.state === 'ok'}
+                <span class="badge processing">อัปโหลดแล้ว · ระบบกำลังอ่านเอกสาร</span>
+                {#if it.message}<span class="err">{it.message}</span>{/if}
+              {:else if it.state === 'undoing'}
+                <span class="muted">กำลังยกเลิก…</span>
+              {:else if it.state === 'undone'}
+                <span class="muted">{it.message}</span>
+              {:else if it.state === 'dup'}
+                <span class="badge needs_review">{it.message}</span>
+                {#if it.docId}<a href="/documents/{it.docId}" onclick={closeUpload}>เปิดเอกสารเดิม</a>{/if}
+              {:else}
+                <span class="badge failed">{it.message}</span>
+                {#if it.retryable}<button class="link-btn" onclick={() => retry(it.id)}>ลองใหม่</button>{/if}
+              {/if}
+            </div>
+            {#if !done}<div class="bar"><i style="transform: scaleX({it.progress})"></i></div>{/if}
           </div>
-          <div class="status">
-            {#if it.state === 'wait'}
-              <span class="muted">รอคิว</span>
-            {:else if it.state === 'up'}
-              <span class="muted num">กำลังอัปโหลด {Math.round(it.progress * 100)}%</span>
-            {:else if it.state === 'ok'}
-              <span class="badge processing">อัปโหลดแล้ว · ระบบกำลังอ่านเอกสาร</span>
-            {:else if it.state === 'dup'}
-              <span class="badge needs_review">{it.message}</span>
-              {#if it.docId}<a href="/documents/{it.docId}" onclick={closeUpload}>เปิดเอกสารเดิม</a>{/if}
-            {:else}
-              <span class="badge failed">{it.message}</span>
-              {#if it.retryable}<button class="link-btn" onclick={() => retry(it.id)}>ลองใหม่</button>{/if}
-              <button class="link-btn" onclick={() => remove(it.id)}>เอาออก</button>
-            {/if}
-          </div>
-          <div class="bar"><i style="transform: scaleX({it.progress})"></i></div>
+          {#if it.state !== 'undoing'}
+            <button
+              class="icon-btn x"
+              onclick={() => cancel(it.id)}
+              title={it.state === 'ok' ? 'ยกเลิกไฟล์นี้ (ย้ายไปถังขยะ)' : done ? 'เอาออกจากรายการ' : 'ยกเลิกไฟล์นี้'}
+              aria-label="{it.state === 'ok' ? 'ยกเลิกการอัปโหลด' : done ? 'เอาออก' : 'ยกเลิก'} {it.name}"
+            ><Icon name="x" size={17} /></button>
+          {/if}
         </div>
       {:else}
         <p class="empty muted">ยังไม่ได้เลือกไฟล์</p>
@@ -151,17 +173,29 @@
   .drop .btn { margin-top: 6px; pointer-events: none; }
   .drop.over { transform: scale(1.015); border-color: var(--primary); }
   .drop:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
-  .list { overflow: auto; min-height: 60px; flex: 1; display: flex; flex-direction: column; }
-  .empty { text-align: center; font-size: 13px; padding: 12px; }
-  .item { padding: 9px 2px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; }
+  .list-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: -8px; }
+  .list { overflow: auto; min-height: 48px; flex: 1; display: flex; flex-direction: column; }
+  .empty { text-align: center; font-size: 13px; padding: 10px; }
+  .item { display: flex; gap: 12px; align-items: center; padding: 10px 2px; border-top: 1px solid var(--border); transition: opacity var(--t-med); }
+  .item:first-child { border-top: 0; }
+  .item.gone { opacity: 0.55; }
+  .ficon {
+    flex: none; width: 34px; height: 42px; border-radius: 4px 10px 4px 4px; display: grid; place-items: end center;
+    padding-bottom: 5px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em;
+    background: var(--primary-soft); color: var(--primary-text); border: 1px solid var(--border);
+  }
+  .ficon.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+  .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .x { flex: none; width: 32px; height: 32px; }
+  .x:hover { color: var(--bad); background: var(--bad-soft); }
+  .err { color: var(--bad); font-size: 12.5px; }
   .line { display: flex; gap: 10px; align-items: baseline; }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; }
   .size { font-size: 12px; color: var(--muted); }
   .status { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; }
   .status a { font-size: 13px; font-weight: 500; }
-  .bar { height: 4px; background: var(--subtle); border-radius: 2px; overflow: hidden; transition: opacity var(--t-med); }
+  .bar { height: 4px; background: var(--subtle); border-radius: 2px; overflow: hidden; margin-top: 3px; }
   .bar i { display: block; height: 100%; background: var(--primary); transform-origin: left; transition: transform 250ms linear; }
-  .item.done .bar { opacity: 0; }
   .foot { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
   .sum { font-size: 13px; }
   .acts { display: flex; gap: 8px; justify-content: flex-end; }

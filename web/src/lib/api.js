@@ -58,10 +58,13 @@ export const put = (path, body) => api(path, { method: 'PUT', body });
 export const patch = (path, body) => api(path, { method: 'PATCH', body });
 export const del = (path) => api(path, { method: 'DELETE' });
 
-/** Upload with progress (fetch can't report upload progress). Resolves {status, data}. */
-export function uploadFile(path, file, onProgress) {
+/** Upload with progress (fetch can't report upload progress). Resolves {status, data};
+ * status -1 = cancelled. `onStart` receives the request so the caller can abort it. */
+export function uploadFile(path, file, onProgress, onStart) {
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
+    onStart?.(xhr);
+    xhr.onabort = () => resolve({ status: -1, data: null });
     xhr.open('POST', `/api${path}`);
     xhr.setRequestHeader('X-Requested-With', 'dbresearch');
     xhr.responseType = 'json';

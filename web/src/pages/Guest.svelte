@@ -45,7 +45,10 @@
 </script>
 
 <div class="wrap">
-  <header><div class="strip"></div><div class="bar"><span class="brand">คลังเอกสารวิจัย</span><span class="muted">คณะวิศวกรรมศาสตร์</span></div></header>
+  <header class="band">
+    <div class="bar"><span class="brand">คลังเอกสารวิจัย</span><span class="fac">คณะวิศวกรรมศาสตร์</span></div>
+    <p class="lead">{gone ? 'ลิงก์แชร์เอกสาร' : 'มีผู้แชร์เอกสารนี้ให้คุณ'}</p>
+  </header>
 
   <main>
     {#if gone}
@@ -92,12 +95,19 @@
 
 <style>
   .wrap { min-height: 100vh; display: flex; flex-direction: column; }
-  header { background: var(--surface); border-bottom: 1px solid var(--border); padding-top: env(safe-area-inset-top); }
-  .strip { height: 3px; background: var(--primary); }
-  .bar { display: flex; align-items: baseline; gap: 10px; padding: 12px max(16px, env(safe-area-inset-left)); max-width: 560px; margin: 0 auto; font-size: 12.5px; }
-  .brand { font-family: var(--f-display); font-weight: 600; font-size: 16px; color: var(--primary-text); }
-  main { flex: 1; width: 100%; max-width: 560px; margin: 0 auto; padding: 20px max(16px, env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
-  .box { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .band {
+    color: #fff; padding: calc(14px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 64px max(16px, env(safe-area-inset-left));
+    background:
+      radial-gradient(circle at 100% 0%, rgba(255, 255, 255, 0.12) 0 130px, transparent 131px),
+      linear-gradient(135deg, var(--band-1), var(--band-2) 55%, var(--band-3));
+  }
+  .bar, .lead { max-width: 528px; margin: 0 auto; }
+  .bar { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; }
+  .brand { font-family: var(--f-display); font-weight: 600; font-size: 17px; }
+  .fac { opacity: 0.8; }
+  .lead { font-family: var(--f-display); font-weight: 500; font-size: 22px; margin-top: 18px; }
+  main { flex: 1; width: 100%; max-width: 560px; margin: -48px auto 0; padding: 0 max(16px, env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .box { padding: 22px 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); }
   .box h1 { font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
   .center { align-items: center; text-align: center; color: var(--muted); }
   .center h1 { color: var(--text); }

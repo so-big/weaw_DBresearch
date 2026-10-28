@@ -24,7 +24,13 @@ def upload(client, **meta) -> str:
 
 def test_admin_routes_need_admin(client, login):
     login(UserRole.USER)
-    for path in ("/admin/users", "/admin/trash", "/admin/audit", "/admin/reports/overview"):
+    for path in (
+        "/admin/users",
+        "/admin/trash",
+        "/admin/audit",
+        "/admin/reports/overview",
+        "/admin/reports/charts",
+    ):
         assert client.get(path).status_code == 403
 
 
@@ -179,3 +185,36 @@ def test_reports_and_audit(client, login):
         db.commit()
     entries = client.get("/admin/audit", params={"action": "auth.login"}).json()
     assert "203.0.113.7" in {e["ip"] for e in entries}
+
+
+def test_chart_data(client, login):
+    login(UserRole.ADMIN)
+    a = upload(client, reference_no="R2568E001", funding_type="internal", budget_total="1000.50")
+    upload(
+        client,
+        reference_no="R2568A001",
+        funding_type="external",
+        budget_total="2000",
+        categories=[{"category_id": category("research_type", "พื้นฐาน")}],
+    )
+    upload(client, reference_no="R2567E001", document_date="2024-03-01", budget_total=None)
+    upload(client)  # never reviewed: no fiscal year yet
+    client.get(f"/documents/{a}/file")
+    client.get(f"/documents/{a}/file", params={"inline": True})
+
+    data = client.get("/admin/reports/charts", params={"months": 3, "days": 7}).json()
+    by_year = {y["fiscal_year_be"]: y for y in data["by_year"]}
+    assert list(by_year) == [2567, 2568]
+    assert (by_year[2568]["internal"], by_year[2568]["external"]) == (1, 1)
+    assert by_year[2568]["budget_internal"] == 1000.5 and by_year[2568]["budget_external"] == 2000
+    assert by_year[2567]["internal"] == 1 and by_year[2567]["budget_internal"] == 0
+    assert data["no_fiscal_year"] == 1
+    assert len(data["uploads_by_month"]) == 3 and data["uploads_by_month"][-1]["count"] == 4
+    assert len(data["activity_by_day"]) == 7
+    assert data["activity_by_day"][-1] == {
+        "day": data["activity_by_day"][-1]["day"],
+        "download": 1,
+        "view": 1,
+    }
+    types = {g["key"]: g for g in data["categories"]}["research_type"]["items"]
+    assert {(t["name"], t["count"]) for t in types} >= {("พื้นฐาน", 1)}

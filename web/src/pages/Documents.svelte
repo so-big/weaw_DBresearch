@@ -1,11 +1,12 @@
 <script>
-  // Search + filters. PC: filter column beside the results. Phone: quick chips + filter sheet.
+  // Search + filters. A maroon masthead holds the search box and quick figures; below it the
+  // PC gets a filter column, phones get quick chips + a filter sheet.
   import { onMount, tick, untrack } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { get, errorText, fileUrl } from '../lib/api.js';
   import { route, setQuery } from '../lib/router.svelte.js';
-  import { screen, ui, ms } from '../lib/state.svelte.js';
+  import { screen, ui, ms, session } from '../lib/state.svelte.js';
   import { openUpload } from '../lib/uploads.svelte.js';
   import { categoryGroups } from '../lib/catalog.js';
   import { STATUS, KIND, FUNDING, BE, thDate, snippetHtml } from '../lib/format.js';
@@ -100,6 +101,40 @@
     if (!screen.wide && ui.searchFocus) tick().then(() => qInput?.focus());
   });
 
+  // Masthead figures: the whole library, not the current filter.
+  const now = new Date();
+  const thisFY = now.getMonth() >= 9 ? now.getFullYear() + 1 : now.getFullYear(); // Oct–Sep
+  let stats = $state(null);
+  onMount(() => {
+    get('/documents', { page_size: 1, with_facets: true })
+      .then((r) => {
+        const by = (list, v) => list?.find((f) => String(f.value) === String(v))?.count || 0;
+        stats = {
+          total: r.total,
+          review: by(r.facets?.status, 'needs_review') + by(r.facets?.status, 'failed'),
+          year: by(r.facets?.fiscal_year, thisFY),
+        };
+      })
+      .catch(() => {});
+  });
+  const firstName = $derived((session.user?.display_name || '').split(' ')[0]);
+  function onlyFilter(key, value) {
+    const on = filters[key].length === 1 && filters[key][0] === String(value);
+    update({ ...filters, [key]: on ? [] : [String(value)] });
+  }
+  function submitQ(e) {
+    e.preventDefault();
+    clearTimeout(qTimer);
+    update({ ...filters, q: phoneQ.trim() });
+    qInput?.blur();
+  }
+  function clearQ() {
+    phoneQ = '';
+    clearTimeout(qTimer);
+    update({ ...filters, q: '' });
+    qInput?.focus();
+  }
+
   function update(next) {
     setQuery({ ...next, mine: next.mine ? 'true' : '' });
   }
@@ -181,6 +216,45 @@
   const hasFilters = $derived(chips.length > 0);
 </script>
 
+<header class="mast" class:wide={screen.wide}>
+  <div class="mast-in">
+    {#if screen.wide}<p class="hello">สวัสดี {firstName}</p>{/if}
+    <h1>ค้นหาสัญญาและเอกสารทุนวิจัย</h1>
+    <div class="mrow">
+      <form class="msearch" role="search" onsubmit={submitQ}>
+        <Icon name="search" size={20} />
+        <input
+          bind:this={qInput}
+          value={phoneQ}
+          oninput={typeQ}
+          type="search"
+          placeholder={screen.wide ? 'ชื่อเรื่อง เลขที่สัญญา หรือข้อความในเอกสาร' : 'ค้นหาเอกสาร'}
+          aria-label="ค้นหาเอกสาร"
+          enterkeyhint="search"
+        />
+        {#if phoneQ}<button type="button" class="clear" onclick={clearQ} aria-label="ล้างคำค้น"><Icon name="x" size={16} /></button>{/if}
+      </form>
+      {#if !screen.wide}
+        <button class="fbtn" onclick={openSheet} aria-label="ตัวกรอง">
+          <Icon name="filter" size={20} />
+          {#if activeCount}<span class="n">{activeCount}</span>{/if}
+        </button>
+      {/if}
+    </div>
+    {#if stats && screen.wide}
+      <div class="figs">
+        <span class="fig">เอกสารทั้งหมด <b class="num">{stats.total.toLocaleString('th-TH')}</b></span>
+        <button class="fig" aria-pressed={filters.status.includes('needs_review')} onclick={() => onlyFilter('status', 'needs_review')}>
+          รอตรวจสอบ <b class="num">{stats.review.toLocaleString('th-TH')}</b>
+        </button>
+        <button class="fig" aria-pressed={filters.fiscal_year.includes(String(thisFY))} onclick={() => onlyFilter('fiscal_year', thisFY)}>
+          ปีงบ {thisFY + BE} <b class="num">{stats.year.toLocaleString('th-TH')}</b>
+        </button>
+      </div>
+    {/if}
+  </div>
+</header>
+
 <div class="layout" class:wide={screen.wide}>
   {#if screen.wide}
     <aside class="side card">
@@ -192,16 +266,6 @@
     </aside>
   {:else}
     <div class="phone-head">
-      <div class="phone-search">
-        <label class="psearch">
-          <Icon name="search" size={18} />
-          <input bind:this={qInput} value={phoneQ} oninput={typeQ} type="search" placeholder="ค้นหาเอกสาร" aria-label="ค้นหาเอกสาร" enterkeyhint="search" />
-        </label>
-        <button class="fbtn" onclick={openSheet}>
-          <Icon name="filter" size={18} />ตัวกรอง
-          {#if activeCount}<span class="n">{activeCount}</span>{/if}
-        </button>
-      </div>
       <div class="quick">
         {#each quick as c (c.k + c.v)}
           <button class="chip" aria-pressed={filters[c.k].includes(c.v)} onclick={() => toggleQuick(c)}>{c.label}</button>
@@ -241,7 +305,7 @@
     {#if loading}
       <div class="list card">
         {#each Array(6) as _, i (i)}
-          <div class="item skeleton"><div class="skel" style="width:90px"></div><div class="grow"><div class="skel" style="width:75%;height:14px"></div><div class="skel" style="width:45%;margin-top:8px"></div></div></div>
+          <div class="item skeleton"><div class="skel" style="width:42px;height:50px;border-radius:4px 12px 4px 4px"></div><div class="grow"><div class="skel" style="width:75%;height:14px"></div><div class="skel" style="width:45%;margin-top:8px"></div></div></div>
         {/each}
       </div>
     {:else if !items.length}
@@ -261,14 +325,17 @@
         {#each items as d (d.id)}
           <div class="item">
             <a class="cover" href="/documents/{d.id}" aria-label={d.title}></a>
-            {#if screen.wide}
-              {#if d.reference_no}<span class="cno">{d.reference_no}</span>{:else}<span class="noref">ไม่มีเลขที่</span>{/if}
-            {/if}
+            <span class="ftile f-{d.funding_type || 'unset'}" title={d.funding_type ? FUNDING[d.funding_type] : 'ยังไม่ระบุประเภทเงินทุน'} aria-hidden="true">
+              <small>ปีงบ</small>{d.fiscal_year_be ? String(d.fiscal_year_be).slice(2) : '–'}
+            </span>
             <div class="grow">
+              <div class="topline">
+                {#if d.reference_no}<span class="cno">{d.reference_no}</span>{:else}<span class="noref">ไม่มีเลขที่</span>{/if}
+                {#if d.kind}<span class="kind">{KIND[d.kind]}</span>{/if}
+              </div>
               <div class="t">{@html snippetHtml(filters.q && d.title.includes(filters.q) ? d.title.replaceAll(filters.q, `[[${filters.q}]]`) : d.title)}</div>
               {#if d.snippet}<div class="snip">{@html snippetHtml(d.snippet)}</div>{/if}
               <div class="meta">
-                {#if !screen.wide && d.reference_no}<span class="cno">{d.reference_no}</span>{/if}
                 {#if d.owners?.length}<span>{d.owners.join(', ')}</span>{/if}
                 {#if d.fiscal_year_be}<span>ปีงบ {d.fiscal_year_be}</span>{/if}
                 {#if d.funding_type}<span>{FUNDING[d.funding_type]}</span>{/if}
@@ -326,12 +393,13 @@
 
   .list { overflow: hidden; transition: opacity 120ms; }
   .list.dim { opacity: 0.55; }
-  .item { position: relative; display: grid; grid-template-columns: 104px minmax(0, 1fr) auto; gap: 14px; padding: 13px 16px; border-top: 1px solid var(--border); color: inherit; text-decoration: none; transition: background var(--t-fast); }
+  .item { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 14px; padding: 13px 16px; border-top: 1px solid var(--border); color: inherit; text-decoration: none; transition: background var(--t-fast); }
   .item:first-child { border-top: 0; }
   .item:hover { background: var(--subtle); }
   .cover { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
   .cover:focus-visible { outline-offset: -3px; }
-  .item .cno { padding-top: 2px; }
+  .topline { display: flex; gap: 10px; align-items: baseline; font-size: 12px; }
+  .kind { color: var(--muted); }
   .grow { min-width: 0; flex: 1; }
   .t { font-weight: 500; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
   .snip { font-size: 13px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -345,19 +413,48 @@
 
   /* phone */
   .phone-head { display: flex; flex-direction: column; gap: 10px; }
-  .phone-search { display: flex; gap: 8px; }
-  .psearch { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; padding: 0 12px; color: var(--muted); transition: border-color var(--t-fast); }
-  .psearch:focus-within { border-color: var(--primary); }
-  .psearch input { border: 0; background: none; outline: none; min-width: 0; width: 100%; padding: 10px 0; font-size: 16px; color: var(--text); }
-  .fbtn { position: relative; display: flex; align-items: center; gap: 6px; border: 1px solid var(--border-strong); background: var(--surface); border-radius: 12px; padding: 0 12px; font-size: 14px; font-weight: 500; }
-  .fbtn .n { position: absolute; top: -7px; right: -7px; min-width: 19px; height: 19px; border-radius: 999px; background: var(--primary); color: var(--on-primary); font-size: 11px; font-weight: 600; display: grid; place-items: center; padding: 0 5px; }
+  /* ── masthead: the page's one bold element, echoing the faculty site's maroon hero ── */
+  .mast {
+    position: relative; overflow: hidden; color: #fff; border-radius: 18px; margin-bottom: 18px;
+    background:
+      radial-gradient(circle at 92% -20%, rgba(255, 255, 255, 0.12) 0 150px, transparent 151px),
+      radial-gradient(circle at 4% 130%, rgba(255, 255, 255, 0.08) 0 120px, transparent 121px),
+      linear-gradient(118deg, var(--band-1), var(--band-2) 60%, var(--band-3));
+  }
+  .mast-in { position: relative; padding: 26px 28px 22px; display: flex; flex-direction: column; gap: 12px; max-width: 860px; }
+  .hello { font-size: 14px; opacity: 0.85; }
+  .mast h1 { font-size: 30px; font-weight: 600; color: #fff; line-height: 1.25; margin-top: -6px; }
+  .mrow { display: flex; gap: 8px; }
+  .msearch {
+    flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; height: 52px; padding: 0 8px 0 16px;
+    background: var(--surface); color: var(--muted); border-radius: 14px; box-shadow: 0 10px 26px -14px rgba(0, 0, 0, 0.55);
+  }
+  .msearch:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .msearch input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 16.5px; color: var(--text); }
+  .msearch input::-webkit-search-cancel-button { display: none; }
+  .clear { border: 0; background: var(--subtle); color: var(--muted); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+  .figs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .fig {
+    display: inline-flex; align-items: baseline; gap: 8px; padding: 5px 14px; border-radius: 999px; font-size: 13.5px; color: #fff;
+    background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: background var(--t-fast), color var(--t-fast);
+  }
+  .fig b { font-family: var(--f-display); font-weight: 500; font-size: 16px; }
+  button.fig:hover { background: rgba(255, 255, 255, 0.22); }
+  button.fig[aria-pressed='true'] { background: #fff; color: var(--m-600); border-color: #fff; }
+  .fbtn { position: relative; flex: none; width: 52px; display: grid; place-items: center; border: 0; border-radius: 14px; background: rgba(255, 255, 255, 0.16); color: #fff; }
+  .fbtn .n { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; border-radius: 999px; background: var(--accent); color: #2b1d00; font-size: 11px; font-weight: 700; display: grid; place-items: center; padding: 0 5px; }
+  .mast:not(.wide) { margin: -14px -12px 12px; border-radius: 0 0 20px 20px; }
+  .mast:not(.wide) .mast-in { padding: 16px 14px 18px; gap: 10px; }
+  .mast:not(.wide) h1 { font-size: 19px; margin: 0; }
+  .mast:not(.wide) .msearch { height: 48px; }
   .quick { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px 2px; }
   .quick::-webkit-scrollbar { display: none; }
   .quick .chip { flex: none; }
-  .noref { font-size: 12px; color: var(--faint); padding-top: 3px; }
+  .noref { font-size: 12px; color: var(--faint); }
   /* phone card: text on top, then status · date · download on one row */
-  .layout:not(.wide) .item { grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 8px; }
-  .layout:not(.wide) .side-meta { flex-direction: row; align-items: center; gap: 10px; }
+  .layout:not(.wide) .item { grid-template-columns: 42px minmax(0, 1fr); padding: 12px; gap: 8px 12px; }
+  .layout:not(.wide) .side-meta { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 10px; }
   .layout:not(.wide) .side-meta .dl { margin: 0 0 0 auto; }
   .layout:not(.wide) .t { font-size: 14.5px; }
   .dl { position: relative; z-index: 2; min-height: 34px; padding: 4px 10px; margin-top: 4px; }

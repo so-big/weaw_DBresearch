@@ -1,5 +1,7 @@
 // Upload queue shared by the whole app: survives closing the window and changing pages.
-import { uploadFile, thai } from './api.js';
+// Every row can be cancelled: waiting rows leave the queue, running ones are aborted, and a
+// finished upload is undone by moving its new document to the trash.
+import { uploadFile, thai, del } from './api.js';
 import { bumpReviewCount } from './state.svelte.js';
 
 const PARALLEL = 2;
@@ -8,8 +10,10 @@ const MAX_MB = 100;
 export const uploads = $state({ open: false, items: [] });
 let nextId = 0;
 let running = 0;
+const requests = new Map(); // row id -> XMLHttpRequest (kept outside the reactive state)
 
-export const busyCount = () => uploads.items.filter((i) => i.state === 'wait' || i.state === 'up').length;
+const active = (i) => i.state === 'wait' || i.state === 'up';
+export const busyCount = () => uploads.items.filter(active).length;
 export const doneOk = () => uploads.items.filter((i) => i.state === 'ok');
 
 export function openUpload() {
@@ -21,7 +25,7 @@ export function closeUpload() {
 
 /** Clear finished rows (after "review later" / "review now"). Rows still uploading stay. */
 export function clearFinished() {
-  uploads.items = uploads.items.filter((i) => i.state === 'wait' || i.state === 'up');
+  uploads.items = uploads.items.filter(active);
 }
 
 function isPdf(file) {
@@ -48,15 +52,34 @@ function pump() {
     const item = uploads.items.find((i) => i.state === 'wait');
     if (!item) return;
     running++;
-    send(item);
+    send(item.id);
   }
 }
 
-async function send(item) {
-  // Work on the proxied row so the UI updates as progress arrives.
-  const row = uploads.items.find((i) => i.id === item.id);
+const rowOf = (id) => uploads.items.find((i) => i.id === id);
+
+async function send(id) {
+  const row = rowOf(id);
   row.state = 'up';
-  const { status, data } = await uploadFile('/documents', row.file, (p) => (row.progress = p));
+  const { status, data } = await uploadFile(
+    '/documents',
+    row.file,
+    (p) => (row.progress = p),
+    (xhr) => requests.set(id, xhr),
+  );
+  requests.delete(id);
+  running--;
+  const current = rowOf(id);
+  if (status === -1 || !current) {
+    // Cancelled while uploading: nothing was stored.
+    uploads.items = uploads.items.filter((i) => i.id !== id);
+  } else {
+    finish(current, status, data);
+  }
+  pump();
+}
+
+function finish(row, status, data) {
   row.progress = 1;
   if (status === 201 || status === 409) row.file = null; // done: let the browser free it
   if (status === 201) {
@@ -77,12 +100,10 @@ async function send(item) {
       : data?.detail && typeof data.detail === 'string' ? thai(data.detail)
       : 'อัปโหลดไม่สำเร็จ';
   }
-  running--;
-  pump();
 }
 
 export function retry(id) {
-  const row = uploads.items.find((i) => i.id === id);
+  const row = rowOf(id);
   if (row?.file && row.retryable) {
     row.retryable = false;
     row.state = 'wait';
@@ -91,6 +112,32 @@ export function retry(id) {
   }
 }
 
-export function remove(id) {
-  uploads.items = uploads.items.filter((i) => i.id !== id || i.state === 'up');
+/** Cancel one row, whatever stage it is in. */
+export async function cancel(id) {
+  const row = rowOf(id);
+  if (!row) return;
+  if (row.state === 'up') {
+    requests.get(id)?.abort(); // send() removes the row once the abort lands
+    return;
+  }
+  if (row.state === 'ok' && row.docId) {
+    // Already stored: undo by moving the new document to the trash.
+    row.state = 'undoing';
+    try {
+      await del(`/documents/${row.docId}`);
+      row.state = 'undone';
+      row.message = 'ยกเลิกแล้ว (ย้ายไปถังขยะ)';
+      bumpReviewCount();
+    } catch {
+      row.state = 'ok';
+      row.message = 'ยกเลิกไม่สำเร็จ ลองอีกครั้ง';
+    }
+    return;
+  }
+  uploads.items = uploads.items.filter((i) => i.id !== id);
+}
+
+/** Cancel everything still waiting or uploading. */
+export function cancelAll() {
+  for (const row of uploads.items.filter(active)) cancel(row.id);
 }

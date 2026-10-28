@@ -2,7 +2,7 @@
   // PC / tablet header: brand, tabs with a sliding underline, search, upload, account.
   import Icon from './Icon.svelte';
   import { route, navigate } from '../lib/router.svelte.js';
-  import { session, review, isAdmin, theme, setTheme } from '../lib/state.svelte.js';
+  import { session, review, isAdmin, theme, setTheme, ui } from '../lib/state.svelte.js';
   import { openUpload, busyCount, uploads } from '../lib/uploads.svelte.js';
   import { logout } from '../lib/auth.js';
 
@@ -51,7 +51,8 @@
   function onKey(e) {
     if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) {
       e.preventDefault();
-      searchInput?.focus();
+      if (searchInput) searchInput.focus();
+      else ui.searchFocus++; // the documents page's own search box
     }
     if (e.key === 'Escape') menuOpen = false;
   }
@@ -79,11 +80,13 @@
     {#if busyCount() > 0 && !uploads.open}
       <button class="pill" onclick={openUpload}><span class="spin"></span>กำลังอัปโหลด {busyCount()} ไฟล์</button>
     {/if}
-    <form class="search" onsubmit={submit} role="search">
-      <Icon name="search" size={16} />
-      <input bind:this={searchInput} bind:value={q} type="search" placeholder="ค้นหาชื่อเรื่อง เลขสัญญา ข้อความ" aria-label="ค้นหาเอกสาร" />
-      <kbd>/</kbd>
-    </form>
+    {#if route.path !== '/documents'}
+      <form class="search" onsubmit={submit} role="search">
+        <Icon name="search" size={16} />
+        <input bind:this={searchInput} bind:value={q} type="search" placeholder="ค้นหาชื่อเรื่อง เลขสัญญา ข้อความ" aria-label="ค้นหาเอกสาร" />
+        <kbd>/</kbd>
+      </form>
+    {/if}
     <button class="btn" onclick={openUpload}><Icon name="upload" size={17} />อัปโหลด</button>
     <div class="acct">
       <button class="icon-btn avatar" onclick={() => (menuOpen = !menuOpen)} aria-expanded={menuOpen} aria-label="บัญชี">

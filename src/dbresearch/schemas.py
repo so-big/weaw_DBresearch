@@ -167,3 +167,58 @@ class AutofillOut(BaseModel):
     ocr_status: OcrStatus | None
     version_no: int | None
     suggestions: dict | None  # the extracted_fields payload (DESIGN §6)
+
+
+# ───────────── Search / pickers ─────────────
+class DocumentSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    title_en: str | None
+    kind: DocKind | None
+    funding_type: FundingType | None
+    reference_no: str | None
+    fiscal_year: int | None
+    status: DocStatus
+    updated_at: datetime
+    owners: list[str] = []
+    snippet: str | None = None  # match wrapped in [[ ]] for highlighting
+
+    @computed_field
+    @property
+    def fiscal_year_be(self) -> int | None:
+        return self.fiscal_year + BE_OFFSET if self.fiscal_year else None
+
+
+class SearchOut(BaseModel):
+    items: list[DocumentSummary]
+    total: int
+    page: int
+    page_size: int
+    facets: dict | None = None
+
+
+class CategoryOption(BaseModel):
+    id: uuid.UUID
+    name_th: str
+    name_en: str | None
+    active: bool
+
+
+class CategoryGroupOut(BaseModel):
+    id: uuid.UUID
+    key: str
+    name_th: str
+    name_en: str | None
+    multi: bool
+    options: list[CategoryOption]
+
+
+class PersonBrief(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    prefix_th: str | None
+    name_th: str | None
+    name_en: str | None

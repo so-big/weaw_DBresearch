@@ -1,0 +1,221 @@
+"""Document search: space-insensitive text match, filters, facets, snippets (DESIGN §5)."""
+
+import re
+import uuid
+from dataclasses import dataclass, field
+
+from sqlalchemy import Select, case, exists, func, or_, select
+from sqlalchemy.orm import Session
+
+from dbresearch.models import (
+    Category,
+    CategoryGroup,
+    DocKind,
+    DocStatus,
+    Document,
+    DocumentCategory,
+    DocumentPage,
+    DocumentPerson,
+    DocumentTag,
+    FundingType,
+    Person,
+    PersonRole,
+    Tag,
+)
+from dbresearch.search_text import compact
+from dbresearch.textnorm import normalize
+
+SORTS = ("relevance", "newest", "oldest", "title", "reference")
+SNIPPET_RADIUS = 60
+
+
+@dataclass
+class Filters:
+    q: str | None = None
+    kind: DocKind | None = None
+    funding_type: FundingType | None = None
+    fiscal_year: int | None = None  # Gregorian
+    status: list[DocStatus] = field(default_factory=list)
+    categories: list[uuid.UUID] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    person: str | None = None
+    ref_year_be: int | None = None
+    ref_series: str | None = None
+    uploaded_by: uuid.UUID | None = None
+
+
+def _like(text: str) -> str:
+    """ILIKE pattern for a literal substring."""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _conditions(db: Session, f: Filters) -> list:
+    conds = [Document.deleted_at.is_(None)]
+    if f.q and (needle := compact(f.q)):
+        conds.append(Document.search_text.ilike(_like(needle)))
+    if f.kind:
+        conds.append(Document.kind == f.kind)
+    if f.funding_type:
+        conds.append(Document.funding_type == f.funding_type)
+    if f.fiscal_year:
+        conds.append(Document.fiscal_year == f.fiscal_year)
+    if f.status:
+        conds.append(Document.status.in_(f.status))
+    if f.ref_year_be:
+        conds.append(Document.ref_year_be == f.ref_year_be)
+    if f.ref_series:
+        conds.append(Document.ref_series == f.ref_series.upper())
+    if f.uploaded_by:
+        conds.append(Document.uploaded_by == f.uploaded_by)
+    if f.categories:
+        # OR within a group (either research type), AND across groups (type and group).
+        by_group: dict[uuid.UUID, list[uuid.UUID]] = {}
+        for category_id, group_id in db.execute(
+            select(Category.id, Category.group_id).where(Category.id.in_(f.categories))
+        ):
+            by_group.setdefault(group_id, []).append(category_id)
+        for ids in by_group.values():
+            conds.append(
+                exists().where(
+                    DocumentCategory.document_id == Document.id,
+                    DocumentCategory.category_id.in_(ids),
+                )
+            )
+    for tag in f.tags:
+        conds.append(
+            exists().where(
+                DocumentTag.document_id == Document.id,
+                DocumentTag.tag_id == Tag.id,
+                Tag.normalized == re.sub(r"\s+", " ", normalize(tag)).strip().lower(),
+            )
+        )
+    if f.person and (needle := compact(f.person)):
+        name = func.lower(func.replace(func.concat(Person.name_th, Person.name_en), " ", ""))
+        conds.append(
+            exists().where(
+                DocumentPerson.document_id == Document.id,
+                DocumentPerson.person_id == Person.id,
+                name.ilike(_like(needle)),
+            )
+        )
+    return conds
+
+
+def _order(query: Select, f: Filters, sort: str) -> Select:
+    if sort == "relevance" and f.q and (needle := compact(f.q)):
+        title_hit = case(
+            (func.lower(func.replace(Document.title, " ", "")).ilike(_like(needle)), 1), else_=0
+        )
+        return query.order_by(
+            title_hit.desc(),
+            func.word_similarity(needle, Document.search_text).desc(),
+            Document.updated_at.desc(),
+        )
+    if sort == "oldest":
+        return query.order_by(Document.created_at.asc())
+    if sort == "title":
+        return query.order_by(Document.title.asc())
+    if sort == "reference":
+        return query.order_by(
+            Document.ref_year_be.desc().nulls_last(),
+            Document.ref_series.asc(),
+            Document.ref_seq.asc(),
+            Document.reference_no.asc(),
+        )
+    return query.order_by(Document.updated_at.desc())
+
+
+def search(
+    db: Session, f: Filters, sort: str = "relevance", page: int = 1, page_size: int = 20
+) -> tuple[list[Document], int]:
+    conds = _conditions(db, f)
+    total = db.scalar(select(func.count()).select_from(Document).where(*conds)) or 0
+    query = _order(select(Document).where(*conds), f, sort)
+    items = db.scalars(query.offset((page - 1) * page_size).limit(page_size)).all()
+    return list(items), total
+
+
+def facets(db: Session, f: Filters) -> dict[str, list[dict]]:
+    """Counts for the filter sidebar, over the current result set."""
+    ids = select(Document.id).where(*_conditions(db, f)).subquery()
+
+    def counts(column) -> list[dict]:
+        rows = db.execute(
+            select(column, func.count())
+            .where(Document.id.in_(select(ids.c.id)), column.is_not(None))
+            .group_by(column)
+            .order_by(func.count().desc())
+        ).all()
+        return [{"value": value, "count": count} for value, count in rows]
+
+    categories = db.execute(
+        select(Category.id, Category.name_th, CategoryGroup.key, func.count())
+        .join(DocumentCategory, DocumentCategory.category_id == Category.id)
+        .join(CategoryGroup, CategoryGroup.id == Category.group_id)
+        .where(DocumentCategory.document_id.in_(select(ids.c.id)))
+        .group_by(Category.id, Category.name_th, CategoryGroup.key)
+        .order_by(func.count().desc())
+    ).all()
+    return {
+        "kind": counts(Document.kind),
+        "funding_type": counts(Document.funding_type),
+        "fiscal_year": counts(Document.fiscal_year),
+        "status": counts(Document.status),
+        "categories": [
+            {"value": str(cid), "name": name, "group_key": key, "count": count}
+            for cid, name, key, count in categories
+        ],
+    }
+
+
+def owners(db: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
+    rows = db.execute(
+        select(DocumentPerson.document_id, Person.prefix_th, Person.name_th, Person.name_en)
+        .join(Person, Person.id == DocumentPerson.person_id)
+        .where(
+            DocumentPerson.document_id.in_(document_ids), DocumentPerson.role == PersonRole.OWNER
+        )
+    ).all()
+    result: dict[uuid.UUID, list[str]] = {}
+    for doc_id, prefix, name_th, name_en in rows:
+        result.setdefault(doc_id, []).append(f"{prefix or ''}{name_th or name_en}")
+    return result
+
+
+def snippet(db: Session, document: Document, q: str | None) -> str | None:
+    """Text around the first match in the current version's pages (spaces ignored)."""
+    needle = compact(q) if q else ""
+    if len(needle) < 2 or document.current_version_id is None:
+        return None
+    for text in db.scalars(
+        select(DocumentPage.text)
+        .where(DocumentPage.version_id == document.current_version_id)
+        .order_by(DocumentPage.page_no)
+    ):
+        positions = [i for i, ch in enumerate(text) if not ch.isspace()]
+        squashed = "".join(text[i] for i in positions).lower()
+        at = squashed.find(needle)
+        if at < 0:
+            continue
+        start, end = positions[at], positions[at + len(needle) - 1] + 1
+        before = text[max(0, start - SNIPPET_RADIUS) : start].replace("\n", " ")
+        after = text[end : end + SNIPPET_RADIUS].replace("\n", " ")
+        return f"{'…' if start > SNIPPET_RADIUS else ''}{before}[[{text[start:end]}]]{after}…"
+    return None
+
+
+def search_people(db: Session, q: str, limit: int = 10) -> list[Person]:
+    needle = compact(q)
+    if not needle:
+        return []
+    th = func.lower(func.replace(func.coalesce(Person.name_th, ""), " ", ""))
+    en = func.lower(func.replace(func.coalesce(Person.name_en, ""), " ", ""))
+    return list(
+        db.scalars(
+            select(Person)
+            .where(or_(th.ilike(_like(needle)), en.ilike(_like(needle))))
+            .order_by(Person.name_th)
+            .limit(limit)
+        )
+    )

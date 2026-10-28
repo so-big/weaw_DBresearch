@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from dbresearch.api import auth as auth_api
+from dbresearch.api import catalog as catalog_api
 from dbresearch.api import documents as documents_api
 from dbresearch.config import get_settings
 from dbresearch.crypto import load_keyring
@@ -41,6 +42,7 @@ async def upload_size_limit(request: Request, call_next) -> Response:
 
 app.include_router(auth_api.router)
 app.include_router(documents_api.router)
+app.include_router(catalog_api.router)
 
 
 def _check_database() -> dict[str, str]:

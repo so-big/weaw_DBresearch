@@ -21,9 +21,11 @@ HAS_DB = "DATABASE_URL" in os.environ
 needs_db = pytest.mark.skipif(not HAS_DB, reason="needs the compose stack (DATABASE_URL)")
 CSRF = {"X-Requested-With": "dbresearch"}
 
-# Everything users create. Seeded reference data (categories, settings, templates) is kept.
+# Everything users create. Seeded reference data (categories, settings, templates) is kept:
+# `users` is DELETEd, not truncated, because TRUNCATE … CASCADE would follow
+# extraction_templates.created_by and wipe the seeded templates too.
 USER_DATA_TABLES = (
-    "users, people, tags, jobs, audit_events, documents, document_versions, sessions, "
+    "people, tags, jobs, audit_events, documents, document_versions, sessions, "
     "auth_identities, share_links, share_access_log, budget_lines, document_pages, "
     "document_sections, document_people, document_categories, document_tags"
 )
@@ -83,6 +85,7 @@ def db_clean(app_db: str) -> Iterator[None]:
     engine = create_engine(app_db)
     with engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {USER_DATA_TABLES} RESTART IDENTITY CASCADE"))
+        conn.execute(text("DELETE FROM users"))
     engine.dispose()
 
 

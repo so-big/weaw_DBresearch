@@ -75,6 +75,10 @@ def app_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
         kek_path = tmp_path_factory.mktemp("secrets") / "kek.json"
         kek_path.write_text(generate_kek_json())
         os.environ["KEK_PATH"] = str(kek_path)
+        # Tests talk plain http://testserver and set no proxy header, whatever the server's
+        # .env says for the public demo (HTTPS cookies, Cloudflare IP header).
+        os.environ["COOKIE_SECURE"] = "false"
+        os.environ.pop("TRUSTED_IP_HEADER", None)
         get_settings.cache_clear()
         configure_engine(url)
         yield url

@@ -42,7 +42,7 @@
       </button>
     {/if}
   </div>
-  {#if isAdmin()}<div class="notice info">ผู้ดูแลระบบดูและลบถาวรเอกสารของทุกคนได้ที่ <a href="/admin/trash">ผู้ดูแลระบบ › ถังขยะ</a></div>{/if}
+  {#if isAdmin()}<div class="notice info"><span>ผู้ดูแลระบบดูและลบถาวรเอกสารของทุกคนได้ที่ <a href="/admin/trash">ผู้ดูแลระบบ › ถังขยะ</a></span></div>{/if}
   {#if error}<div class="notice bad">{error} <button class="link-btn" onclick={load}>ลองใหม่</button></div>{/if}
 
   {#if items === null && !error}

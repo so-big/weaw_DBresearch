@@ -4,51 +4,23 @@ Each session creates a throwaway database with the same ICU th-TH locale as prod
 migrates it, and drops it afterwards.
 """
 
-import os
 import uuid
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from sqlalchemy import Engine, create_engine, text
-from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 
-pytestmark = [
-    pytest.mark.db,
-    pytest.mark.skipif("DATABASE_URL" not in os.environ, reason="needs the compose stack"),
-]
+from tests.conftest import alembic_config, needs_db, temp_database
 
-ROOT = Path(__file__).resolve().parents[1]
+pytestmark = [pytest.mark.db, needs_db]
 
 
 @pytest.fixture(scope="module")
 def db_url() -> Iterator[str]:
-    base = make_url(os.environ["DATABASE_URL"])
-    name = f"dbresearch_test_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(base, isolation_level="AUTOCOMMIT")
-    with admin.connect() as conn:
-        conn.execute(
-            text(
-                f'CREATE DATABASE "{name}" TEMPLATE template0 ENCODING UTF8 '
-                "LOCALE_PROVIDER icu ICU_LOCALE 'th-TH' LOCALE 'C.UTF-8'"
-            )
-        )
-    try:
-        yield base.set(database=name).render_as_string(hide_password=False)
-    finally:
-        with admin.connect() as conn:
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
-        admin.dispose()
-
-
-def alembic_config(url: str) -> Config:
-    cfg = Config(str(ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(ROOT / "migrations"))
-    cfg.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
-    return cfg
+    with temp_database() as url:
+        yield url
 
 
 @pytest.fixture(scope="module")

@@ -1,18 +1,39 @@
 import os
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from dbresearch.api import auth as auth_api
 from dbresearch.config import get_settings
-from dbresearch.db import engine
+from dbresearch.db import get_engine
 
 app = FastAPI(title="DBresearch")
+
+# Browsers can't add custom headers to cross-site requests without a CORS preflight, which
+# this API never allows. Requiring one on every state-changing request blocks CSRF even if
+# a cookie were sent.
+CSRF_HEADER = "x-requested-with"
+CSRF_VALUE = "dbresearch"
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+@app.middleware("http")
+async def csrf_guard(request: Request, call_next) -> Response:
+    if request.method not in SAFE_METHODS and request.headers.get(CSRF_HEADER) != CSRF_VALUE:
+        return JSONResponse(
+            {"detail": f"Missing header {CSRF_HEADER}: {CSRF_VALUE}"}, status_code=403
+        )
+    return await call_next(request)
+
+
+app.include_router(auth_api.router)
 
 
 def _check_database() -> dict[str, str]:
     settings = get_settings()
     try:
-        with engine.connect() as conn:
+        with get_engine().connect() as conn:
             provider, locale = conn.execute(
                 text(
                     "SELECT datlocprovider, datlocale FROM pg_database "

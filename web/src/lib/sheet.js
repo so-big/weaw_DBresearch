@@ -1,6 +1,6 @@
 // Bottom-sheet gestures for phones (Svelte action).
 //   drag the handle/header (or pull down from the top of the content):
-//     down past ~30% or a quick flick  → close (or back to normal size if expanded)
+//     down past ~30% or a quick flick  → close (full screen: 80px → normal size, long pull → close)
 //     up past 60px or a quick flick     → expand to full screen
 //   tap the handle                      → toggle full screen
 // Only transform moves while dragging; the expand/shrink is one height animation.
@@ -50,14 +50,17 @@ export function sheet(node, options) {
       setY(0);
       return 'tap';
     }
-    if (dy > Math.min(160, h * 0.3) || speed > 0.65) {
-      if (expanded && dy < h * 0.55 && speed < 1.4) {
-        shrink();
-        setY(0);
-      } else {
-        node.style.transition = 'none';
-        opts.onclose?.(); // the sheet's own out-transition continues from where the finger left it
-      }
+    const close = () => {
+      node.style.transition = 'none';
+      opts.onclose?.(); // the sheet's own out-transition continues from where the finger left it
+    };
+    if (expanded) {
+      // full screen: a short pull brings it back to normal size, a long one or a hard flick closes
+      if (dy > h * 0.55 || speed > 1.4) close();
+      else if (dy > 80 || speed > 0.5) (shrink(), setY(0));
+      else setY(0);
+    } else if (dy > Math.min(160, h * 0.3) || speed > 0.65) {
+      close();
     } else if (dy < -60 || speed < -0.65) {
       grow();
       setY(0);

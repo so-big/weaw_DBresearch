@@ -173,3 +173,9 @@ def test_reports_and_audit(client, login):
     entries = client.get("/admin/audit", params={"action": "document."}).json()
     assert {e["action"] for e in entries} >= {"document.upload", "document.confirm"}
     assert all(e["actor_name"] for e in entries)
+
+    with new_session() as db:  # INET values must come back as text, not crash the endpoint
+        db.add(AuditEvent(action="auth.login", entity_type="user", ip="203.0.113.7"))
+        db.commit()
+    entries = client.get("/admin/audit", params={"action": "auth.login"}).json()
+    assert "203.0.113.7" in {e["ip"] for e in entries}

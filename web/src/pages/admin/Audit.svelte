@@ -10,14 +10,19 @@
     ['share.', 'ลิงก์แชร์'],
     ['auth.', 'เข้าสู่ระบบ'],
     ['user.', 'ผู้ใช้'],
+    ['settings.', 'ตั้งค่า'],
   ];
   const LABEL = {
-    'document.upload': 'อัปโหลด', 'document.download': 'ดาวน์โหลด', 'document.view': 'เปิดดู',
+    'document.upload': 'อัปโหลด', 'document.new_version': 'อัปโหลดฉบับใหม่', 'document.download': 'ดาวน์โหลด',
+    'document.view': 'เปิดดู', 'document.confirm': 'ยืนยันข้อมูล', 'document.update': 'แก้ไขข้อมูล',
     'document.delete': 'ย้ายไปถังขยะ', 'document.restore': 'กู้คืน', 'document.purge': 'ลบถาวร',
-    'document.metadata': 'แก้ไขข้อมูล', 'document.reprocess': 'สั่งอ่านใหม่', 'document.new_version': 'ฉบับใหม่',
+    'document.reprocess': 'สั่งอ่านใหม่',
     'share.create': 'สร้างลิงก์', 'share.revoke': 'ยกเลิกลิงก์', 'share.new_password': 'รหัสลิงก์ใหม่',
     'auth.login': 'เข้าสู่ระบบ', 'auth.logout': 'ออกจากระบบ', 'auth.login_failed': 'เข้าสู่ระบบไม่สำเร็จ',
     'user.create': 'เพิ่มผู้ใช้', 'user.update': 'แก้ไขผู้ใช้', 'user.password_reset': 'ตั้งรหัสผ่านใหม่',
+    'category.create': 'เพิ่มหมวดหมู่', 'category.update': 'แก้ไขหมวดหมู่', 'category.delete': 'ลบหมวดหมู่',
+    'category_group.create': 'เพิ่มกลุ่มหมวดหมู่', 'category_group.update': 'แก้ไขกลุ่มหมวดหมู่',
+    'template.update': 'แก้ไขเทมเพลต', 'settings.update': 'แก้ไขการตั้งค่า',
   };
 
   let action = $state('');

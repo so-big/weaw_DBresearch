@@ -6,8 +6,9 @@ Years are Gregorian internally; `*_be` fields carry the Buddhist-era value for d
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, computed_field
 
 from dbresearch.models import (
     BudgetLineType,
@@ -24,6 +25,9 @@ from dbresearch.models import (
 )
 
 BE_OFFSET = 543
+
+# INET columns come back as ipaddress objects; the API shows them as text.
+IpText = Annotated[str | None, BeforeValidator(lambda v: None if v is None else str(v))]
 
 
 class LoginIn(BaseModel):
@@ -267,7 +271,7 @@ class ShareLogOut(BaseModel):
     event: ShareEvent
     reason: str | None
     at: datetime
-    ip: str | None
+    ip: IpText
     user_agent: str | None
 
 

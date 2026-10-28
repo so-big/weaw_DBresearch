@@ -513,10 +513,12 @@
   .waiting { max-width: 520px; margin: 40px auto; padding: 32px 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
   .spin.big { width: 32px; height: 32px; border-width: 3px; }
   @media (max-width: 900px) {
-    .person { grid-template-columns: 100px minmax(0, 1fr) 36px; }
-    .person .rl, .person .pc, .person .un { grid-column: span 1; }
+    /* prefix | name | delete, then role, then share | unit */
+    .person { grid-template-columns: 96px minmax(0, 1fr) 36px; }
     .person .rm { grid-row: 1; grid-column: 3; }
-    .person .un { grid-column: 1 / -1; }
+    .person .rl { grid-column: 1 / -1; }
+    .person .pc { grid-column: 1 / 2; }
+    .person .un { grid-column: 2 / -1; }
     .bline { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; }
     .bline .lb { grid-column: 1 / -1; grid-row: 2; }
     .bline .rm { grid-row: 1; grid-column: 3; }

@@ -31,7 +31,7 @@ from dbresearch.models import (
     UserRole,
     UserStatus,
 )
-from dbresearch.schemas import DocumentSummary, ShareOut, UserOut
+from dbresearch.schemas import DocumentSummary, IpText, ShareOut, UserOut
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -189,7 +189,7 @@ class AuditOut(BaseModel):
     entity_type: str
     entity_id: uuid.UUID | None
     details: dict[str, Any]
-    ip: str | None
+    ip: IpText
 
 
 @router.get("/audit", response_model=list[AuditOut])

@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     secret_key: str = "dev-only-change-me"
 
     max_upload_mb: int = 100
+    # Worker scratch space for decrypted files: must be a tmpfs (CLAUDE.md).
+    work_dir: Path = Path("/tmp/work")
+    worker_idle_seconds: float = 2.0
 
 
 @lru_cache

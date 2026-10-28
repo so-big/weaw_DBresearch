@@ -1,0 +1,11 @@
+# systemd user unit: nightly backup. Install (as the deploy user, e.g. cs31):
+#   cp ops/dbresearch-backup.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now dbresearch-backup.timer
+#   loginctl enable-linger $USER     # so it runs without a login session
+[Unit]
+Description=DBresearch nightly backup (restic)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/dbresearch
+ExecStart=%h/dbresearch/scripts/backup.sh

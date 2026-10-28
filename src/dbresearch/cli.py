@@ -59,6 +59,43 @@ def kek_init(out: Path) -> None:
     print(f"Wrote new KEK to {out}. Back it up NOW (two copies, outside the server).")
 
 
+def verify_storage(sample: int | None) -> None:
+    """Check every (or a random sample of) stored version: blob present, decrypts with the
+    KEK, and matches its recorded SHA-256. Prints counts only, never content."""
+    import hashlib
+    import random
+
+    from dbresearch.blobstore import get_blobstore
+    from dbresearch.documents import read_version
+    from dbresearch.models import DocumentVersion
+
+    with new_session() as db:
+        versions = list(db.scalars(select(DocumentVersion)))
+    store = get_blobstore()
+    missing = [v for v in versions if not store.exists(v.storage_key)]
+    present = [v for v in versions if store.exists(v.storage_key)]
+    checked = present if sample is None else random.sample(present, min(sample, len(present)))
+    bad = []
+    for version in checked:
+        digest = hashlib.sha256()
+        try:
+            for chunk in read_version(version):
+                digest.update(chunk)
+        except Exception as exc:  # report and continue: we want the full picture
+            bad.append(f"{version.id}: {type(exc).__name__}")
+            continue
+        if digest.digest() != version.sha256_plain:
+            bad.append(f"{version.id}: hash mismatch")
+    print(
+        f"versions={len(versions)} missing_blobs={len(missing)} "
+        f"decrypted={len(checked)} failed={len(bad)}"
+    )
+    for line in [f"{v.id}: blob missing" for v in missing] + bad:
+        print("  " + line)
+    if missing or bad:
+        sys.exit(1)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="dbresearch.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -69,6 +106,8 @@ def main(argv: list[str] | None = None) -> None:
         cmd.add_argument("--username", required=True)
     kek = commands.add_parser("kek-init", help="create the master encryption key")
     kek.add_argument("--out", type=Path, required=True)
+    verify = commands.add_parser("verify-storage", help="check blobs exist and decrypt")
+    verify.add_argument("--sample", type=int, help="decrypt only N random versions")
     args = parser.parse_args(argv)
     if args.command == "create-admin":
         create_user(args, UserRole.ADMIN)
@@ -76,6 +115,8 @@ def main(argv: list[str] | None = None) -> None:
         create_user(args, UserRole.USER)
     elif args.command == "kek-init":
         kek_init(args.out)
+    elif args.command == "verify-storage":
+        verify_storage(args.sample)
 
 
 if __name__ == "__main__":

@@ -25,9 +25,9 @@ def list_documents(
     db: DB,
     user: CurrentUser,
     q: Annotated[str | None, Query(max_length=200)] = None,
-    kind: DocKind | None = None,
-    funding_type: FundingType | None = None,
-    fiscal_year: Annotated[int | None, Query(description="Gregorian fiscal year")] = None,
+    kind: Annotated[list[DocKind], Query()] = [],  # noqa: B006 (FastAPI query list)
+    funding_type: Annotated[list[FundingType], Query()] = [],  # noqa: B006
+    fiscal_year: Annotated[list[int], Query(description="Gregorian fiscal years")] = [],  # noqa: B006
     status: Annotated[list[DocStatus], Query()] = [],  # noqa: B006 (FastAPI query list)
     category: Annotated[list[uuid.UUID], Query()] = [],  # noqa: B006
     tag: Annotated[list[str], Query()] = [],  # noqa: B006

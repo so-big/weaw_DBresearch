@@ -596,21 +596,25 @@ Scripts: `spikes/ocr_probe.py`, `spikes/checkbox_probe.py` (run in the worker co
 
 ## 7. API sketch
 
-Implemented (Phase 2). Interactive docs: `/docs` on the API. Every state-changing request needs
-the header `X-Requested-With: dbresearch` (CSRF guard).
+Implemented (Phase 2). Every API path starts with **`/api`** (all other paths belong to the web
+app, see §10). Interactive docs: `/api/docs`. `/health` also answers at the root for ops. Every
+state-changing request needs the header `X-Requested-With: dbresearch` (CSRF guard).
+Paths below are relative to `/api`.
 
 ```
 Auth       POST /auth/login · POST /auth/logout · GET /auth/me
-Documents  POST /documents (multipart upload) · GET /documents (search: q, kind, funding_type,
-           fiscal_year, status, category[], tag[], person, ref_year_be, ref_series, mine, sort,
-           page, page_size, with_facets) · GET /documents/{id} · DELETE /documents/{id} (trash)
+Documents  POST /documents (multipart upload) · GET /documents (search: q, kind[], funding_type[],
+           fiscal_year[], status[], category[], tag[], person, ref_year_be, ref_series, mine, sort,
+           page, page_size, with_facets; several values in one filter = any of them; each facet
+           group is counted without its own filter) · GET /documents/{id} · DELETE /documents/{id} (trash)
            POST /documents/{id}/versions · GET /documents/{id}/file?version=&inline=
            GET /documents/{id}/autofill · PUT /documents/{id}/metadata · POST /documents/{id}/reprocess
 Pickers    GET /categories · GET /people?q=
 Shares     POST /documents/{id}/shares · GET /shares · GET /shares/{id}/log
            DELETE /shares/{id} · POST /shares/{id}/password
 Guest      GET /s/{token} · POST /s/{token}/unlock · GET /s/{token}/file?download=
-Admin      /admin/users (+ PATCH, /password) · /admin/shares · /admin/trash (restore, purge)
+           (the link people open is the web page /s/{token}; its grant cookie is scoped to /api/s/{token})
+Admin      /admin/users (+ PATCH, /password) · /admin/shares?state=active|all|… · /admin/trash (restore, purge)
            /admin/audit · /admin/settings · /admin/category-groups · /admin/categories
            /admin/templates · /admin/reports/missing-numbers · /admin/reports/overview
 ```
@@ -623,9 +627,28 @@ Admin      /admin/users (+ PATCH, /password) · /admin/shares · /admin/trash (r
 2. ~~**Spike: OCR + checkboxes.**~~ Done: see §6 spike results.
 3–10. ~~Stack, auth, encrypted storage, auto-fill worker + review, search, share links,
    admin, backups~~ Done 2026-10-28 (Phase 2, 87 tests on the server). Operations: `docs/OPERATIONS.md`.
-11. Frontend (Phase 3, after a design brainstorm).
+11. ~~Frontend~~ Phase 3: Svelte web app served by the API (§10).
 
 ## 9. Open questions
 
 - **For the IT team**: confirm the college NAS as backup target (assumed) and how to reach it (SFTP / SMB / S3); who holds the KEK copies.
 - **For the IT team**: SSO protocol of the college system (OIDC, SAML, LDAP, or a trusted reverse-proxy header) → which `AuthProvider` to implement. Do SSO users get auto-created as `user` on first login, or must ADMIN pre-create them?
+
+---
+
+## 10. Web app (Phase 3)
+
+Mocks of the agreed direction: `docs/ui/` (palette, layout + upload, search filters).
+
+| Topic | Decision |
+|---|---|
+| Stack | **Svelte 5 + Vite**, plain JS, in `web/`. Built in the Docker image (node stage) and served by FastAPI from `/app/web/dist`: hashed `/assets/*`, every other non-`/api` path gets `index.html` (`no-cache`, strict CSP: same-origin only). No extra container. |
+| Fonts | Kanit (headings) + IBM Plex Sans Thai (body), self-hosted via `@fontsource` (no CDN at runtime). |
+| Colors | Faculty maroon `#8B1538` as primary (~10 % of the screen), warm off-white base, gold highlight (fills only, never text), yellow search-hit mark, orange-red for errors (never confused with maroon). Light + dark (follows the device; user can pick). |
+| Layout | PC/tablet ≥ 768 px: header with tabs (เอกสาร · รอตรวจสอบ · ลิงก์แชร์ · ผู้ดูแลระบบ), search box (`/` focuses), upload button. Only Admin has a side menu. Phone: bottom bar with a raised **search** button in the center; upload sits in the top bar. |
+| Upload | One window (dialog on PC, bottom sheet on phone) or drop files anywhere. Several PDFs, 2 in parallel, per-file result (uploaded / duplicate → link / rejected). Closing keeps uploading (header pill). Then *review now* or *review later* (documents wait in รอตรวจสอบ, searchable meanwhile). |
+| Search | PC: filter column + removable chips + sort; filters live in the URL. Phone: quick chips + filter bottom sheet with a live "แสดง N รายการ" count. Zero-count options are disabled. |
+| Review | Pre-filled from auto-fill on the first review; afterwards the saved values, with the system's readings as clickable hints. Warnings never block. PDF beside the form on wide screens. Dates typed as `วว/ดด/ปปปป` in พ.ศ., stored Gregorian. |
+| Guest page | `/s/{token}`: one card, full-width download button, password form when needed. No login. |
+| Motion | Only transform/opacity, 150 ms (hover/press) and 220 ms (windows, sheets, tabs), one ease-out curve; skeleton rows, no layout shift, no backdrop blur; `prefers-reduced-motion` turns it off. |
+| Dev | `cd web && npm run dev` proxies `/api` to `localhost:8120` (SSH tunnel). |

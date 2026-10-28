@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HAS_DB = "DATABASE_URL" in os.environ
 needs_db = pytest.mark.skipif(not HAS_DB, reason="needs the compose stack (DATABASE_URL)")
 CSRF = {"X-Requested-With": "dbresearch"}
+# The web app owns every other path; tests talk to the API.
+API = "http://testserver/api"
 
 # Everything users create. Seeded reference data (categories, settings, templates) is kept:
 # `users` is DELETEd, not truncated, because TRUNCATE … CASCADE would follow
@@ -95,7 +97,7 @@ def client(db_clean: None):
 
     from dbresearch.main import app
 
-    with TestClient(app, headers=CSRF) as test_client:
+    with TestClient(app, headers=CSRF, base_url=API) as test_client:
         yield test_client
 
 

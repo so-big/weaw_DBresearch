@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from dbresearch.db import new_session
 from dbresearch.models import AuditEvent, User, UserRole, UserStatus
-from tests.conftest import needs_db
+from tests.conftest import API, needs_db
 
 pytestmark = needs_db
 
@@ -60,7 +60,7 @@ def test_state_changing_request_needs_csrf_header(app_db, make_user):
     from dbresearch.main import app
 
     _, username, password = make_user()
-    with TestClient(app) as bare:  # no X-Requested-With header
+    with TestClient(app, base_url=API) as bare:  # no X-Requested-With header
         response = bare.post("/auth/login", json={"username": username, "password": password})
     assert response.status_code == 403
 

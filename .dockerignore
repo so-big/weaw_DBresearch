@@ -8,3 +8,6 @@ __pycache__
 secrets/
 samples/
 *.pdf
+web/node_modules
+web/dist
+backup.env

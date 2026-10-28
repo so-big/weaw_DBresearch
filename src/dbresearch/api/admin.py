@@ -142,7 +142,7 @@ def reset_password(
 def all_shares(db: DB, admin: AdminUser, state: str | None = "active"):
     links = db.scalars(select(ShareLink).order_by(ShareLink.created_at.desc())).all()
     out = [share_out(db, link) for link in links]
-    return [s for s in out if state is None or s.state == state]
+    return [s for s in out if state in (None, "all") or s.state == state]
 
 
 # ───────────── Trash ─────────────

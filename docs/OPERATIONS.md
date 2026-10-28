@@ -11,7 +11,7 @@ curl -s 127.0.0.1:8120/health        # on the server: every check must be "ok"
 ```
 
 `migrate` runs `alembic upgrade head` before `api` and `worker` start. Test access from a
-laptop: `ssh -N -L 8120:127.0.0.1:8120 cs31@100.104.87.92`, then open `http://localhost:8120/docs`.
+laptop: `ssh -N -L 8120:127.0.0.1:8120 cs31@100.104.87.92`, then open `http://localhost:8120` (web app) or `http://localhost:8120/api/docs` (API docs).
 
 ## First-time setup (already done on the demo server)
 

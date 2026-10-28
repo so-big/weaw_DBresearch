@@ -9,7 +9,7 @@ from dbresearch.db import new_session
 from dbresearch.main import app
 from dbresearch.models import AuditEvent, ShareLink, UserRole
 from dbresearch.security import token_hash
-from tests.conftest import CSRF, make_pdf, needs_db
+from tests.conftest import API, CSRF, make_pdf, needs_db
 
 pytestmark = needs_db
 
@@ -29,7 +29,7 @@ def share(client, doc_id, **body):
 
 
 def guest() -> TestClient:
-    return TestClient(app, headers=CSRF)  # no session cookie: an outsider
+    return TestClient(app, headers=CSRF, base_url=API)  # no session cookie: an outsider
 
 
 def test_public_link_lets_a_guest_download_and_logs_it(client, login):
@@ -147,5 +147,5 @@ def test_grant_cookie_is_bound_to_its_link(client, login):
         g.post(f"{a['path']}/unlock", json={"password": a["password"]})
         grant = g.cookies.get("dbr_grant")
     with guest() as g:
-        g.cookies.set("dbr_grant", grant, path=b["path"])
+        g.cookies.set("dbr_grant", grant, path="/api" + b["path"])
         assert g.get(f"{b['path']}/file").status_code == 401

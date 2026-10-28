@@ -86,7 +86,7 @@ def create_share(
     return ShareCreated(
         **share_out(db, link, document).model_dump(),
         token=token,
-        path=f"/s/{token}",
+        path=f"/s/{token}",  # the web page; its API lives under /api/s/
         password=password,
     )
 
@@ -198,7 +198,7 @@ def guest_unlock(token: str, body: UnlockIn, request: Request, response: Respons
         max_age=shares.GRANT_MINUTES * 60,
         httponly=True,
         samesite="strict",
-        path=f"/s/{token}",
+        path=f"/api/s/{token}",
     )
 
 

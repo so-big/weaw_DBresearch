@@ -2,7 +2,7 @@
 
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sqlalchemy import Select, case, exists, func, or_, select
 from sqlalchemy.orm import Session
@@ -32,9 +32,10 @@ SNIPPET_RADIUS = 60
 @dataclass
 class Filters:
     q: str | None = None
-    kind: DocKind | None = None
-    funding_type: FundingType | None = None
-    fiscal_year: int | None = None  # Gregorian
+    # Several values in one filter mean "any of these".
+    kind: list[DocKind] = field(default_factory=list)
+    funding_type: list[FundingType] = field(default_factory=list)
+    fiscal_year: list[int] = field(default_factory=list)  # Gregorian
     status: list[DocStatus] = field(default_factory=list)
     categories: list[uuid.UUID] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
@@ -55,11 +56,11 @@ def _conditions(db: Session, f: Filters) -> list:
     if f.q and (needle := compact(f.q)):
         conds.append(Document.search_text.ilike(_like(needle)))
     if f.kind:
-        conds.append(Document.kind == f.kind)
+        conds.append(Document.kind.in_(f.kind))
     if f.funding_type:
-        conds.append(Document.funding_type == f.funding_type)
+        conds.append(Document.funding_type.in_(f.funding_type))
     if f.fiscal_year:
-        conds.append(Document.fiscal_year == f.fiscal_year)
+        conds.append(Document.fiscal_year.in_(f.fiscal_year))
     if f.status:
         conds.append(Document.status.in_(f.status))
     if f.ref_year_be:
@@ -137,34 +138,50 @@ def search(
 
 
 def facets(db: Session, f: Filters) -> dict[str, list[dict]]:
-    """Counts for the filter sidebar, over the current result set."""
-    ids = select(Document.id).where(*_conditions(db, f)).subquery()
+    """Counts for the filter sidebar.
 
-    def counts(column) -> list[dict]:
+    Each group is counted with every filter except its own, so ticking 2568 still shows how
+    many documents 2567 would add (the UI combines values within a group with OR)."""
+
+    def ids_without(**cleared) -> Select:
+        return select(Document.id).where(*_conditions(db, replace(f, **cleared)))
+
+    def counts(column, name: str) -> list[dict]:
         rows = db.execute(
             select(column, func.count())
-            .where(Document.id.in_(select(ids.c.id)), column.is_not(None))
+            .where(Document.id.in_(ids_without(**{name: []})), column.is_not(None))
             .group_by(column)
             .order_by(func.count().desc())
         ).all()
         return [{"value": value, "count": count} for value, count in rows]
 
-    categories = db.execute(
-        select(Category.id, Category.name_th, CategoryGroup.key, func.count())
-        .join(DocumentCategory, DocumentCategory.category_id == Category.id)
-        .join(CategoryGroup, CategoryGroup.id == Category.group_id)
-        .where(DocumentCategory.document_id.in_(select(ids.c.id)))
-        .group_by(Category.id, Category.name_th, CategoryGroup.key)
-        .order_by(func.count().desc())
-    ).all()
+    group_of = dict(
+        db.execute(
+            select(Category.id, Category.group_id).where(Category.id.in_(f.categories))
+        ).all()
+    )
+    category_rows = []
+    for group_id in db.scalars(select(CategoryGroup.id)):
+        others = [c for c in f.categories if group_of.get(c) != group_id]
+        category_rows += db.execute(
+            select(Category.id, Category.name_th, CategoryGroup.key, func.count())
+            .join(DocumentCategory, DocumentCategory.category_id == Category.id)
+            .join(CategoryGroup, CategoryGroup.id == Category.group_id)
+            .where(
+                Category.group_id == group_id,
+                DocumentCategory.document_id.in_(ids_without(categories=others)),
+            )
+            .group_by(Category.id, Category.name_th, CategoryGroup.key)
+            .order_by(func.count().desc())
+        ).all()
     return {
-        "kind": counts(Document.kind),
-        "funding_type": counts(Document.funding_type),
-        "fiscal_year": counts(Document.fiscal_year),
-        "status": counts(Document.status),
+        "kind": counts(Document.kind, "kind"),
+        "funding_type": counts(Document.funding_type, "funding_type"),
+        "fiscal_year": counts(Document.fiscal_year, "fiscal_year"),
+        "status": counts(Document.status, "status"),
         "categories": [
             {"value": str(cid), "name": name, "group_key": key, "count": count}
-            for cid, name, key, count in categories
+            for cid, name, key, count in category_rows
         ],
     }
 

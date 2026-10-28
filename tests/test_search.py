@@ -96,6 +96,8 @@ def test_filters_and_category_logic(client, login):
     get = lambda **p: set(ids(client.get("/documents", params=p)))  # noqa: E731
     assert get(funding_type="external") == {b}
     assert get(fiscal_year=2024) == {b} and get(fiscal_year=2025) == {a}
+    assert get(fiscal_year=[2024, 2025]) == {a, b}  # several values = any of them
+    assert get(kind=["grant", "contract"], funding_type=["external"]) == {b}
     assert get(category=[plan, fix]) == {a, b}  # OR within one group
     assert get(category=[plan, staff]) == {a}  # AND across groups
     assert get(category=[fix, staff]) == set()
@@ -123,6 +125,41 @@ def test_reference_sort_pagination_and_facets(client, login):
     facets = client.get("/documents", params={"with_facets": True}).json()["facets"]
     assert facets["status"] == [{"value": "ready", "count": 3}]
     assert {f["value"]: f["count"] for f in facets["fiscal_year"]} == {2025: 3}
+
+
+def test_facets_leave_out_their_own_filter(client, login):
+    """Ticking one year must still show the other years (and their counts) to add."""
+    login()
+    plan = category("research_type", "เพื่อการวางแผนพัฒนา")
+    fix = category("research_type", "เพื่อแก้ปัญหา")
+    for ref, day, cat, kind in (
+        ("R2567E001", "2024-03-01", plan, "contract"),
+        ("R2568E001", "2025-03-01", fix, "contract"),
+        ("R2568E002", "2025-04-01", fix, "grant"),
+    ):
+        create(
+            client,
+            reference_no=ref,
+            document_date=day,
+            kind=kind,
+            categories=[{"category_id": cat}],
+            people=[],
+            tags=[],
+        )
+
+    params = {"with_facets": True, "fiscal_year": 2025, "category": fix}
+    body = client.get("/documents", params=params).json()
+    assert body["total"] == 2
+    years = {f["value"]: f["count"] for f in body["facets"]["fiscal_year"]}
+    assert years == {2025: 2}  # the 2024 document isn't `fix`, so the category filter drops it
+    kinds = {f["value"]: f["count"] for f in body["facets"]["kind"]}
+    assert kinds == {"contract": 1, "grant": 1}  # other groups' filters still apply
+    by_name = {f["name"]: f["count"] for f in body["facets"]["categories"]}
+    assert by_name == {"เพื่อแก้ปัญหา": 2}  # own group ignores `fix`, but 2024 is filtered out
+
+    body = client.get("/documents", params={"with_facets": True, "fiscal_year": 2025}).json()
+    years = {f["value"]: f["count"] for f in body["facets"]["fiscal_year"]}
+    assert years == {2024: 1, 2025: 2}
 
 
 def test_pickers(client, login):

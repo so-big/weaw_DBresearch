@@ -1,3 +1,11 @@
+# Web app (Svelte + Vite): built here, served by the API from /app/web/dist.
+FROM node:24-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npm run build
+
 # One image for api + worker. Includes the OCR toolchain (Tesseract Thai + English).
 FROM python:3.13-slim-trixie
 
@@ -22,5 +30,6 @@ COPY --chown=app:app pyproject.toml uv.lock .python-version ./
 RUN uv sync --locked --no-install-project --all-extras
 COPY --chown=app:app . .
 RUN uv sync --locked --all-extras
+COPY --from=web --chown=app:app /web/dist /app/web/dist
 
 CMD ["uvicorn", "dbresearch.main:app", "--host", "0.0.0.0", "--port", "8000"]

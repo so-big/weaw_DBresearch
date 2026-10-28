@@ -7,7 +7,7 @@ from dbresearch.config import get_settings
 from dbresearch.db import new_session
 from dbresearch.main import app
 from dbresearch.models import AuditEvent, Document, DocumentVersion, UserRole
-from tests.conftest import CSRF, make_pdf, needs_db
+from tests.conftest import API, CSRF, make_pdf, needs_db
 from tests.test_review import category, metadata
 
 pytestmark = needs_db
@@ -41,7 +41,7 @@ def test_user_lifecycle(client, login):
     assert client.post("/admin/users", json=body).status_code == 409
     user_id = created.json()["id"]
 
-    with TestClient(app, headers=CSRF) as other:
+    with TestClient(app, headers=CSRF, base_url=API) as other:
         assert (
             other.post(
                 "/auth/login", json={"username": "newbie", "password": body["password"]}
@@ -67,14 +67,17 @@ def test_trash_restore_and_purge(client, login, make_user):
     login(UserRole.ADMIN)
     assert client.delete(f"/documents/{doc_id}").status_code == 204
     assert client.get(f"/documents/{doc_id}").status_code == 404
-    with TestClient(app, headers=CSRF) as guest:
+    with TestClient(app, headers=CSRF, base_url=API) as guest:
         assert guest.get(link["path"]).status_code == 404  # its link died with it
     assert [d["id"] for d in client.get("/admin/trash").json()] == [doc_id]
 
     assert client.post(f"/admin/trash/{doc_id}/restore").status_code == 204
     assert client.get(f"/documents/{doc_id}").status_code == 200
-    with TestClient(app, headers=CSRF) as guest:
+    with TestClient(app, headers=CSRF, base_url=API) as guest:
         assert guest.get(link["path"]).status_code == 404  # restoring doesn't revive links
+    assert client.get("/admin/shares").json() == []  # default: active links only
+    states = [s["state"] for s in client.get("/admin/shares", params={"state": "all"}).json()]
+    assert states == ["revoked"]
 
     with new_session() as db:
         key = db.scalar(select(DocumentVersion.storage_key))

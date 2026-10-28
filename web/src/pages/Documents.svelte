@@ -546,6 +546,7 @@
   .item:hover { background: var(--subtle); }
   .cover { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
   .cover:focus-visible { outline-offset: -3px; }
+  button.cover { border: 0; margin: 0; padding: 0; background: none; cursor: pointer; }
   .topline { display: flex; gap: 10px; align-items: baseline; font-size: 12px; }
   .kind { color: var(--muted); }
   .grow { min-width: 0; flex: 1; }

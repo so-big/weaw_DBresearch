@@ -6,6 +6,7 @@ DB, audit) stays the same. Local login exists for dev/demo only: no password res
 self-registration (CLAUDE.md).
 """
 
+import ipaddress
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -129,7 +130,12 @@ def revoke_all_sessions(db: Session, user_id: uuid.UUID) -> None:
 
 # ───────────── Dependencies ─────────────
 def client_ip(request: Request) -> str | None:
-    return request.client.host if request.client else None
+    """The peer's IP, or None if it isn't a valid address (the `inet` columns need one)."""
+    host = request.client.host if request.client else None
+    try:
+        return str(ipaddress.ip_address(host)) if host else None
+    except ValueError:
+        return None
 
 
 def current_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> User:

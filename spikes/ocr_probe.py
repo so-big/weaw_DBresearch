@@ -4,9 +4,9 @@ Runs inside the worker container against confidential samples:
 
     docker compose exec worker python spikes/ocr_probe.py /samples/<file>.pdf
 
-For every page and preprocessing variant it prints word count, mean confidence, time, and
-which auto-fill anchor labels (DESIGN §6) were found. OCR text goes to /tmp/work (tmpfs) only;
-the output printed here contains no document text unless --show is given.
+Prints per page: word count, mean confidence, time, and which auto-fill labels/values
+(DESIGN §6) were found. OCR text goes to /tmp/work (tmpfs) only; nothing printed contains
+document text unless --show is given.
 """
 
 import argparse
@@ -14,106 +14,83 @@ import re
 import time
 from pathlib import Path
 
-import cv2
-import numpy as np
 import pypdfium2 as pdfium
 import pytesseract
+from rapidfuzz import fuzz
 
-from dbresearch.textnorm import normalize
+from dbresearch.ocr_layout import build_lines, page_text
 
-ANCHORS = {
-    "contract_no_label": r"สัญญาเลขที่",
-    "contract_no": r"R\s?\d{4}\s?[A-Z]\s?\d{2,}",
-    "attachment_marker": r"เอกสารแนบ\s*(หมายเลข)?\s*(ที่)?\s*\d",
-    "project_label": r"โครงการ",
-    "title_th_label": r"ชื่อโครงการวิจัย",
-    "budget_total_label": r"งบประมาณรวม",
-    "amount": r"\d{1,3}(,\d{3})+(\.\d{2})?\s*บาท",
-    "fiscal_year": r"ประจำปี(งบประมาณ)?\s*พ\.?\s?ศ\.?\s*\d{4}",
-    "contract_header": r"สัญญารับทุนอุดหนุนการวิจัย",
-    "research_type_heading": r"ประเภท(การ)?วิจัย",
-    "research_group_heading": r"กลุ่มการวิจัย",
-    "installment": r"งวดที่\s*\d",
-    "page_footer": r"หน้า\s*\d+",
+# Labels are matched fuzzily per line (OCR misreads single characters, e.g. ชื่อ → ขือ).
+LABELS = {
+    "contract_header": "สัญญารับทุนอุดหนุนการวิจัย",
+    "contract_no_label": "สัญญาเลขที่",
+    "attachment_marker": "เอกสารแนบ",
+    "project_label": "โครงการ",
+    "title_th_label": "ชื่อโครงการวิจัย",
+    "lang_th_label": "(ภาษาไทย)",
+    "lang_en_label": "(ภาษาอังกฤษ)",
+    "budget_total_label": "งบประมาณรวม",
+    "research_type_heading": "ประเภทการวิจัย",
+    "research_group_heading": "กลุ่มการวิจัย",
+    "installment_label": "งวดที่",
 }
-THAI = r"฀-๿"
+LABEL_THRESHOLD = 85
+MONTHS = "มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม"
+VALUES = {
+    "contract_no": r"R\s?25\d\d\s?[A-Z]\s?\d{2,4}",
+    "fiscal_year": r"ประจำปี.{0,25}?25\d\d",
+    "amount": r"\d{1,3}(,\d{3})+(\.\d{2})?",
+    "thai_date": rf"\d{{1,2}}\s?({MONTHS})\s?25\d\d",
+    "page_footer": r"หน้า\s?\d+",
+}
 
 
-def squash_thai_spaces(text: str) -> str:
-    """Remove spaces between two Thai characters (Tesseract often splits Thai words)."""
-    return re.sub(rf"(?<=[{THAI}]) +(?=[{THAI}])", "", text)
-
-
-def render(pdf: pdfium.PdfDocument, index: int, dpi: int) -> np.ndarray:
-    image = pdf[index].render(scale=dpi / 72, grayscale=True).to_numpy()
-    return image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-
-def clean(gray: np.ndarray) -> np.ndarray:
-    """Flatten uneven lighting (photo shadows, faint watermark) then binarise with Otsu."""
-    background = cv2.medianBlur(cv2.dilate(gray, np.ones((7, 7), np.uint8)), 31)
-    flat = cv2.divide(gray, background, scale=255)
-    _, binary = cv2.threshold(flat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return binary
-
-
-def ocr(image: np.ndarray) -> tuple[str, int, float]:
-    data = pytesseract.image_to_data(
-        image,
-        lang="tha+eng",
-        config="--oem 1 --psm 3 -c preserve_interword_spaces=1",
-        output_type=pytesseract.Output.DICT,
-    )
-    lines: dict[tuple[int, int, int], list[str]] = {}
-    confs = []
-    for i, word in enumerate(data["text"]):
-        if not word.strip():
-            continue
-        key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
-        lines.setdefault(key, []).append(word)
-        confs.append(float(data["conf"][i]))
-    text = "\n".join(" ".join(words) for words in lines.values())
-    return text, len(confs), (sum(confs) / len(confs) if confs else 0.0)
-
-
-def found_anchors(text: str) -> set[str]:
-    squashed = squash_thai_spaces(text)
-    return {name for name, rx in ANCHORS.items() if re.search(rx, squashed)}
+def found(lines_text: list[str]) -> list[str]:
+    hits = set()
+    for line in lines_text:
+        compact = line.replace(" ", "")
+        for name, label in LABELS.items():
+            if fuzz.partial_ratio(label, compact) >= LABEL_THRESHOLD:
+                hits.add(name)
+    joined = "\n".join(lines_text)
+    hits |= {name for name, rx in VALUES.items() if re.search(rx, joined)}
+    return sorted(hits)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("pdf", type=Path)
     parser.add_argument("--dpi", type=int, default=300)
+    parser.add_argument("--psm", type=int, default=3)
     parser.add_argument("--show", action="store_true", help="print OCR text (confidential!)")
     parser.add_argument("--out", type=Path, default=Path("/tmp/work"))
     args = parser.parse_args()
 
-    print(f"tesseract {pytesseract.get_tesseract_version()}  file={args.pdf.name}  dpi={args.dpi}")
+    print(f"tesseract {pytesseract.get_tesseract_version()}  {args.pdf.name}  dpi={args.dpi}")
     pdf = pdfium.PdfDocument(args.pdf)
     for index in range(len(pdf)):
-        layer = normalize(pdf[index].get_textpage().get_text_range())
-        print(
-            f"\n== page {index + 1}: text layer {len(layer)} chars, anchors "
-            f"{sorted(found_anchors(layer)) if layer else '-'}"
+        start = time.perf_counter()
+        image = pdf[index].render(scale=args.dpi / 72, grayscale=True).to_pil()
+        data = pytesseract.image_to_data(
+            image,
+            lang="tha+eng",
+            config=f"--oem 1 --psm {args.psm}",
+            output_type=pytesseract.Output.DICT,
         )
-        gray = render(pdf, index, args.dpi)
-        for variant, image in (("gray", gray), ("clean", clean(gray))):
-            start = time.perf_counter()
-            raw, words, conf = ocr(image)
-            text = normalize(raw)
-            elapsed = time.perf_counter() - start
-            anchors = found_anchors(text)
-            print(
-                f"  {variant:5} words={words:4} conf={conf:5.1f} time={elapsed:5.1f}s "
-                f"anchors={len(anchors):2}/{len(ANCHORS)} {sorted(anchors)}"
-            )
-            out = args.out / f"{args.pdf.stem}_p{index + 1}_{variant}.txt"
-            out.write_text(text, encoding="utf-8")
-            if args.show:
-                print(
-                    "  ---\n" + "\n".join("  | " + line for line in text.splitlines()) + "\n  ---"
-                )
+        lines = build_lines(data)
+        text = page_text(lines)
+        elapsed = time.perf_counter() - start
+        words = sum(len(line.words) for line in lines)
+        conf = sum(line.conf * len(line.words) for line in lines) / max(words, 1)
+        kept = text.splitlines()
+        hits = found(kept)
+        print(
+            f"p{index + 1}: lines={len(kept):3}/{len(lines):3} words={words:4} conf={conf:5.1f} "
+            f"time={elapsed:4.1f}s  {len(hits):2} found: {' '.join(hits)}"
+        )
+        (args.out / f"{args.pdf.stem}_p{index + 1}.txt").write_text(text, encoding="utf-8")
+        if args.show:
+            print("\n".join("   | " + line for line in kept))
 
 
 if __name__ == "__main__":

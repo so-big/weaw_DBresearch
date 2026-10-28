@@ -101,7 +101,8 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
   - [x] Style: simple, minimal, smooth. Animate only transform/opacity, 150ms/220ms with one ease-out curve, reserved space (no layout shift), skeleton rows, no backdrop blur, respect reduced-motion.
 - [x] API moved under `/api` (docs at `/api/docs`); FastAPI serves the built web app for every other path (CSP, SPA fallback). Share links stay `/s/{token}` (web page).
 - [x] Screens: login, documents search + filters (PC column / phone sheet), multi-file upload window, document page (download, view, share, new version, trash), review form (auto-fill hints, warnings, PDF beside the form), review queue, my share links, guest page, phone account tab, admin (overview + missing numbers, users, all links, trash, categories, audit, settings)
-- [ ] Deploy to the demo server and click through on PC + phone
+- [x] Deployed to the demo server; 92 tests pass. Headless click-through (`spikes/ui_smoke.py`) on PC + phone, light + dark: no JS errors. Found and fixed a Phase 2 bug: `/admin/audit` and share logs crashed on IP values.
+- [ ] Try it on a real phone (guest link, search, upload from the phone's files) and collect feedback
 - [ ] Later: PDF preview inside the page on phones (pdf.js) if opening a new tab is not enough
 
 ## Demo environment
@@ -111,6 +112,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-10-28 — Phase 3: web app live on the demo server (`http://localhost:8120` through the SSH tunnel).
 - 2026-10-28 — Phase 3: UI direction agreed (colors, layout, upload, filters; mocks in `docs/ui/`). Svelte web app built; API moved under `/api`.
 
 - 2026-10-28 — Phase 2 backend done: auth, encrypted storage, auto-fill worker, review, search, share links, admin, backups + passing restore drill. Next: frontend brainstorm.

@@ -1,6 +1,6 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { get, del, uploadFile, errorText, fileUrl } from '../lib/api.js';
+  import { get, del, uploadFile, errorText, fileUrl, thai } from '../lib/api.js';
   import { navigate } from '../lib/router.svelte.js';
   import { toast, screen, bumpReviewCount } from '../lib/state.svelte.js';
   import { STATUS, KIND, FUNDING, ROLE, thDate, thDateTime, money, bytes, personName } from '../lib/format.js';
@@ -79,7 +79,7 @@
       bumpReviewCount();
       load();
     } else {
-      toast(status === 409 ? 'ไฟล์นี้มีอยู่ในระบบแล้ว' : data?.detail || 'อัปโหลดไม่สำเร็จ', 'bad');
+      toast(status === 409 ? 'ไฟล์นี้มีอยู่ในระบบแล้ว' : thai(data?.detail) || 'อัปโหลดไม่สำเร็จ', 'bad');
     }
   }
 </script>

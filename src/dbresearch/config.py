@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     session_cookie: str = "dbr_session"
     session_ttl_hours: int = 12
     cookie_secure: bool = False  # True behind HTTPS; the SSH-tunnel demo is plain HTTP
+    # Behind Cloudflare Tunnel: take the visitor's IP from this header (e.g. CF-Connecting-IP).
+    # Safe only because the API port is bound to 127.0.0.1, so only the local tunnel reaches it.
+    trusted_ip_header: str | None = None
+    # Local-login brute-force guard: failed attempts per username (x4 per IP) in a window.
+    login_max_failures: int = 5
+    login_window_minutes: int = 15
     # Signs short-lived guest grants after a share-link password is entered.
     secret_key: str = "dev-only-change-me"
 

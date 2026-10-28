@@ -80,6 +80,26 @@ export function uploadFile(path, file, onProgress) {
 export const fileUrl = (id, { inline = false, version } = {}) =>
   `/api/documents/${id}/file${query({ inline: inline || undefined, version })}`;
 
+// The API speaks English; show people Thai for the messages we know.
+const THAI = [
+  [/^Only PDF files can be uploaded.*$/s, 'รับเฉพาะไฟล์ PDF'],
+  [/^The PDF is damaged or password-protected.*$/s, 'ไฟล์ PDF เสียหายหรือตั้งรหัสผ่านไว้ ให้สแกนหรือบันทึกไฟล์ใหม่'],
+  [/^The PDF has no pages.*$/s, 'ไฟล์ PDF ไม่มีหน้าเอกสาร'],
+  [/^File is larger than (\d+) MB.*$/s, 'ไฟล์ใหญ่เกิน $1 MB'],
+  [/^Upload too large.*$/s, 'ไฟล์ใหญ่เกินกำหนด'],
+  [/^Wrong username or password.*$/s, 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'],
+  [/^Too many failed logins.*$/s, 'ใส่รหัสผิดหลายครั้ง กรุณารอ 15 นาทีแล้วลองใหม่'],
+  [/^Only the uploader or an admin.*$/s, 'เฉพาะผู้อัปโหลดหรือผู้ดูแลระบบเท่านั้นที่ทำรายการนี้ได้'],
+  [/^Document not found.*$/s, 'ไม่พบเอกสารนี้ อาจถูกลบไปแล้ว'],
+  [/^This link is invalid or has expired.*$/s, 'ลิงก์นี้ใช้ไม่ได้หรือหมดอายุแล้ว'],
+  [/^Not authenticated.*$|^Login required.*$/s, 'กรุณาเข้าสู่ระบบ'],
+];
+export function thai(detail) {
+  if (typeof detail !== 'string') return detail;
+  for (const [re, text] of THAI) if (re.test(detail)) return detail.replace(re, text);
+  return detail;
+}
+
 /** Human message for an error, in Thai where we know the case. */
 export function errorText(err) {
   if (!(err instanceof ApiError)) return 'เกิดข้อผิดพลาด ลองอีกครั้ง';
@@ -90,5 +110,6 @@ export function errorText(err) {
   if (Array.isArray(err.detail)) {
     return err.detail.map((d) => `${(d.loc || []).slice(1).join('.')}: ${d.msg}`).join(' · ');
   }
-  return typeof err.detail === 'string' ? err.detail : 'เกิดข้อผิดพลาด ลองอีกครั้ง';
+  if (err.status === 429) return thai(err.detail) || 'ลองใหม่อีกครั้งภายหลัง';
+  return typeof err.detail === 'string' ? thai(err.detail) : 'เกิดข้อผิดพลาด ลองอีกครั้ง';
 }

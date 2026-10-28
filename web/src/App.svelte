@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { route, match, navigate } from './lib/router.svelte.js';
   import { get, setUnauthorizedHandler } from './lib/api.js';
-  import { session, screen, refreshReviewCount } from './lib/state.svelte.js';
+  import { session, screen, refreshReviewCount, toast } from './lib/state.svelte.js';
   import { uploads, openUpload, addFiles } from './lib/uploads.svelte.js';
   import TopNav from './components/TopNav.svelte';
   import MobileNav from './components/MobileNav.svelte';
@@ -65,24 +65,44 @@
     return { C: NotFound };
   });
 
-  // Drop files anywhere on the app to upload them.
-  const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+  // Drop files anywhere on the app to upload them. Browsers and file managers announce files
+  // differently ('Files', Firefox's x-moz-file, or only a file:// uri-list on some Linux
+  // desktops), so accept all of them, but ignore drags that start inside the page (links, text).
+  let innerDrag = false;
+  const types = (e) => Array.from(e.dataTransfer?.types || []);
+  const isFileDrag = (e) => {
+    if (innerDrag) return false;
+    const t = types(e);
+    return t.includes('Files') || t.includes('application/x-moz-file') || t.includes('text/uri-list');
+  };
+  const editable = (el) => el?.closest?.('input, textarea, [contenteditable]');
   function dragEnter(e) {
-    if (!session.user || !hasFiles(e)) return;
+    if (!session.user || !isFileDrag(e) || editable(e.target)) return;
     e.preventDefault();
     if (!uploads.open) openUpload();
   }
   function dragOver(e) {
-    if (session.user && hasFiles(e)) e.preventDefault();
+    if (!session.user || !isFileDrag(e) || editable(e.target)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
   }
   function dropFiles(e) {
-    if (!session.user || !hasFiles(e) || e.defaultPrevented) return;
+    if (!session.user || innerDrag || e.defaultPrevented || editable(e.target)) return;
+    const files = e.dataTransfer?.files;
+    if (!files?.length && !types(e).includes('text/uri-list')) return;
     e.preventDefault(); // never let the browser open the PDF in place of the app
-    addFiles(e.dataTransfer.files);
+    if (files?.length) addFiles(files);
+    else toast('ลากไฟล์จากโฟลเดอร์ในเครื่องมาวาง หรือกดปุ่ม “เลือกไฟล์”', 'bad', 4500);
   }
 </script>
 
-<svelte:window ondragenter={dragEnter} ondragover={dragOver} ondrop={dropFiles} />
+<svelte:window
+  ondragenter={dragEnter}
+  ondragover={dragOver}
+  ondrop={dropFiles}
+  ondragstart={() => (innerDrag = true)}
+  ondragend={() => (innerDrag = false)}
+/>
 
 {#if guestToken}
   <Guest token={guestToken} />

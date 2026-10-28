@@ -21,9 +21,11 @@
     queueMicrotask(() => list && (list.scrollTop = list.scrollHeight));
   }
   function drop(e) {
-    e.preventDefault();
     over = false;
-    addFiles(e.dataTransfer?.files);
+    if (!e.dataTransfer?.files?.length) return; // let the page explain what to drop
+    e.preventDefault();
+    addFiles(e.dataTransfer.files);
+    queueMicrotask(() => list && (list.scrollTop = list.scrollHeight));
   }
   function later() {
     clearFinished();
@@ -62,9 +64,8 @@
     <label
       class="drop"
       class:over
-      ondragenter={(e) => (e.preventDefault(), (over = true))}
-      ondragover={(e) => e.preventDefault()}
-      ondragleave={() => (over = false)}
+      ondragenter={() => (over = true)}
+      ondragleave={(e) => !e.currentTarget.contains(e.relatedTarget) && (over = false)}
       ondrop={drop}
     >
       <Icon name="upload" size={28} />

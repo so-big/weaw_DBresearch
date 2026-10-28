@@ -88,3 +88,17 @@ def test_cli_creates_admin(app_db, db_clean, monkeypatch, capsys):
     with new_session() as db:
         user = db.scalar(select(User).where(User.email == "boss@example.test"))
     assert user.role == UserRole.ADMIN
+
+
+def test_repeated_failures_lock_the_username_for_a_while(client, make_user):
+    _, username, password = make_user()
+    _, other, other_password = make_user()
+    for _ in range(5):
+        wrong = client.post("/auth/login", json={"username": username, "password": "nope"})
+        assert wrong.status_code == 401
+    # Even the right password waits now; case and spaces don't get around it.
+    retry = {"username": f" {username.upper()} ", "password": password}
+    blocked = client.post("/auth/login", json=retry)
+    assert blocked.status_code == 429 and blocked.headers["retry-after"] == "900"
+    ok = client.post("/auth/login", json={"username": other, "password": other_password})
+    assert ok.status_code == 200  # other accounts are unaffected

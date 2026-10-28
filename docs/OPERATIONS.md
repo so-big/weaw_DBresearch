@@ -13,6 +13,29 @@ curl -s 127.0.0.1:8120/health        # on the server: every check must be "ok"
 `migrate` runs `alembic upgrade head` before `api` and `worker` start. Test access from a
 laptop: `ssh -N -L 8120:127.0.0.1:8120 cs31@100.104.87.92`, then open `http://localhost:8120` (web app) or `http://localhost:8120/api/docs` (API docs).
 
+## Public demo (Cloudflare Tunnel)
+
+The server already runs `cloudflared` as a token-based tunnel (shared with other projects).
+DBresearch needs no open port and no server change: the app stays on `127.0.0.1:8120` and the
+tunnel forwards one hostname to it. Configure it in the Cloudflare dashboard:
+
+1. **Zero Trust → Networks → Tunnels** → the tunnel running on this server → **Public hostnames**
+   (newer UI: *Published application routes*) → **Add**.
+2. Subdomain + domain of your choice (e.g. `dbresearch.example.com`), path empty,
+   service **HTTP** → `localhost:8120`. Save: Cloudflare creates the DNS record itself.
+3. **SSL/TLS → Edge certificates**: turn on *Always Use HTTPS*.
+4. Server `.env` has `COOKIE_SECURE=true` and `TRUSTED_IP_HEADER=CF-Connecting-IP`
+   (see `.env.example`), then `docker compose up -d`.
+
+Notes:
+- Uploads: Cloudflare's Free/Pro plans cap a request at 100 MB, the same as `MAX_UPLOAD_MB`.
+- Local login is public now: 5 wrong passwords lock that username for 15 min (20 per IP).
+  Give testers their own accounts (ผู้ดูแลระบบ → ผู้ใช้) and use strong passwords.
+- Optional extra lock: a Cloudflare Access application on the hostname (email one-time code)
+  with a *Bypass* policy for `/s/*`, `/api/s/*`, `/assets/*` and `/favicon.svg`, so share
+  links still open for guests.
+- The demo holds mock data only. Don't upload confidential scans until SSO is in place.
+
 ## First-time setup (already done on the demo server)
 
 | Step | Command |

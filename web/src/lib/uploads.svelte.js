@@ -1,5 +1,5 @@
 // Upload queue shared by the whole app: survives closing the window and changing pages.
-import { uploadFile } from './api.js';
+import { uploadFile, thai } from './api.js';
 import { bumpReviewCount } from './state.svelte.js';
 
 const PARALLEL = 2;
@@ -74,7 +74,7 @@ async function send(item) {
       status === 0 ? 'อัปโหลดไม่สำเร็จ (เชื่อมต่อไม่ได้)'
       : status === 413 ? 'ไฟล์ใหญ่เกินกำหนด'
       : status === 401 ? 'หมดเวลาเข้าสู่ระบบ'
-      : data?.detail && typeof data.detail === 'string' ? data.detail
+      : data?.detail && typeof data.detail === 'string' ? thai(data.detail)
       : 'อัปโหลดไม่สำเร็จ';
   }
   running--;

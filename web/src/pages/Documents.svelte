@@ -262,7 +262,7 @@
           <div class="item">
             <a class="cover" href="/documents/{d.id}" aria-label={d.title}></a>
             {#if screen.wide}
-              <span class="cno">{d.reference_no || '—'}</span>
+              {#if d.reference_no}<span class="cno">{d.reference_no}</span>{:else}<span class="noref">ไม่มีเลขที่</span>{/if}
             {/if}
             <div class="grow">
               <div class="t">{@html snippetHtml(filters.q && d.title.includes(filters.q) ? d.title.replaceAll(filters.q, `[[${filters.q}]]`) : d.title)}</div>
@@ -354,7 +354,11 @@
   .quick { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px 2px; }
   .quick::-webkit-scrollbar { display: none; }
   .quick .chip { flex: none; }
-  .layout:not(.wide) .item { grid-template-columns: minmax(0, 1fr) auto; padding: 12px; gap: 10px; }
+  .noref { font-size: 12px; color: var(--faint); padding-top: 3px; }
+  /* phone card: text on top, then status · date · download on one row */
+  .layout:not(.wide) .item { grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 8px; }
+  .layout:not(.wide) .side-meta { flex-direction: row; align-items: center; gap: 10px; }
+  .layout:not(.wide) .side-meta .dl { margin: 0 0 0 auto; }
   .layout:not(.wide) .t { font-size: 14.5px; }
   .dl { position: relative; z-index: 2; min-height: 34px; padding: 4px 10px; margin-top: 4px; }
 

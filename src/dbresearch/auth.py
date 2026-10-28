@@ -130,8 +130,13 @@ def revoke_all_sessions(db: Session, user_id: uuid.UUID) -> None:
 
 # ───────────── Dependencies ─────────────
 def client_ip(request: Request) -> str | None:
-    """The peer's IP, or None if it isn't a valid address (the `inet` columns need one)."""
-    host = request.client.host if request.client else None
+    """The visitor's IP, or None if it isn't a valid address (the `inet` columns need one).
+
+    Behind the Cloudflare Tunnel every request comes from the local tunnel process, so the
+    real address is read from `trusted_ip_header` when it is configured and present."""
+    header = get_settings().trusted_ip_header
+    forwarded = request.headers.get(header) if header else None
+    host = forwarded.strip() if forwarded else (request.client.host if request.client else None)
     try:
         return str(ipaddress.ip_address(host)) if host else None
     except ValueError:

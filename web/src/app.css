@@ -212,3 +212,9 @@ table.data tr:last-child td { border-bottom: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
 }
+
+/* Bottom-sheet handle (phones): a wide, easy target to drag or tap (see lib/sheet.js) */
+.sheet-grab { display: flex; justify-content: center; padding: 10px 0 8px; cursor: grab; flex: none; }
+.sheet-grab::before { content: ''; width: 42px; height: 5px; border-radius: 3px; background: var(--border-strong); transition: background var(--t-fast); }
+.sheet-grab:active::before { background: var(--muted); }
+[data-sheet-handle] { touch-action: none; user-select: none; -webkit-user-select: none; }

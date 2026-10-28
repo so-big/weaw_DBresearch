@@ -4,6 +4,7 @@
   import Icon from './Icon.svelte';
   import { uploads, addFiles, closeUpload, clearFinished, busyCount, doneOk, retry, cancel, cancelAll } from '../lib/uploads.svelte.js';
   import { screen, ms } from '../lib/state.svelte.js';
+  import { sheet } from '../lib/sheet.js';
   import { navigate } from '../lib/router.svelte.js';
   import { bytes } from '../lib/format.js';
 
@@ -54,9 +55,19 @@
 
 {#if uploads.open}
   <div class="scrim" transition:fade={{ duration: ms(200) }} onclick={closeUpload} role="presentation"></div>
-  <div class="panel" class:sheet={!screen.wide} role="dialog" aria-modal="true" aria-labelledby="up-title" tabindex="-1" onkeydown={key} in:panelIn out:panelOut>
-    {#if !screen.wide}<div class="grab"></div>{/if}
-    <div class="head">
+  <div
+    class="panel"
+    class:sheet={!screen.wide}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="up-title"
+    tabindex="-1"
+    in:panelIn
+    out:panelOut
+    use:sheet={{ enabled: !screen.wide, onclose: closeUpload, scroller: '.list' }}
+  >
+    {#if !screen.wide}<div class="sheet-grab" data-sheet-handle aria-hidden="true"></div>{/if}
+    <div class="head" data-sheet-handle={!screen.wide ? '' : undefined}>
       <h2 id="up-title">อัปโหลดเอกสาร</h2>
       <button class="icon-btn" onclick={closeUpload} aria-label="ปิด"><Icon name="x" /></button>
     </div>
@@ -158,9 +169,8 @@
   .panel.sheet {
     left: 0; right: 0; top: auto; bottom: 0; translate: none; width: auto;
     max-height: 90vh; border-radius: 20px 20px 0 0;
-    padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+    padding: 0 16px calc(16px + env(safe-area-inset-bottom)); gap: 12px;
   }
-  .grab { width: 38px; height: 4px; border-radius: 2px; background: var(--border-strong); margin: 0 auto 2px; }
   .head { display: flex; align-items: center; justify-content: space-between; }
   .drop {
     display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;

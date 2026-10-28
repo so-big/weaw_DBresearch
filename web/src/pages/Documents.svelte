@@ -11,6 +11,7 @@
   import { categoryGroups } from '../lib/catalog.js';
   import { STATUS, KIND, FUNDING, BE, thDate, snippetHtml } from '../lib/format.js';
   import FilterPanel from '../components/FilterPanel.svelte';
+  import { sheet as sheetGesture } from '../lib/sheet.js';
   import Icon from '../components/Icon.svelte';
 
   const PAGE = 20;
@@ -360,9 +361,16 @@
 
 {#if sheet}
   <div class="scrim" transition:fade={{ duration: ms(200) }} onclick={() => (sheet = false)} role="presentation"></div>
-  <div class="sheet" role="dialog" aria-modal="true" aria-label="ตัวกรอง" transition:fly={{ y: 500, duration: ms(240), easing: cubicOut, opacity: 1 }}>
-    <div class="grab"></div>
-    <div class="sheet-head">
+  <div
+    class="sheet"
+    role="dialog"
+    aria-modal="true"
+    aria-label="ตัวกรอง"
+    transition:fly={{ y: 500, duration: ms(240), easing: cubicOut, opacity: 1 }}
+    use:sheetGesture={{ enabled: true, onclose: () => (sheet = false), scroller: '.sheet-body' }}
+  >
+    <div class="sheet-grab" data-sheet-handle aria-hidden="true"></div>
+    <div class="sheet-head" data-sheet-handle>
       <h3>ตัวกรอง</h3>
       <select id="sheet-sort" value={draft.sort} onchange={(e) => changeDraft({ ...draft, sort: e.currentTarget.value })} aria-label="เรียงตาม">
         {#each sortsFor(draft.q) as [v, l] (v)}<option value={v}>{l}</option>{/each}
@@ -461,7 +469,6 @@
 
   .scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 40; }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-height: 88vh; background: var(--surface); border-radius: 20px 20px 0 0; display: flex; flex-direction: column; box-shadow: var(--shadow); }
-  .grab { width: 38px; height: 4px; border-radius: 2px; background: var(--border-strong); margin: 8px auto 4px; }
   .sheet-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 16px 8px; }
   .sheet-body { overflow: auto; padding: 0 10px; flex: 1; overscroll-behavior: contain; }
   .sheet-foot { display: flex; gap: 8px; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }

@@ -4,6 +4,7 @@
   import { cubicOut } from 'svelte/easing';
   import Icon from './Icon.svelte';
   import { screen, ms } from '../lib/state.svelte.js';
+  import { sheet } from '../lib/sheet.js';
 
   let { title, onclose, children, footer, width = 480 } = $props();
   const uid = `m${Math.random().toString(36).slice(2, 8)}`;
@@ -27,9 +28,20 @@
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose?.()} />
 
 <div class="scrim" transition:fade={{ duration: ms(200) }} onclick={onclose} role="presentation"></div>
-<div class="panel" class:sheet={!screen.wide} style="--w:{width}px" role="dialog" aria-modal="true" aria-labelledby={uid} in:panelIn out:panelOut use:focusFirst>
-  {#if !screen.wide}<div class="grab"></div>{/if}
-  <div class="head">
+<div
+  class="panel"
+  class:sheet={!screen.wide}
+  style="--w:{width}px"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby={uid}
+  in:panelIn
+  out:panelOut
+  use:focusFirst
+  use:sheet={{ enabled: !screen.wide, onclose, scroller: '.body' }}
+>
+  {#if !screen.wide}<div class="sheet-grab" data-sheet-handle aria-hidden="true"></div>{/if}
+  <div class="head" data-sheet-handle={!screen.wide ? '' : undefined}>
     <h2 id={uid}>{title}</h2>
     <button class="icon-btn" onclick={onclose} aria-label="ปิด"><Icon name="x" /></button>
   </div>
@@ -46,10 +58,9 @@
     display: flex; flex-direction: column;
   }
   .panel.sheet { left: 0; right: 0; top: auto; bottom: 0; translate: none; width: auto; max-height: 90vh; border-radius: 20px 20px 0 0; }
-  .grab { width: 38px; height: 4px; border-radius: 2px; background: var(--border-strong); margin: 8px auto 0; flex: none; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px 6px; }
-  .sheet .head { padding-top: 8px; }
-  .body { padding: 8px 18px 16px; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 14px; }
+  .sheet .head { padding-top: 0; }
+  .body { flex: 1 1 auto; min-height: 0; padding: 8px 18px 16px; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 14px; }
   .foot { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 18px; border-top: 1px solid var(--border); }
   .sheet .foot { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
   .sheet .foot :global(.btn) { flex: 1; min-height: 46px; }

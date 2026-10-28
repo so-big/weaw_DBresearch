@@ -11,12 +11,12 @@ The agreed design, schema, and open questions live in @docs/DESIGN.md. Read it b
 - The server is shared with other projects. Bind DBresearch ports to `127.0.0.1` only, and never touch other projects' containers.
 
 ## Stack
-- Python 3 + FastAPI, PostgreSQL, SQLAlchemy 2 + Alembic, MinIO (S3 API), Docker Compose.
+- Python 3.13 + FastAPI, PostgreSQL 17, SQLAlchemy 2 + Alembic, Docker Compose. Files live in a local folder behind the `BlobStore` interface (MinIO is discontinued; don't reintroduce it).
 - Use `uv` for everything (`uv add`, `uv run pytest`, `uv run alembic ...`). Do not use pip directly.
 - Background work (OCR, purge) goes through the PostgreSQL `jobs` table (`FOR UPDATE SKIP LOCKED`). Don't add Redis/Celery.
 
 ## Rules that must not break
-- **No plaintext file bytes outside memory or the worker's tmpfs.** MinIO holds ciphertext only. Every file version has its own DEK, wrapped by the KEK (Tink Streaming AEAD). Never log file contents or OCR text.
+- **No plaintext file bytes outside memory or the worker's tmpfs.** The BlobStore holds ciphertext only. Every file version has its own DEK, wrapped by the KEK (Tink Streaming AEAD). Never log file contents or OCR text.
 - **GUEST is not a role or a user row.** A guest is anyone holding a valid share link. Roles are only `admin` and `user`.
 - Share-link tokens and passwords are stored **only as hashes** and shown once. Download-count limits are enforced with an atomic conditional `UPDATE ... RETURNING`.
 - Soft-deleting a document revokes its share links in the same transaction. Only ADMIN purges (deletes the object + wrapped DEK).

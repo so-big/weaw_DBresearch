@@ -12,7 +12,8 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 | Area | Decision |
 |---|---|
 | Deliverable | DB design + working backend (API). Frontend later. |
-| Stack | Python 3 + FastAPI, PostgreSQL, SQLAlchemy 2 + Alembic, S3-compatible object storage (MinIO). |
+| Stack | Python 3.13 + FastAPI, PostgreSQL 17, SQLAlchemy 2 + Alembic. |
+| File store | **Local folder** (Docker volume `blobs`) behind a `BlobStore` interface. An S3 backend can be added later without touching callers. MinIO was dropped: the project was discontinued (GitHub archived 2026-04, Docker images removed). |
 | Hosting | Docker Compose on the shared test server `cs31@100.104.87.92`. Ports bound to `127.0.0.1`; testers reach it through an **SSH tunnel**. |
 | Git | Single branch: commit and push straight to `main`. |
 | Core model | **Document = one PDF = one complete package** (e.g. a grant contract plus its numbered attachments `เอกสารแนบหมายเลข N`). Detected attachments are stored as **sections** with page ranges. There's no separate Project table in v1. |
@@ -48,11 +49,11 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
         ▼                              ▼
    ┌───────────────── FastAPI (api) ─────────────────┐
    │ auth · documents · search · shares · admin       │
-   │ streams upload → encrypt → MinIO                 │
-   │ streams download ← decrypt ← MinIO               │
+   │ streams upload → encrypt → BlobStore             │
+   │ streams download ← decrypt ← BlobStore           │
    └───────┬───────────────────────┬──────────────────┘
            │                       │
-     PostgreSQL               MinIO (ciphertext only)
+     PostgreSQL           BlobStore folder (ciphertext only)
    (metadata, OCR text,            ▲
     wrapped DEKs, jobs)            │
            ▲                       │
@@ -63,7 +64,7 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 ```
 
 ### Upload flow
-1. `POST /documents` (multipart) → API generates a DEK, stream-encrypts to MinIO, stores the wrapped DEK on the version row.
+1. `POST /documents` (multipart) → API generates a DEK, stream-encrypts to the BlobStore, stores the wrapped DEK on the version row.
 2. Version gets `ocr_status = pending`; a job is queued.
 3. The worker decrypts the file to **tmpfs only** and runs the auto-fill pipeline (§6). It stores per-page text + word boxes, detected sections, and `extracted_fields` (value + confidence + source page per field, checked-box suggestions, validation warnings).
 4. The document moves to `needs_review`. The UI shows the pre-filled form with warnings highlighted, and the user confirms or edits it → `ready`. Confirmed checkbox suggestions become `document_categories` / `document_tags` rows with `source = 'auto'`.
@@ -71,7 +72,7 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 ### Encryption details
 - **KEK**: 32-byte master key loaded from a file or env var, with a `key_id`. The `kek_id` column on each version allows rotation (re-wrap the DEKs; the files are untouched). It can move to Vault/KMS later.
 - **DEK**: random 256-bit key per file version. Use **Tink Streaming AEAD (AES256_GCM_HKDF_1MB)** rather than custom chunking; associated data = `version_id`.
-- Only ciphertext ever goes to MinIO. Plaintext exists only in memory or on the worker's tmpfs.
+- Only ciphertext ever goes to the BlobStore. Plaintext exists only in memory or on the worker's tmpfs.
 - **Accepted trade-off (department, 2026-10-28):** OCR text (`document_pages`, `documents.search_text`) and metadata are **plaintext in PostgreSQL**, which pg_trgm search and auto-fill require. The department considers this text low-sensitivity; the main protection is login (college SSO). The original files stay encrypted. Backups are encrypted anyway (restic).
 - **Purge is not permanent erasure:** it deletes the object and wrapped DEK from the live system, but forever-kept backups still hold both. This fits the "never lose data" requirement.
 
@@ -80,9 +81,9 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 | What | How | Why |
 |---|---|---|
 | PostgreSQL | Nightly `pg_dump -Fc` (custom format) → restic | Small; holds all metadata, OCR text and wrapped DEKs |
-| MinIO objects | restic over the bucket data (objects are write-once, so increments are tiny) | The encrypted files |
+| Blob folder | restic over the `blobs` volume (files are write-once, so increments are tiny) | The encrypted files |
 | Retention | **Never `restic forget`**: every snapshot is kept. Dedup keeps growth ≈ new uploads only | No data loss, years later |
-| Location | **Off the server** (the shared server has a single disk). Target is TBD with IT: college NAS, another Tailscale machine, or S3-compatible cloud | A backup on the same disk isn't a backup |
+| Location | **Off the server** (the shared server has a single disk). **Assumed: the college NAS** (not yet confirmed by IT). The restic repository URL is configuration (`RESTIC_REPOSITORY`: SFTP, SMB mount, or S3), so the target can change without code changes | A backup on the same disk isn't a backup |
 | Restore drill | Monthly: restore the latest snapshot into a scratch stack, open a few documents | An untested backup is a hope, not a backup |
 
 **KEK custody (most important):** every file is encrypted under the KEK. **If the KEK is lost, every document and every backup becomes unreadable forever.**
@@ -210,7 +211,7 @@ CREATE TABLE document_versions (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id       uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   version_no        int  NOT NULL,
-  storage_key       text NOT NULL UNIQUE,           -- MinIO object key (random, no filename)
+  storage_key       text NOT NULL UNIQUE,           -- BlobStore key (random, no filename)
   original_filename text NOT NULL,
   mime_type         text NOT NULL,
   size_bytes        bigint NOT NULL,
@@ -594,7 +595,7 @@ ADMIN: /admin/reports/missing-numbers?year=2568&series=E
 
 1. **Spike: Thai search.** ICU `th-TH` + pg_trgm basics verified on synthetic text (2026-10-27). Still to do: re-test on real Thai OCR output and decide whether the PyThaiNLP fallback is needed.
 2. **Spike: OCR + checkboxes.** On the server: Tesseract `tha+eng` accuracy on the sample (rendered vs. text layer), checkbox detection + fill threshold, and strikethrough removal. Typed ☑ only (no pen-tick samples).
-3. Docker Compose (postgres, minio, api, worker) + Alembic baseline migration from §3.
+3. Docker Compose (postgres, api, worker; blobs volume) + Alembic baseline migration from §3.
 4. Auth (local identities, sessions, roles) + admin user CLI bootstrap.
 5. Upload/download with envelope encryption + versions.
 6. Worker + jobs queue + auto-fill pipeline (§6) + review/confirm flow.
@@ -605,5 +606,5 @@ ADMIN: /admin/reports/missing-numbers?year=2568&series=E
 
 ## 9. Open questions
 
-- **For the IT team**: backup target (NAS / other machine / cloud) and who holds the KEK copies.
+- **For the IT team**: confirm the college NAS as backup target (assumed) and how to reach it (SFTP / SMB / S3); who holds the KEK copies.
 - **For the IT team**: SSO protocol of the college system (OIDC, SAML, LDAP, or a trusted reverse-proxy header) → which `AuthProvider` to implement. Do SSO users get auto-created as `user` on first login, or must ADMIN pre-create them?

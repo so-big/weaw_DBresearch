@@ -1,0 +1,49 @@
+[project]
+name = "dbresearch"
+version = "0.1.0"
+description = "Encrypted document store for department contracts and research grants"
+authors = [
+    { name = "someact", email = "sharpbyact@gmail.com" }
+]
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "alembic>=1.20.1",
+    "fastapi>=0.162.0",
+    "psycopg[binary]>=3.3.6",
+    "pydantic-settings>=2.16.1",
+    "sqlalchemy>=2",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.optional-dependencies]
+worker = [
+    "numpy>=2.5.4",
+    "opencv-python-headless>=5.0.0.93",
+    "pillow>=13.0.0",
+    "pypdfium2>=5.14.0",
+    "pytesseract>=0.3.13",
+    "pythainlp>=5.4.0",
+    "rapidfuzz>=3.14.6",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.16.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["db: needs a running PostgreSQL (DATABASE_URL); run on the server"]

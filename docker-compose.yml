@@ -1,0 +1,54 @@
+# DBresearch stack. The server is shared: only 127.0.0.1 ports, unique project name.
+name: dbresearch
+
+x-app: &app
+  build: .
+  image: dbresearch-app:dev
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
+    BLOB_DIR: /data/blobs
+  volumes:
+    - blobs:/data/blobs
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:17.11
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dbresearch
+      POSTGRES_USER: dbresearch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # ICU th-TH is required for pg_trgm to index Thai text (DESIGN §5).
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale-provider=icu --icu-locale=th-TH --locale=C.UTF-8
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbresearch -d dbresearch"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *app
+    ports:
+      - "127.0.0.1:8120:8000"
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "dbresearch.worker"]
+    # Decrypted files may only exist in memory-backed storage (CLAUDE.md rule).
+    tmpfs:
+      - /tmp/work:size=1g,mode=0700,uid=10001,gid=10001
+    volumes:
+      - blobs:/data/blobs
+      # Confidential samples for OCR experiments; gitignored, never baked into the image.
+      - ./samples:/samples:ro
+
+volumes:
+  pgdata:
+  blobs:

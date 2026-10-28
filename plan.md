@@ -12,7 +12,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 1. Write code on this machine. Run only light checks here (ruff, quick unit tests). This machine is too weak for the full stack.
 2. Commit + push to `main` on https://github.com/someact/DBresearch.git.
 3. Deploy on the server: `ssh cs31@100.104.87.92 'cd ~/dbresearch && git pull && docker compose up -d --build'`.
-4. Run heavy tests on the server (Postgres, MinIO, OCR): `docker compose exec api uv run pytest`.
+4. Run heavy tests on the server (Postgres, OCR): `docker compose exec api uv run pytest`.
 5. Secrets (`.env`, KEK file) live **only on the server** in `~/dbresearch/.env` / `~/dbresearch/secrets/`, never in git.
 
 ## Environment facts (checked 2026-10-27)
@@ -52,12 +52,13 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Package = contract body + `เอกสารแนบ 1–5`. Auto-fill only from the body, att. 1 (money: total) and att. 5 (proposal: titles, checkboxes, team). Att. 2–4 are OCR'd for search only.
 - [x] OCR text stored **unencrypted** in the DB: accepted (low-sensitivity; files themselves stay encrypted).
 - [x] Login: the **IT team integrates college SSO**. We build a minimal swappable `AuthProvider` (local login for dev/demo only); roles live in our DB.
-- [x] Backups **kept forever** (never prune), off the server, nightly `pg_dump` + MinIO via restic. **KEK backed up separately**; losing it = losing every file.
+- [x] Backups **kept forever** (never prune), off the server, nightly `pg_dump` + blob folder via restic, to the college NAS (assumed). **KEK backed up separately**; losing it = losing every file.
+- [x] File store: **local folder + `BlobStore` interface** (MinIO discontinued 2026-04).
 - [x] Production uploads: **scanner PDFs only**. Auto-fill is assistive; anything wrong or missing is typed by the user on the review screen.
 
 ## Decisions still open
 
-- [?] **Backup target** (IT team): NAS, another machine, or cloud. Off the server in any case.
+- [?] **Backup target** (IT team): **assumed college NAS**; access method still unknown (`RESTIC_REPOSITORY` is configurable).
 - [?] **SSO protocol** (IT team): OIDC / SAML / LDAP / proxy header → which `AuthProvider` to build.
 - [?] **Frontend stack**: decide when the frontend phase starts (must work well on low-end phones).
 
@@ -70,7 +71,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [ ] Spike: checkbox detection + fill threshold + strikethrough removal (on the server)
 - [ ] Re-test Thai search on real OCR text, then decide on the PyThaiNLP fallback
 - [ ] Project scaffold: `pyproject.toml` (uv), ruff config, FastAPI skeleton, Dockerfile (with `tesseract-ocr-tha`, poppler)
-- [ ] `docker-compose.yml`: postgres (ICU th-TH), minio, api (`127.0.0.1:8120`), worker
+- [ ] `docker-compose.yml`: postgres (ICU th-TH), api (`127.0.0.1:8120`), worker, `blobs` volume
 - [ ] Alembic baseline migration from DESIGN §3 + seed categories from DESIGN §6
 - [ ] pytest against a throwaway Postgres on the server
 

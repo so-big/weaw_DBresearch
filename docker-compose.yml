@@ -14,6 +14,8 @@ x-app: &app
   depends_on:
     db:
       condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
 
 services:
   db:
@@ -32,6 +34,19 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  # One-shot: bring the schema to the latest migration before api/worker start.
+  migrate:
+    build: .
+    image: dbresearch-app:dev
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
 
   api:
     <<: *app

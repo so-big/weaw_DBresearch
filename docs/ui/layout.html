@@ -1,0 +1,561 @@
+<title>DBresearch Layout and Upload</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kanit:wght@500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: reading column; two live mocks (PC browser with top tabs, phone with bottom bar) that share one upload flow; motion rules last. */
+:root{
+  --m-300:#DB8C9E;
+  --bg:#F8F6F6; --surface:#FFFFFF; --subtle:#F1EDEE; --border:#E3DCDE;
+  --text:#22181B; --muted:#6E6266;
+  --primary:#8B1538; --primary-hover:#741030; --on-primary:#FFFFFF;
+  --primary-soft:#FBF1F3; --primary-text:#8B1538;
+  --accent:#C99A2E; --accent-soft:#FBF3DC; --accent-text:#7A5A0A;
+  --mark:#FDE9A8; --mark-text:#22181B;
+  --ok:#1F7A4D; --ok-soft:#E5F4EC; --warn:#A15C00; --warn-soft:#FDF1DC;
+  --bad:#C4320A; --bad-soft:#FDE8E1; --info:#2563A8; --info-soft:#E6EEF8;
+  --scrim:rgba(34,24,27,.42); --chrome:#ECE7E8; --frame:#1b1517;
+  --f-display:"Kanit","IBM Plex Sans Thai",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans Thai","Noto Sans Thai",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+  --ease-out:cubic-bezier(.2,.8,.2,1);
+  --t-fast:150ms; --t-med:220ms;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#171214; --surface:#211A1C; --subtle:#2A2124; --border:#3A2E32;
+    --text:#F2ECEE; --muted:#A8999E;
+    --primary:#C23A62; --primary-hover:#D24C73; --on-primary:#FFFFFF;
+    --primary-soft:#3A1B25; --primary-text:#EE8FA8; --m-300:#7A3046;
+    --accent:#E3B955; --accent-soft:#3A3018; --accent-text:#E8C76F;
+    --mark:#5C4A12; --mark-text:#FFF6DA;
+    --ok:#5BC48C; --ok-soft:#173226; --warn:#E9A23B; --warn-soft:#3A2A12;
+    --bad:#F07A54; --bad-soft:#3D1D14; --info:#7AAEE8; --info-soft:#18283C;
+    --scrim:rgba(0,0,0,.55); --chrome:#2A2124; --frame:#000;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#171214; --surface:#211A1C; --subtle:#2A2124; --border:#3A2E32;
+  --text:#F2ECEE; --muted:#A8999E;
+  --primary:#C23A62; --primary-hover:#D24C73; --on-primary:#FFFFFF;
+  --primary-soft:#3A1B25; --primary-text:#EE8FA8; --m-300:#7A3046;
+  --accent:#E3B955; --accent-soft:#3A3018; --accent-text:#E8C76F;
+  --mark:#5C4A12; --mark-text:#FFF6DA;
+  --ok:#5BC48C; --ok-soft:#173226; --warn:#E9A23B; --warn-soft:#3A2A12;
+  --bad:#F07A54; --bad-soft:#3D1D14; --info:#7AAEE8; --info-soft:#18283C;
+  --scrim:rgba(0,0,0,.55); --chrome:#2A2124; --frame:#000;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--f-body);font-size:15px;line-height:1.6}
+.wrap{max-width:1120px;margin:0 auto;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;text-wrap:balance;margin:0;line-height:1.25}
+h1{font-size:30px} h2{font-size:21px} h3{font-size:16px;font-weight:500}
+p{margin:0;max-width:70ch}
+.lede{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:16px}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,label:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+.cap{font-size:13px;color:var(--muted);margin-top:8px}
+.cno{font-family:var(--f-mono);font-size:12.5px;color:var(--primary-text)}
+mark{background:var(--mark);color:var(--mark-text);border-radius:3px;padding:0 2px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:1px 9px 1px 7px;border-radius:999px;white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.b-proc{background:var(--info-soft);color:var(--info)} .b-rev{background:var(--warn-soft);color:var(--warn)}
+.b-ok{background:var(--ok-soft);color:var(--ok)} .b-bad{background:var(--bad-soft);color:var(--bad)}
+
+.mocks{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:28px;align-items:start}
+@media (max-width:980px){.mocks{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- PC browser mock ---------- */
+.pc-scroll{overflow-x:auto;border-radius:12px;border:1px solid var(--border);box-shadow:0 24px 48px -30px rgba(40,10,20,.45)}
+.pc{min-width:740px;background:var(--bg)}
+.chrome{background:var(--chrome);display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:12px;color:var(--muted)}
+.dots{display:flex;gap:6px} .dots i{width:10px;height:10px;border-radius:50%;background:var(--border)}
+.url{flex:1;background:var(--surface);border-radius:6px;padding:3px 10px;font-family:var(--f-mono);font-size:11.5px}
+.app{position:relative;overflow:hidden;height:520px;display:flex;flex-direction:column}
+.strip{height:3px;background:var(--primary);flex:none}
+.top{display:flex;align-items:center;gap:18px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);height:56px;flex:none}
+.brand{font-family:var(--f-display);font-weight:600;color:var(--primary-text);font-size:15px;white-space:nowrap}
+.tabs{position:relative;display:flex;gap:4px;height:100%}
+.tab{border:0;background:none;padding:0 12px;height:100%;font-size:14px;color:var(--muted);display:flex;align-items:center;gap:6px;transition:color var(--t-fast)}
+.tab[aria-selected="true"]{color:var(--text);font-weight:600}
+.tab:hover{color:var(--text)}
+.ind{position:absolute;left:0;bottom:-1px;height:3px;width:1px;background:var(--primary);border-radius:3px 3px 0 0;transform-origin:left;transition:transform var(--t-med) var(--ease-out)}
+.count{font-size:11px;font-weight:600;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--warn-soft);color:var(--warn);display:inline-grid;place-items:center}
+.count.pop{animation:pop 320ms var(--ease-out)}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
+.top .sp{flex:1}
+.qbox{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:6px 10px;font-size:13px;color:var(--muted);width:210px}
+.qbox kbd{margin-left:auto;font-family:var(--f-mono);font-size:10.5px;border:1px solid var(--border);border-radius:4px;padding:0 4px}
+.btn{border:0;border-radius:10px;padding:8px 14px;background:var(--primary);color:var(--on-primary);font-weight:600;font-size:13.5px;white-space:nowrap;transition:background var(--t-fast),transform var(--t-fast)}
+.btn:hover{background:var(--primary-hover)} .btn:active{transform:scale(.97)}
+.btn[disabled]{opacity:.45;cursor:default;transform:none}
+.ghost{border:1px solid var(--border);border-radius:10px;padding:8px 14px;background:var(--surface);color:var(--text);font-weight:500;font-size:13.5px}
+.ghost:hover{background:var(--subtle)}
+.pill{display:none;align-items:center;gap:8px;border:1px solid var(--border);background:var(--surface);border-radius:999px;padding:4px 10px 4px 8px;font-size:12px;color:var(--muted)}
+.pill.on{display:inline-flex;animation:fadeup var(--t-med) var(--ease-out)}
+.ring{width:14px;height:14px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--primary);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.view{flex:1;overflow:auto;padding:18px 20px}
+.pane{display:none}
+.pane.on{display:block;animation:fadeup var(--t-med) var(--ease-out)}
+@keyframes fadeup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.list{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.row{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:14px;padding:11px 14px;border-top:1px solid var(--border);align-items:start;transition:background var(--t-fast)}
+.row:first-child{border-top:0}
+.row:hover{background:var(--subtle)}
+.row .t{font-weight:500;font-size:13.5px}
+.row .s{font-size:12px;color:var(--muted)}
+.row .meta{font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:3px;align-items:flex-end}
+.row.new,.card.new{animation:rowin 420ms var(--ease-out)}
+@keyframes rowin{from{opacity:0;transform:translateY(-6px);background:var(--accent-soft)}to{opacity:1;transform:none}}
+.adm{display:grid;grid-template-columns:180px minmax(0,1fr);gap:18px;align-items:start}
+.subnav{display:flex;flex-direction:column;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px}
+.subnav span{padding:6px 10px;border-radius:8px;font-size:13px;color:var(--text)}
+.subnav span.on{background:var(--primary-soft);color:var(--primary-text);font-weight:600}
+.ph{display:grid;place-items:center;height:240px;color:var(--muted);font-size:14px;text-align:center}
+.drophint{position:absolute;inset:62px 14px 14px;border:2px dashed var(--primary);border-radius:14px;background:var(--primary-soft);display:grid;place-items:center;font-family:var(--f-display);font-size:18px;color:var(--primary-text);opacity:0;pointer-events:none;transition:opacity var(--t-fast);z-index:4}
+.app.dragging .drophint{opacity:.94}
+
+/* ---------- Upload modal (shared) ---------- */
+.scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity var(--t-med) var(--ease-out);z-index:8}
+.modal{position:absolute;z-index:9;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:14px;padding:18px;opacity:0;pointer-events:none;transition:opacity var(--t-med) var(--ease-out),transform var(--t-med) var(--ease-out)}
+.host.open .scrim{opacity:1;pointer-events:auto}
+.host.open .modal{opacity:1;pointer-events:auto;transform:none}
+.pc .modal{left:50%;top:50%;width:480px;max-height:440px;margin:-220px 0 0 -240px;height:440px;border-radius:16px;transform:scale(.96) translateY(8px);box-shadow:0 30px 60px -20px rgba(20,5,10,.45)}
+.phone .modal{left:0;right:0;bottom:0;max-height:88%;border-radius:20px 20px 0 0;transform:translateY(100%);padding-bottom:22px}
+.mh{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mh h3{font-size:17px}
+.x{border:0;background:var(--subtle);width:30px;height:30px;border-radius:50%;font-size:15px;line-height:1;color:var(--muted)}
+.dz{border:2px dashed var(--m-300);border-radius:14px;background:var(--primary-soft);padding:18px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;transition:transform var(--t-fast) var(--ease-out),border-color var(--t-fast);flex:none}
+.dz.over{transform:scale(1.015);border-color:var(--primary)}
+.dz b{font-family:var(--f-display);font-weight:500;font-size:15px}
+.dz small{color:var(--muted);font-size:12px}
+.dz .acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.dz label.btn{cursor:pointer}
+.dz input{position:absolute;width:1px;height:1px;opacity:0}
+.queue{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0;flex:1}
+.q{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:8px 4px;border-bottom:1px solid var(--border);animation:fadeup var(--t-med) var(--ease-out)}
+.q .n{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q .st{font-size:11.5px;color:var(--muted);grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.q .sz{font-size:11.5px;color:var(--muted);font-family:var(--f-mono)}
+.q .bar{grid-column:1/-1;height:4px;background:var(--subtle);border-radius:2px;overflow:hidden;transition:opacity var(--t-med)}
+.q .bar i{display:block;height:100%;background:var(--primary);transform:scaleX(0);transform-origin:left;transition:transform 260ms linear}
+.q.done .bar{opacity:0}
+.q a{color:var(--primary-text);font-weight:500;text-decoration:underline;cursor:pointer}
+.mf{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:12px;flex:none}
+.mf .sum{font-size:12px;color:var(--muted);flex:1;min-width:150px;line-height:1.45}
+.empty{font-size:12.5px;color:var(--muted);text-align:center;padding:10px}
+
+.toast{position:absolute;left:50%;bottom:18px;transform:translate(-50%,20px);opacity:0;background:var(--text);color:var(--bg);padding:9px 14px;border-radius:10px;font-size:13px;z-index:12;transition:opacity var(--t-med) var(--ease-out),transform var(--t-med) var(--ease-out);pointer-events:none;white-space:nowrap}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.phone .toast{bottom:92px}
+
+/* ---------- Phone mock ---------- */
+.phone{width:100%;max-width:330px;margin:0 auto;border:10px solid var(--frame);border-radius:36px;overflow:hidden;background:var(--bg);box-shadow:0 24px 48px -26px rgba(40,10,20,.5)}
+.phone .app{height:640px}
+.ptop{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 10px;background:var(--surface);border-bottom:1px solid var(--border);flex:none}
+.ptop .brand{font-size:15px}
+.plus{border:0;background:var(--primary-soft);color:var(--primary-text);border-radius:10px;padding:5px 10px;font-size:13px;font-weight:600}
+.phone .view{padding:14px 12px 96px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 12px;display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+.card .t{font-size:13.5px;font-weight:500;line-height:1.4}
+.card .r{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+.lbl{font-size:12px;color:var(--muted);margin:2px 2px 8px;font-weight:600}
+.bnav{position:absolute;left:0;right:0;bottom:0;height:68px;background:var(--surface);border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(5,1fr);align-items:end;padding-bottom:8px;z-index:6}
+.bi{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;color:var(--muted);padding:6px 0 0;position:relative;transition:color var(--t-fast)}
+.bi svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bi[aria-selected="true"]{color:var(--primary-text);font-weight:600}
+.bi .count{position:absolute;top:0;right:calc(50% - 22px);font-size:9.5px;min-width:16px;height:16px}
+.fab{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:var(--primary-text);font-weight:600}
+.fab span.c{width:58px;height:58px;margin-top:-30px;border-radius:50%;background:var(--primary);display:grid;place-items:center;box-shadow:0 8px 18px -6px rgba(139,21,56,.6),0 0 0 5px var(--surface);transition:transform var(--t-fast) var(--ease-out)}
+.fab:active span.c{transform:scale(.93)}
+.fab svg{width:26px;height:26px;stroke:var(--on-primary);fill:none;stroke-width:2.2;stroke-linecap:round}
+.sheet{position:absolute;inset:0;background:var(--bg);z-index:7;transform:translateY(100%);transition:transform var(--t-med) var(--ease-out);display:flex;flex-direction:column}
+.host.searching .sheet{transform:none}
+.sh{display:flex;gap:8px;align-items:center;padding:12px;background:var(--surface);border-bottom:1px solid var(--border)}
+.sh input{flex:1;min-width:0;font:inherit;font-size:15px;padding:9px 12px;border-radius:10px;border:1px solid var(--primary);background:var(--bg);color:var(--text)}
+.sh button{border:0;background:none;color:var(--primary-text);font-size:13.5px;font-weight:500}
+.sb{padding:12px;overflow:auto;flex:1}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.chips button{border:1px solid var(--border);background:var(--surface);border-radius:999px;padding:3px 11px;font-size:12.5px}
+.dl{border:0;background:var(--primary);color:var(--on-primary);border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;align-self:flex-start;margin-top:4px}
+
+/* ---------- text sections ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.box b{font-family:var(--f-display);font-weight:500;font-size:15px}
+.box p,.box li{font-size:14px;color:var(--muted)}
+.box ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13.5px}
+.flow span{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 10px}
+.flow i{color:var(--muted);font-style:normal}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;transition-duration:1ms!important}
+  .ring{animation:none}
+}
+@media (max-width:560px){h1{font-size:25px}}
+</style>
+
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:10px">
+    <div class="eyebrow">Phase 3 · UI brainstorm · step 2 · layout and upload</div>
+    <h1>DBresearch layout and upload</h1>
+    <p class="lede">PC and tablet use top tabs. Phones use a bottom bar with a large search button in the middle, because people on phones mostly search and download. Upload is one button that opens a window for several files at once, and checking the auto-filled details can wait. Both mocks below work: try the tabs, the upload button, dragging PDFs onto the PC mock, and the phone's search button.</p>
+  </header>
+
+  <section>
+    <h2>Live mocks</h2>
+    <div class="mocks">
+      <div style="min-width:0">
+        <div class="pc-scroll">
+          <div class="pc">
+            <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url">research.eng.example/documents</span></div>
+            <div class="app host" id="pc">
+              <div class="strip"></div>
+              <div class="top">
+                <span class="brand">คลังเอกสารวิจัย</span>
+                <nav class="tabs" role="tablist" aria-label="Main">
+                  <button class="tab" role="tab" aria-selected="true" data-pane="docs">เอกสาร</button>
+                  <button class="tab" role="tab" aria-selected="false" data-pane="review">รอตรวจสอบ <span class="count" data-count>2</span></button>
+                  <button class="tab" role="tab" aria-selected="false" data-pane="shares">ลิงก์แชร์</button>
+                  <button class="tab" role="tab" aria-selected="false" data-pane="admin">ผู้ดูแลระบบ</button>
+                  <span class="ind" aria-hidden="true"></span>
+                </nav>
+                <span class="sp"></span>
+                <button class="pill" data-pill><span class="ring"></span><span data-pilltext>กำลังอัปโหลด</span></button>
+                <div class="qbox">ค้นหาเอกสาร <kbd>/</kbd></div>
+                <button class="btn" data-open-upload>อัปโหลด</button>
+              </div>
+              <div class="view">
+                <div class="pane on" data-pane="docs">
+                  <div class="list" data-list="docs">
+                    <div class="row"><span class="cno">R2568E001</span><div><div class="t">การพัฒนาระบบตรวจวัดคุณภาพน้ำแบบเรียลไทม์</div><div class="s">ทุนภายใน · ปีงบ 2568</div></div><div class="meta"><span class="badge b-ok">พร้อมใช้งาน</span>12 ต.ค. 2567</div></div>
+                    <div class="row"><span class="cno">R2568A002</span><div><div class="t">วัสดุคอมโพสิตจากเส้นใยธรรมชาติสำหรับงานก่อสร้าง</div><div class="s">ทุนภายนอก · ปีงบ 2568</div></div><div class="meta"><span class="badge b-ok">พร้อมใช้งาน</span>20 พ.ย. 2567</div></div>
+                    <div class="row"><span class="cno">R2568E004</span><div><div class="t">แบบจำลองการไหลของน้ำใต้ดินในลุ่มน้ำน่าน</div><div class="s">ทุนภายใน · ปีงบ 2568</div></div><div class="meta"><span class="badge b-rev">รอตรวจสอบ</span>3 ม.ค. 2568</div></div>
+                    <div class="row"><span class="cno">R2567E031</span><div><div class="t">ระบบจัดการพลังงานในอาคารด้วยการเรียนรู้ของเครื่อง</div><div class="s">ทุนภายใน · ปีงบ 2567</div></div><div class="meta"><span class="badge b-ok">พร้อมใช้งาน</span>8 ส.ค. 2567</div></div>
+                  </div>
+                </div>
+                <div class="pane" data-pane="review">
+                  <p class="lede" style="font-size:13px;margin-bottom:10px">เอกสารที่ระบบอ่านแล้ว รอให้คุณยืนยันข้อมูล ทำเมื่อไหร่ก็ได้ ระหว่างนี้ค้นหาและเปิดดูได้ตามปกติ</p>
+                  <div class="list" data-list="review">
+                    <div class="row"><span class="cno">R2568E004</span><div><div class="t">แบบจำลองการไหลของน้ำใต้ดินในลุ่มน้ำน่าน</div><div class="s">กรอกอัตโนมัติ 9/11 ช่อง · ขาด: ประเภททุน</div></div><div class="meta"><span class="badge b-rev">รอตรวจสอบ</span>3 ม.ค. 2568</div></div>
+                    <div class="row"><span class="cno">R2568E005</span><div><div class="t">เครื่องอบแห้งพลังงานแสงอาทิตย์สำหรับผลผลิตเกษตร</div><div class="s">กรอกอัตโนมัติ 11/11 ช่อง</div></div><div class="meta"><span class="badge b-rev">รอตรวจสอบ</span>4 ม.ค. 2568</div></div>
+                  </div>
+                </div>
+                <div class="pane" data-pane="shares"><div class="ph">ลิงก์แชร์ที่คุณสร้าง วันหมดอายุ และจำนวนครั้งที่ดาวน์โหลด</div></div>
+                <div class="pane" data-pane="admin"><div class="adm"><nav class="subnav" aria-label="Admin"><span class="on">ภาพรวม</span><span>ผู้ใช้</span><span>ลิงก์แชร์ทั้งหมด</span><span>ถังขยะ</span><span>หมวดหมู่</span><span>เทมเพลตกรอกอัตโนมัติ</span><span>เลขสัญญาที่ขาด</span><span>บันทึกการใช้งาน</span><span>ตั้งค่า</span></nav><div class="ph" style="height:auto;padding:40px 10px">Only the admin area gets a side menu, because it has nine sub-pages. Everything else stays one click from the header.</div></div></div>
+              </div>
+              <div class="drophint">วางไฟล์ PDF เพื่ออัปโหลด</div>
+            </div>
+          </div>
+        </div>
+        <p class="cap">PC / tablet (768px and wider): top tabs, search and upload always in the header. Drop files anywhere on the page to open the upload window. Example data.</p>
+      </div>
+
+      <div>
+        <div class="phone">
+          <div class="app host" id="ph">
+            <div class="ptop"><span class="brand">คลังเอกสารวิจัย</span><button class="plus" data-open-upload>+ อัปโหลด</button></div>
+            <div class="view">
+              <div class="pane on" data-pane="docs">
+                <div class="lbl">เปิดล่าสุด</div>
+                <div class="card"><div class="t">การพัฒนาระบบตรวจวัดคุณภาพน้ำแบบเรียลไทม์</div><div class="r"><span class="cno">R2568E001</span><span class="badge b-ok">พร้อมใช้งาน</span></div></div>
+                <div class="card"><div class="t">วัสดุคอมโพสิตจากเส้นใยธรรมชาติสำหรับงานก่อสร้าง</div><div class="r"><span class="cno">R2568A002</span><span class="badge b-ok">พร้อมใช้งาน</span></div></div>
+                <div class="card"><div class="t">แบบจำลองการไหลของน้ำใต้ดินในลุ่มน้ำน่าน</div><div class="r"><span class="cno">R2568E004</span><span class="badge b-rev">รอตรวจสอบ</span></div></div>
+              </div>
+              <div class="pane" data-pane="review">
+                <div class="lbl">รอตรวจสอบ</div>
+                <div data-list="review-ph">
+                  <div class="card"><div class="t">แบบจำลองการไหลของน้ำใต้ดินในลุ่มน้ำน่าน</div><div class="r"><span>ขาด: ประเภททุน</span><span class="badge b-rev">รอตรวจสอบ</span></div></div>
+                  <div class="card"><div class="t">เครื่องอบแห้งพลังงานแสงอาทิตย์สำหรับผลผลิตเกษตร</div><div class="r"><span>ครบ 11/11 ช่อง</span><span class="badge b-rev">รอตรวจสอบ</span></div></div>
+                </div>
+              </div>
+              <div class="pane" data-pane="shares"><div class="ph">ลิงก์แชร์ของฉัน</div></div>
+              <div class="pane" data-pane="me"><div class="ph">บัญชี · ธีม · ออกจากระบบ</div></div>
+            </div>
+            <div class="sheet" aria-label="Search">
+              <div class="sh"><input id="ph-q" type="search" value="ทุนวิจัย น้ำ" aria-label="ค้นหา"><button data-close-search>ยกเลิก</button></div>
+              <div class="sb">
+                <div class="chips"><button>ปีงบ 2568</button><button>ทุนภายใน</button><button>ทุนภายนอก</button><button>หมวดหมู่</button></div>
+                <div class="lbl">ผลการค้นหา 2 รายการ</div>
+                <div class="card"><div class="t">การพัฒนาระบบตรวจวัดคุณภาพ<mark>น้ำ</mark>แบบเรียลไทม์</div><div class="r" style="display:block">…ได้รับ<mark>ทุนวิจัย</mark>ประเภททุนภายใน…</div><div class="r"><span class="cno">R2568E001</span><button class="dl">ดาวน์โหลด</button></div></div>
+                <div class="card"><div class="t">แบบจำลองการไหลของ<mark>น้ำ</mark>ใต้ดินในลุ่มน้ำน่าน</div><div class="r" style="display:block">…สัญญารับ<mark>ทุนวิจัย</mark>เลขที่…</div><div class="r"><span class="cno">R2568E004</span><button class="dl">ดาวน์โหลด</button></div></div>
+              </div>
+            </div>
+            <nav class="bnav" role="tablist" aria-label="Main">
+              <button class="bi" role="tab" aria-selected="true" data-pane="docs"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>เอกสาร</button>
+              <button class="bi" role="tab" aria-selected="false" data-pane="review"><svg viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"/><rect x="4" y="4" width="16" height="16" rx="3"/></svg>รอตรวจ<span class="count" data-count>2</span></button>
+              <button class="fab" data-open-search aria-label="ค้นหา"><span class="c"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg></span>ค้นหา</button>
+              <button class="bi" role="tab" aria-selected="false" data-pane="shares"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>แชร์</button>
+              <button class="bi" role="tab" aria-selected="false" data-pane="me"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>บัญชี</button>
+            </nav>
+          </div>
+        </div>
+        <p class="cap">Phone (narrower than 768px): bottom bar, raised search button in the middle. Upload stays reachable from the header, but it isn't in the bar.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Upload flow</h2>
+    <div class="flow">
+      <span>Upload button, or drop files on the page</span><i>→</i>
+      <span>Window: drop zone + choose files</span><i>→</i>
+      <span>Each file shows its own progress and result</span><i>→</i>
+      <span><b>Review now</b> or <b>Review later</b></span>
+    </div>
+    <div class="grid">
+      <div class="box"><b>Many files at once</b><p>Files go up two at a time, so a 40-file batch doesn't freeze a slow connection. Each row shows its own progress, then one of: uploaded, already in the system (with a link to the existing document), or not a PDF.</p></div>
+      <div class="box"><b>Close it anytime</b><p>Closing the window doesn't stop the upload. A small progress pill stays in the header, and clicking it reopens the window.</p></div>
+      <div class="box"><b>Review now or later</b><p>Every new document waits in the <i>รอตรวจสอบ</i> tab with a count badge. It's searchable straight away, and its details can be edited any time. That fits moving the old archive into the system in bulk.</p></div>
+      <div class="box"><b>One rule from the backend</b><p>A document is marked ready only once its type and funding type are set. "Review later" leaves it in <i>รอตรวจสอบ</i> until then; it is never blocked or lost.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Motion rules: smooth on low-end phones</h2>
+    <div class="grid">
+      <div class="box"><b>Animate only transform and opacity</b><p>The phone's graphics chip handles these without recomputing the page layout. Never animate width, height, top/left or shadows. The tab underline above slides with a transform.</p></div>
+      <div class="box"><b>Short and quick</b><ul><li>150ms for hovers and presses</li><li>220ms for windows, sheets and switching tabs</li><li>One ease-out curve everywhere</li></ul></div>
+      <div class="box"><b>No jumping content</b><p>Space for lists, images and badges is reserved before data arrives. Grey placeholder rows show where results will appear, so the page never jumps when they load.</p></div>
+      <div class="box"><b>Feels instant</b><p>Show the result first and confirm in the background: a new file row appears the moment it's dropped. Search updates as you type, waiting 250ms after the last keystroke.</p></div>
+      <div class="box"><b>Things we skip</b><ul><li>Blurred see-through backgrounds (slow on cheap phones)</li><li>Big scroll-triggered effects</li><li>Page-wide spinners</li></ul></div>
+      <div class="box"><b>Respect the setting</b><p>When the phone or PC is set to reduce motion, everything switches instantly. Page changes use the browser's View Transitions where available, and simply switch where not.</p></div>
+    </div>
+  </section>
+</div>
+
+<template id="upload-tpl">
+  <div class="scrim" data-close-upload></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="อัปโหลดเอกสาร">
+    <div class="mh"><h3>อัปโหลดเอกสาร</h3><button class="x" data-close-upload aria-label="ปิด">✕</button></div>
+    <div class="dz">
+      <b>ลากไฟล์ PDF มาวางที่นี่</b>
+      <small>เลือกได้หลายไฟล์ · รับเฉพาะไฟล์สแกน PDF</small>
+      <div class="acts">
+        <label class="btn">เลือกไฟล์<input type="file" multiple accept="application/pdf,.pdf"></label>
+        <button class="ghost" data-sample>ลองไฟล์ตัวอย่าง</button>
+      </div>
+    </div>
+    <div class="queue"><div class="empty">ยังไม่มีไฟล์</div></div>
+    <div class="mf">
+      <span class="sum">แก้ไขข้อมูลได้ทุกเมื่อ เอกสารใหม่จะรออยู่ในแท็บ รอตรวจสอบ</span>
+      <button class="ghost" data-later disabled>ไว้ทีหลัง</button>
+      <button class="btn" data-now disabled>ตรวจเลย</button>
+    </div>
+  </div>
+  <div class="toast" role="status"></div>
+</template>
+
+<script>
+(function(){
+  var reviewCount = 2;
+  var hosts = [document.getElementById('pc'), document.getElementById('ph')];
+  var tpl = document.getElementById('upload-tpl');
+
+  function bumpCounts(){
+    document.querySelectorAll('[data-count]').forEach(function(c){
+      c.textContent = reviewCount;
+      c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop');
+    });
+  }
+
+  /* ----- tab switching (PC tabs + phone bottom bar) ----- */
+  function selectPane(host, name){
+    host.querySelectorAll('[role=tab][data-pane]').forEach(function(t){
+      t.setAttribute('aria-selected', t.dataset.pane === name ? 'true' : 'false');
+    });
+    host.querySelectorAll('.pane').forEach(function(p){ p.classList.toggle('on', p.dataset.pane === name); });
+    moveInd(host);
+  }
+  function moveInd(host){
+    var ind = host.querySelector('.ind'); if(!ind) return;
+    var t = host.querySelector('.tab[aria-selected="true"]');
+    var nav = host.querySelector('.tabs');
+    var x = t.getBoundingClientRect().left - nav.getBoundingClientRect().left + 8;
+    var w = t.getBoundingClientRect().width - 16;
+    ind.style.transform = 'translateX(' + x + 'px) scaleX(' + w + ')';
+  }
+
+  hosts.forEach(function(host){
+    host.querySelectorAll('[role=tab][data-pane]').forEach(function(t){
+      t.addEventListener('click', function(){ selectPane(host, t.dataset.pane); });
+    });
+    host.appendChild(tpl.content.cloneNode(true));
+    setupUpload(host);
+  });
+  var pc = hosts[0], ph = hosts[1];
+  requestAnimationFrame(function(){ moveInd(pc); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ moveInd(pc); });
+  window.addEventListener('resize', function(){ moveInd(pc); });
+
+  /* ----- phone search sheet ----- */
+  ph.querySelector('[data-open-search]').addEventListener('click', function(){
+    ph.classList.add('searching');
+    setTimeout(function(){ try{ document.getElementById('ph-q').focus({preventScroll:true}); }catch(e){} }, 230);
+  });
+  ph.querySelector('[data-close-search]').addEventListener('click', function(){ ph.classList.remove('searching'); });
+
+  /* ----- upload window ----- */
+  function setupUpload(host){
+    var queue = host.querySelector('.queue');
+    var input = host.querySelector('input[type=file]');
+    var dz = host.querySelector('.dz');
+    var later = host.querySelector('[data-later]');
+    var now = host.querySelector('[data-now]');
+    var sum = host.querySelector('.sum');
+    var toast = host.querySelector('.toast');
+    var pill = host.querySelector('[data-pill]');
+    var items = [];
+    var running = 0, waiting = [];
+
+    function open(){ host.classList.add('open'); if(pill) pill.classList.remove('on'); }
+    function close(){
+      host.classList.remove('open');
+      var busy = items.filter(function(i){ return i.state === 'up' || i.state === 'wait'; }).length;
+      if (busy && pill){ pill.classList.add('on'); updatePill(); }
+    }
+    function updatePill(){
+      if(!pill) return;
+      var busy = items.filter(function(i){ return i.state === 'up' || i.state === 'wait'; }).length;
+      host.querySelector('[data-pilltext]').textContent = 'กำลังอัปโหลด ' + busy + ' ไฟล์';
+      if (!busy) pill.classList.remove('on');
+    }
+    function showToast(msg){
+      toast.textContent = msg; toast.classList.add('on');
+      clearTimeout(toast._t); toast._t = setTimeout(function(){ toast.classList.remove('on'); }, 2600);
+    }
+
+    host.querySelectorAll('[data-open-upload]').forEach(function(b){ b.addEventListener('click', open); });
+    if (pill) pill.addEventListener('click', open);
+    host.querySelectorAll('[data-close-upload]').forEach(function(b){ b.addEventListener('click', close); });
+    host.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+
+    input.addEventListener('change', function(){
+      addFiles(Array.prototype.map.call(input.files, function(f){ return {name:f.name, size:f.size}; }));
+      input.value = '';
+    });
+    host.querySelector('[data-sample]').addEventListener('click', function(){
+      addFiles([
+        {name:'R2568E007 ระบบบำบัดน้ำเสีย.pdf', size:3200000},
+        {name:'R2568E008.pdf', size:5400000},
+        {name:'R2568E001 (สำเนา).pdf', size:3100000, dup:true},
+        {name:'สแกนจากมือถือ.jpg', size:1200000},
+        {name:'R2567A014 สัญญาทุนภายนอก.pdf', size:7900000}
+      ]);
+    });
+
+    /* drag & drop: onto the drop zone, or anywhere on the PC app */
+    var depth = 0;
+    host.addEventListener('dragenter', function(e){
+      if (!hasFiles(e)) return; e.preventDefault(); depth++;
+      if (!host.classList.contains('open')) host.classList.add('dragging');
+      dz.classList.add('over');
+    });
+    host.addEventListener('dragover', function(e){ if (hasFiles(e)) e.preventDefault(); });
+    host.addEventListener('dragleave', function(){ depth = Math.max(0, depth-1); if(!depth){ host.classList.remove('dragging'); dz.classList.remove('over'); } });
+    host.addEventListener('drop', function(e){
+      if (!hasFiles(e)) return; e.preventDefault(); depth = 0;
+      host.classList.remove('dragging'); dz.classList.remove('over');
+      open();
+      addFiles(Array.prototype.map.call(e.dataTransfer.files, function(f){ return {name:f.name, size:f.size}; }));
+    });
+    function hasFiles(e){ return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1; }
+
+    function fmt(n){ return n >= 1e6 ? (n/1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(n/1e3)) + ' KB'; }
+
+    function addFiles(list){
+      if (!list.length) return;
+      var empty = queue.querySelector('.empty'); if (empty) empty.remove();
+      list.forEach(function(f){
+        var it = {name:f.name, size:f.size, dup:!!f.dup || /E001/.test(f.name), p:0, state:'wait'};
+        var el = document.createElement('div'); el.className = 'q';
+        el.innerHTML = '<span class="n"></span><span class="sz"></span><span class="st"></span><span class="bar"><i></i></span>';
+        el.querySelector('.n').textContent = f.name;
+        el.querySelector('.sz').textContent = fmt(f.size);
+        it.el = el; queue.appendChild(el);
+        if (!/\.pdf$/i.test(f.name)){ it.state = 'bad'; }
+        else { waiting.push(it); }
+        items.push(it); paint(it);
+      });
+      queue.scrollTop = queue.scrollHeight;
+      pump(); footer();
+    }
+    function pump(){
+      while (running < 2 && waiting.length){
+        var it = waiting.shift(); running++; it.state = 'up'; paint(it); run(it);
+      }
+      updatePill();
+    }
+    function run(it){
+      var step = function(){
+        it.p = Math.min(1, it.p + 0.08 + Math.random() * 0.12);
+        paint(it);
+        if (it.p < 1){ it._t = setTimeout(step, 180); return; }
+        running--;
+        if (it.dup){ it.state = 'dup'; }
+        else {
+          it.state = 'ok'; reviewCount++; bumpCounts(); addReviewRows(it.name);
+        }
+        paint(it); pump(); footer();
+      };
+      it._t = setTimeout(step, 160);
+    }
+    function paint(it){
+      var st = it.el.querySelector('.st'), bar = it.el.querySelector('.bar i');
+      bar.style.transform = 'scaleX(' + it.p + ')';
+      it.el.classList.toggle('done', it.state === 'ok' || it.state === 'dup' || it.state === 'bad');
+      if (it.state === 'wait') st.textContent = 'รอคิว';
+      else if (it.state === 'up') st.textContent = 'กำลังอัปโหลด ' + Math.round(it.p * 100) + '%';
+      else if (it.state === 'ok') st.innerHTML = '<span class="badge b-proc">อัปโหลดแล้ว · กำลังอ่านเอกสาร</span>';
+      else if (it.state === 'dup') st.innerHTML = '<span class="badge b-rev">มีเอกสารนี้แล้ว (R2568E001)</span><a>เปิดเอกสารเดิม</a>';
+      else if (it.state === 'bad') st.innerHTML = '<span class="badge b-bad">รับเฉพาะไฟล์ PDF</span>';
+    }
+    function footer(){
+      var busy = items.some(function(i){ return i.state === 'up' || i.state === 'wait'; });
+      var ok = items.filter(function(i){ return i.state === 'ok'; }).length;
+      var done = items.filter(function(i){ return i.state !== 'up' && i.state !== 'wait'; }).length;
+      later.disabled = now.disabled = busy || !ok;
+      now.textContent = ok ? 'ตรวจเลย (' + ok + ')' : 'ตรวจเลย';
+      sum.textContent = busy
+        ? 'เสร็จ ' + done + ' จาก ' + items.length + ' ไฟล์ · ปิดหน้าต่างได้ การอัปโหลดจะทำต่อเบื้องหลัง'
+        : (ok ? 'อัปโหลดแล้ว ' + ok + ' ไฟล์ · แก้ไขข้อมูลได้ทุกเมื่อ เอกสารรออยู่ในแท็บ รอตรวจสอบ'
+              : 'แก้ไขข้อมูลได้ทุกเมื่อ เอกสารใหม่จะรออยู่ในแท็บ รอตรวจสอบ');
+    }
+    function reset(){
+      items.forEach(function(i){ clearTimeout(i._t); });
+      items = []; waiting = []; running = 0;
+      queue.innerHTML = '<div class="empty">ยังไม่มีไฟล์</div>';
+      footer(); updatePill();
+    }
+    later.addEventListener('click', function(){
+      var ok = items.filter(function(i){ return i.state === 'ok'; }).length;
+      close(); reset();
+      showToast('อัปโหลดแล้ว ' + ok + ' ไฟล์ · รออยู่ในแท็บ รอตรวจสอบ');
+    });
+    now.addEventListener('click', function(){
+      close(); reset(); selectPane(host, 'review');
+    });
+  }
+
+  /* new uploads appear in the review lists of both mocks */
+  function addReviewRows(name){
+    var title = name.replace(/\.pdf$/i, '');
+    var row = document.createElement('div'); row.className = 'row new';
+    row.innerHTML = '<span class="cno">—</span><div><div class="t"></div><div class="s">ระบบกำลังอ่านเอกสาร</div></div><div class="meta"><span class="badge b-proc">กำลังอ่านเอกสาร</span>วันนี้</div>';
+    row.querySelector('.t').textContent = title;
+    var m = title.match(/R\d{4}[EA]\d{3}/); if (m) row.querySelector('.cno').textContent = m[0];
+    var l = document.querySelector('[data-list=review]'); l.insertBefore(row, l.firstChild);
+    var card = document.createElement('div'); card.className = 'card new';
+    card.innerHTML = '<div class="t"></div><div class="r"><span>กำลังอ่านเอกสาร</span><span class="badge b-proc">กำลังอ่าน</span></div>';
+    card.querySelector('.t').textContent = title;
+    var lp = document.querySelector('[data-list=review-ph]'); lp.insertBefore(card, lp.firstChild);
+  }
+})();
+</script>

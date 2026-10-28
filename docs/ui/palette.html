@@ -1,0 +1,338 @@
+<title>DBresearch Color Palette</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kanit:wght@500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one reading column — palette tokens, then usage rule, then phone + desktop mocks driven by the same tokens. */
+:root{
+  /* brand maroon scale (600 = faculty maroon) */
+  --m-50:#FBF1F3; --m-100:#F5DEE3; --m-200:#EBBBC6; --m-300:#DB8C9E; --m-400:#C25A73;
+  --m-500:#A8284A; --m-600:#8B1538; --m-700:#741030; --m-800:#5C0C26; --m-900:#3F081A;
+
+  /* roles (light) */
+  --bg:#F8F6F6; --surface:#FFFFFF; --subtle:#F1EDEE; --border:#E3DCDE;
+  --text:#22181B; --muted:#6E6266;
+  --primary:#8B1538; --primary-hover:#741030; --on-primary:#FFFFFF;
+  --primary-soft:#FBF1F3; --primary-text:#8B1538;
+  --accent:#C99A2E; --accent-soft:#FBF3DC; --accent-text:#7A5A0A;
+  --mark:#FDE9A8; --mark-text:#22181B;
+  --ok:#1F7A4D; --ok-soft:#E5F4EC;
+  --warn:#A15C00; --warn-soft:#FDF1DC;
+  --bad:#C4320A; --bad-soft:#FDE8E1;
+  --info:#2563A8; --info-soft:#E6EEF8;
+  --focus:#C99A2E;
+
+  --f-display:"Kanit","IBM Plex Sans Thai",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans Thai","Noto Sans Thai",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#171214; --surface:#211A1C; --subtle:#2A2124; --border:#3A2E32;
+    --text:#F2ECEE; --muted:#A8999E;
+    --primary:#C23A62; --primary-hover:#D24C73; --on-primary:#FFFFFF;
+    --primary-soft:#3A1B25; --primary-text:#EE8FA8;
+    --accent:#E3B955; --accent-soft:#3A3018; --accent-text:#E8C76F;
+    --mark:#5C4A12; --mark-text:#FFF6DA;
+    --ok:#5BC48C; --ok-soft:#173226;
+    --warn:#E9A23B; --warn-soft:#3A2A12;
+    --bad:#F07A54; --bad-soft:#3D1D14;
+    --info:#7AAEE8; --info-soft:#18283C;
+    --focus:#E3B955;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#171214; --surface:#211A1C; --subtle:#2A2124; --border:#3A2E32;
+  --text:#F2ECEE; --muted:#A8999E;
+  --primary:#C23A62; --primary-hover:#D24C73; --on-primary:#FFFFFF;
+  --primary-soft:#3A1B25; --primary-text:#EE8FA8;
+  --accent:#E3B955; --accent-soft:#3A3018; --accent-text:#E8C76F;
+  --mark:#5C4A12; --mark-text:#FFF6DA;
+  --ok:#5BC48C; --ok-soft:#173226;
+  --warn:#E9A23B; --warn-soft:#3A2A12;
+  --bad:#F07A54; --bad-soft:#3D1D14;
+  --info:#7AAEE8; --info-soft:#18283C;
+  --focus:#E3B955;
+  color-scheme:dark;
+}
+/* highlight option overrides (set on <html data-hl="...">) */
+:root[data-hl="teal"]{ --accent:#1C7C7D; --accent-soft:#E2F2F2; --accent-text:#145E5F; --focus:#1C7C7D; }
+:root[data-hl="none"]{ --accent:var(--m-400); --accent-soft:var(--primary-soft); --accent-text:var(--primary-text); --focus:var(--m-400); }
+@media (prefers-color-scheme: dark){
+  :root[data-hl="teal"]:not([data-theme="light"]){ --accent:#4FB8B8; --accent-soft:#163233; --accent-text:#7FD0D0; --focus:#4FB8B8; }
+}
+:root[data-theme="dark"][data-hl="teal"]{ --accent:#4FB8B8; --accent-soft:#163233; --accent-text:#7FD0D0; --focus:#4FB8B8; }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--f-body);font-size:15px;line-height:1.6}
+.wrap{max-width:1080px;margin:0 auto;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;text-wrap:balance;margin:0;line-height:1.25}
+h1{font-size:30px}
+h2{font-size:21px}
+h3{font-size:16px;font-weight:500}
+p{margin:0;max-width:68ch}
+.lede{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:16px}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+code,.hex{font-family:var(--f-mono);font-size:12px}
+
+/* controls */
+.controls{display:flex;flex-wrap:wrap;gap:20px;align-items:center;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.seg{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.seg span{font-size:13px;color:var(--muted);margin-right:6px}
+.seg button{font:inherit;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* swatches */
+.scale{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));border-radius:10px;overflow:hidden;border:1px solid var(--border)}
+.scale div{height:72px;padding:6px;display:flex;flex-direction:column;justify-content:flex-end;font-size:11px;line-height:1.3}
+.scale .main{outline:3px solid var(--accent);outline-offset:-3px}
+.roles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.role{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px}
+.chip{width:44px;height:44px;border-radius:8px;flex:none;border:1px solid var(--border)}
+.role b{display:block;font-weight:600;font-size:14px}
+.role small{color:var(--muted);font-size:12.5px;line-height:1.4;display:block}
+.ratio{display:grid;grid-template-columns:60fr 30fr 10fr;height:40px;border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.ratio div{display:flex;align-items:center;padding:0 10px;font-size:12.5px}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.rule{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.rule p{font-size:14px;color:var(--muted)}
+.do{color:var(--ok);font-weight:600}
+.dont{color:var(--bad);font-weight:600}
+
+/* status badges */
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;padding:2px 10px 2px 8px;border-radius:999px;white-space:nowrap}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.b-proc{background:var(--info-soft);color:var(--info)}
+.b-rev{background:var(--warn-soft);color:var(--warn)}
+.b-ok{background:var(--ok-soft);color:var(--ok)}
+.b-bad{background:var(--bad-soft);color:var(--bad)}
+.badges{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+
+/* mocks */
+.mocks{display:grid;grid-template-columns:340px minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:860px){.mocks{grid-template-columns:minmax(0,1fr)}}
+.cap{font-size:13px;color:var(--muted);margin-top:8px}
+
+.phone{width:100%;max-width:340px;border:10px solid #1b1517;border-radius:34px;overflow:hidden;background:var(--bg);box-shadow:0 20px 40px -24px rgba(40,10,20,.45)}
+.p-top{background:var(--primary);color:var(--on-primary);padding:10px 16px;font-size:12px;display:flex;justify-content:space-between}
+.p-body{padding:18px 16px 22px;display:flex;flex-direction:column;gap:14px}
+.p-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.p-title{font-family:var(--f-display);font-weight:500;font-size:17px;line-height:1.35}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0}
+.cno{font-family:var(--f-mono);font-size:13px;color:var(--primary-text)}
+.btn{font:inherit;font-weight:600;border:0;border-radius:12px;padding:14px 16px;background:var(--primary);color:var(--on-primary);cursor:pointer;width:100%;font-size:15px}
+.btn:hover{background:var(--primary-hover)}
+.btn-ghost{background:transparent;color:var(--primary-text);border:1px solid var(--border);padding:12px 16px}
+.btn-ghost:hover{background:var(--primary-soft)}
+.note{font-size:12.5px;color:var(--muted);text-align:center}
+.expiry{display:inline-flex;gap:6px;align-items:center;background:var(--accent-soft);color:var(--accent-text);font-size:12.5px;padding:4px 10px;border-radius:999px;align-self:flex-start;font-weight:500}
+
+.desk-scroll{overflow-x:auto;border-radius:12px;border:1px solid var(--border);box-shadow:0 20px 40px -28px rgba(40,10,20,.4)}
+.desk{min-width:700px;background:var(--bg);display:grid;grid-template-columns:190px 1fr;grid-template-rows:auto 1fr}
+.d-strip{grid-column:1/-1;height:4px;background:var(--primary)}
+.d-side{background:var(--surface);border-right:1px solid var(--border);padding:16px 10px;display:flex;flex-direction:column;gap:2px}
+.d-brand{font-family:var(--f-display);font-weight:600;color:var(--primary-text);font-size:15px;line-height:1.3;padding:0 8px 14px}
+.d-brand small{display:block;font-family:var(--f-body);font-weight:400;color:var(--muted);font-size:11.5px}
+.nav{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-size:13.5px;color:var(--text)}
+.nav.on{background:var(--primary-soft);color:var(--primary-text);font-weight:600;box-shadow:inset 3px 0 0 var(--primary)}
+.nav .n{margin-left:auto;font-size:11.5px;background:var(--warn-soft);color:var(--warn);padding:0 7px;border-radius:999px}
+.d-main{padding:18px 22px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.d-head{display:flex;gap:10px;align-items:center}
+.search{flex:1;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:14px}
+.search .q{color:var(--text)}
+.search kbd{margin-left:auto;font-family:var(--f-mono);font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 5px}
+.btn-sm{font:inherit;font-size:13.5px;font-weight:600;border:0;border-radius:10px;padding:9px 14px;background:var(--primary);color:var(--on-primary);white-space:nowrap}
+.filters{display:flex;gap:8px;flex-wrap:wrap}
+.f{font-size:12.5px;padding:3px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--muted)}
+.f.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text);font-weight:500}
+.drop{border:2px dashed var(--m-300);background:var(--primary-soft);border-radius:12px;padding:14px;display:flex;align-items:center;gap:12px;font-size:13.5px}
+.drop b{color:var(--primary-text)}
+.drop .bar{flex:1;height:6px;background:var(--surface);border-radius:3px;overflow:hidden;max-width:180px}
+.drop .bar i{display:block;width:62%;height:100%;background:var(--primary)}
+.list{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.row{display:grid;grid-template-columns:100px minmax(0,1fr) auto;gap:14px;padding:12px 14px;border-top:1px solid var(--border);align-items:start}
+.row:first-child{border-top:0}
+.row:hover{background:var(--subtle)}
+.row .t{font-weight:500;font-size:14px}
+.row .s{font-size:12.5px;color:var(--muted);margin-top:2px}
+mark{background:var(--mark);color:var(--mark-text);border-radius:3px;padding:0 2px}
+.row .meta{font-size:12px;color:var(--muted);text-align:right;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+
+.open{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.open div{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:14px}
+.open b{display:block;font-family:var(--f-display);font-weight:500;margin-bottom:4px}
+.open span{color:var(--muted)}
+@media (max-width:560px){.scale{grid-template-columns:repeat(5,minmax(0,1fr))}h1{font-size:25px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:10px">
+    <div class="eyebrow">Phase 3 · UI brainstorm · step 1 of 5</div>
+    <h1>DBresearch color palette</h1>
+    <p class="lede">The faculty maroon is the brand color, used sparingly so long document lists stay calm. A warm off-white base, one highlight color for focus and selection, a yellow search-hit marker, and status colors that never get confused with the maroon. Switch the options below; every mock uses the same tokens.</p>
+  </header>
+
+  <div class="controls" role="group" aria-label="Preview options">
+    <div class="seg" id="hl-group"><span>Highlight</span>
+      <button id="hl-gold" data-hl="gold" aria-pressed="true">A · Gold</button>
+      <button id="hl-teal" data-hl="teal" aria-pressed="false">B · Teal</button>
+      <button id="hl-none" data-hl="none" aria-pressed="false">C · Maroon only</button>
+    </div>
+    <div class="seg" id="th-group"><span>Theme</span>
+      <button id="th-sys" data-th="" aria-pressed="true">System</button>
+      <button id="th-light" data-th="light" aria-pressed="false">Light</button>
+      <button id="th-dark" data-th="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+
+  <section>
+    <h2>1 · Brand maroon scale</h2>
+    <p class="lede">600 is sampled from the faculty site (top bar and title text). Lighter steps are for selected rows, the drop zone and soft fills; darker steps for hover and pressed states.</p>
+    <div class="scale" aria-label="Maroon scale">
+      <div style="background:#FBF1F3;color:#5C0C26">50<br><span class="hex">FBF1F3</span></div>
+      <div style="background:#F5DEE3;color:#5C0C26">100<br><span class="hex">F5DEE3</span></div>
+      <div style="background:#EBBBC6;color:#5C0C26">200<br><span class="hex">EBBBC6</span></div>
+      <div style="background:#DB8C9E;color:#3F081A">300<br><span class="hex">DB8C9E</span></div>
+      <div style="background:#C25A73;color:#fff">400<br><span class="hex">C25A73</span></div>
+      <div style="background:#A8284A;color:#fff">500<br><span class="hex">A8284A</span></div>
+      <div class="main" style="background:#8B1538;color:#fff">600 ★<br><span class="hex">8B1538</span></div>
+      <div style="background:#741030;color:#fff">700<br><span class="hex">741030</span></div>
+      <div style="background:#5C0C26;color:#fff">800<br><span class="hex">5C0C26</span></div>
+      <div style="background:#3F081A;color:#fff">900<br><span class="hex">3F081A</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · Roles</h2>
+    <p class="lede">What each color is for. The grays lean slightly toward the maroon, so the page doesn't look cold next to the brand color.</p>
+    <div class="roles">
+      <div class="role"><div class="chip" style="background:var(--bg)"></div><div><b>Base</b><small>Page background (warm off-white). Easier on the eyes than pure white for long sessions.</small></div></div>
+      <div class="role"><div class="chip" style="background:var(--surface)"></div><div><b>Surface</b><small>Cards, list, forms, dialogs.</small></div></div>
+      <div class="role"><div class="chip" style="background:var(--text)"></div><div><b>Text</b><small>Body text. Muted gray for labels and dates.</small></div></div>
+      <div class="role"><div class="chip" style="background:var(--primary)"></div><div><b>Primary</b><small>Main button, active nav, links, top strip. One primary button per screen.</small></div></div>
+      <div class="role"><div class="chip" style="background:var(--accent)"></div><div><b>Highlight</b><small>Keyboard focus ring, active filter, expiry chip, "new" marker. Fill only, not text.</small></div></div>
+      <div class="role"><div class="chip" style="background:var(--mark)"></div><div><b>Search hit</b><small>Matched words in search snippets (<mark>like this</mark>). Stays yellow whatever the highlight choice.</small></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>3 · Status colors</h2>
+    <p class="lede">Each document status gets its own color plus a dot and a word, so nothing depends on color alone. The error color is an orange-red, far enough from the maroon that "failed" never looks like a brand element.</p>
+    <div class="badges">
+      <span class="badge b-proc">กำลังอ่านเอกสาร (OCR)</span>
+      <span class="badge b-rev">รอตรวจสอบ</span>
+      <span class="badge b-ok">พร้อมใช้งาน</span>
+      <span class="badge b-bad">อ่านไม่สำเร็จ</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>4 · How much of each</h2>
+    <div class="ratio" aria-label="60 30 10 split">
+      <div style="background:var(--bg);color:var(--muted)">60% base + surface</div>
+      <div style="background:var(--subtle);color:var(--muted)">30% text, borders</div>
+      <div style="background:var(--primary);color:var(--on-primary)">10%</div>
+    </div>
+    <div class="rules">
+      <div class="rule"><span class="do">Do</span><p>Keep big maroon areas to the thin top strip and the one main button. Reuse the faculty site's maroon top bar idea, but slimmer.</p></div>
+      <div class="rule"><span class="dont">Avoid</span><p>The faculty site's full maroon hero banner on working screens. It pushes the document list below the fold on a phone.</p></div>
+      <div class="rule"><span class="do">Do</span><p>On the guest share page (mostly phones), make the download button full width, maroon, and at least 48px tall.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>5 · In context</h2>
+    <div class="mocks">
+      <div>
+        <div class="phone" aria-label="Phone mock: guest share page">
+          <div class="p-top"><span>คลังเอกสารวิจัย · วิศวฯ</span><span>ลิงก์แชร์</span></div>
+          <div class="p-body">
+            <div class="p-card">
+              <span class="expiry">หมดอายุ 15 พ.ย. 2569</span>
+              <div class="p-title">การพัฒนาระบบตรวจวัดคุณภาพน้ำแบบเรียลไทม์ด้วยเซนเซอร์ IoT</div>
+              <dl class="kv">
+                <dt>เลขที่สัญญา</dt><dd class="cno">R2568E001</dd>
+                <dt>ปีงบประมาณ</dt><dd>พ.ศ. 2568</dd>
+                <dt>ไฟล์</dt><dd>PDF · 24 หน้า · 3.1 MB</dd>
+              </dl>
+            </div>
+            <button class="btn" id="m-dl">ดาวน์โหลด PDF</button>
+            <button class="btn btn-ghost" id="m-view">ดูในเบราว์เซอร์</button>
+            <p class="note">ดาวน์โหลดได้อีก 3 ครั้ง</p>
+          </div>
+        </div>
+        <p class="cap">Guest share page on a phone. Example data.</p>
+      </div>
+
+      <div style="min-width:0">
+        <div class="desk-scroll">
+          <div class="desk" aria-label="Desktop mock: document list">
+            <div class="d-strip"></div>
+            <nav class="d-side">
+              <div class="d-brand">คลังเอกสารวิจัย<small>คณะวิศวกรรมศาสตร์</small></div>
+              <div class="nav on">เอกสารทั้งหมด</div>
+              <div class="nav">รอตรวจสอบ <span class="n">2</span></div>
+              <div class="nav">ลิงก์แชร์ของฉัน</div>
+              <div class="nav">ถังขยะ</div>
+              <div class="nav" style="margin-top:12px;color:var(--muted)">ผู้ดูแลระบบ</div>
+            </nav>
+            <main class="d-main">
+              <div class="d-head">
+                <div class="search"><span class="q">ทุนวิจัย น้ำ</span><kbd>/</kbd></div>
+                <span class="btn-sm">อัปโหลด</span>
+              </div>
+              <div class="filters">
+                <span class="f on">ปีงบ 2568 ✕</span><span class="f on">ทุนภายใน ✕</span><span class="f">สัญญา</span><span class="f">หมวดหมู่</span>
+              </div>
+              <div class="drop"><b>R2568E007.pdf</b><span style="color:var(--muted)">กำลังอัปโหลด…</span><span class="bar"><i></i></span></div>
+              <div class="list">
+                <div class="row"><span class="cno">R2568E001</span><div><div class="t">การพัฒนาระบบตรวจวัดคุณภาพ<mark>น้ำ</mark>แบบเรียลไทม์</div><div class="s">…ได้รับ<mark>ทุนวิจัย</mark>ประเภททุนภายใน ประจำปีงบประมาณ พ.ศ. 2568…</div></div><div class="meta"><span class="badge b-ok">พร้อมใช้งาน</span>12 ต.ค. 2567</div></div>
+                <div class="row"><span class="cno">R2568E004</span><div><div class="t">แบบจำลองการไหลของ<mark>น้ำ</mark>ใต้ดินในลุ่มน้ำน่าน</div><div class="s">…สัญญารับ<mark>ทุนวิจัย</mark>เลขที่ R2568E004…</div></div><div class="meta"><span class="badge b-rev">รอตรวจสอบ</span>3 ม.ค. 2568</div></div>
+                <div class="row"><span class="cno">R2568E006</span><div><div class="t">ระบบบำบัด<mark>น้ำ</mark>เสียชุมชนต้นทุนต่ำ</div><div class="s">กำลังอ่านข้อความจากไฟล์สแกน</div></div><div class="meta"><span class="badge b-proc">กำลังอ่านเอกสาร</span>วันนี้</div></div>
+              </div>
+            </main>
+          </div>
+        </div>
+        <p class="cap">Desktop document list with search hits, filters and an upload in progress. Example data. On a phone the sidebar becomes a bottom bar (next topic).</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Open questions for this step</h2>
+    <div class="open">
+      <div><b>Highlight color</b><span>A · Gold echoes the gold in the faculty logo and reads as "selected" without fighting the maroon. B · Teal is calmer and more neutral. C · Maroon only is the safest and simplest.</span></div>
+      <div><b>Dark mode</b><span>Tokens above already cover it. Ship it in v1 (follows the phone's setting) or light only?</span></div>
+      <div><b>Faculty logo</b><span>Show the faculty logo in the header and on guest pages, or a plain wordmark until the faculty approves it?</span></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement;
+  function press(groupId,btn){
+    document.querySelectorAll('#'+groupId+' button').forEach(function(b){b.setAttribute('aria-pressed',b===btn?'true':'false');});
+  }
+  document.querySelectorAll('#hl-group button').forEach(function(b){
+    b.addEventListener('click',function(){
+      if(b.dataset.hl==='gold') root.removeAttribute('data-hl'); else root.setAttribute('data-hl',b.dataset.hl);
+      press('hl-group',b);
+    });
+  });
+  document.querySelectorAll('#th-group button').forEach(function(b){
+    b.addEventListener('click',function(){
+      if(!b.dataset.th) root.removeAttribute('data-theme'); else root.setAttribute('data-theme',b.dataset.th);
+      press('th-group',b);
+    });
+  });
+})();
+</script>

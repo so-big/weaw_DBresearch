@@ -92,7 +92,13 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Phase 3 — Frontend (next: brainstorm first)
 
-- [ ] Brainstorm: stack, screens (upload → review → search → share), mobile/low-end constraints, Thai typography, พ.ศ. dates
+- [~] Brainstorm: stack, screens (upload → review → search → share), mobile/low-end constraints, Thai typography, พ.ศ. dates
+  - [x] Colors (approved): faculty maroon `#8B1538` as primary (~10% of the screen), warm off-white base, **gold** highlight (fill only, not text), yellow search-hit mark, status colors (error is orange-red, never maroon). Dark mode in v1, follows the device setting. Faculty logo: text name until the faculty approves the logo.
+  - [x] Layout: PC/tablet (≥768px) = top header nav (เอกสาร · รอตรวจสอบ · ลิงก์แชร์ · ผู้ดูแลระบบ) + search + upload in the header. Only the Admin area adds a left sub-menu (many sub-pages). Search results get a left filter column (facets). Phone = bottom bar with a large raised **search** button in the center; upload sits in the header, not the bar.
+  - [x] Upload: one button (or drop files anywhere) → modal with drop zone + file picker, multiple files, sent 2 at a time, per-file result (uploaded / duplicate `409` → link to the existing doc / not PDF). Closing keeps uploading (header pill). Then "review now" or "review later": docs wait in รอตรวจสอบ (`needs_review`), searchable and editable any time.
+  - [x] Search filters: PC = left filter column, applies on click, removable chips + result count + sort above results, filters kept in the URL. Phone = quick chips (fiscal year, funding, needs review) under the search box + full filter bottom sheet with a live "แสดง N รายการ" button. Groups: fiscal year (พ.ศ.), funding type, status open; doc kind, admin category groups, researcher name, "mine" folded. Zero-count options greyed out.
+  - [ ] Backend for filters: (1) `fiscal_year`, `kind`, `funding_type` accept lists (multi-select); (2) each facet's counts leave out its own group's filter, so other options stay selectable.
+  - [x] Style: simple, minimal, smooth. Animate only transform/opacity, 150ms/220ms with one ease-out curve, reserved space (no layout shift), skeleton rows, no backdrop blur, respect reduced-motion.
 - [ ] Build against the API (`http://localhost:8120/docs` through the SSH tunnel)
 
 ## Demo environment

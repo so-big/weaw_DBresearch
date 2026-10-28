@@ -1,0 +1,492 @@
+<title>DBresearch Search Filters</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kanit:wght@500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: reading column; PC search page (filter column + results) and phone search (quick chips + filter sheet), both live on the same example data. */
+:root{
+  --bg:#F8F6F6; --surface:#FFFFFF; --subtle:#F1EDEE; --border:#E3DCDE;
+  --text:#22181B; --muted:#6E6266; --faint:#B5AAAE;
+  --primary:#8B1538; --primary-hover:#741030; --on-primary:#FFFFFF;
+  --primary-soft:#FBF1F3; --primary-text:#8B1538;
+  --accent:#C99A2E; --accent-soft:#FBF3DC; --accent-text:#7A5A0A;
+  --mark:#FDE9A8; --mark-text:#22181B;
+  --ok:#1F7A4D; --ok-soft:#E5F4EC; --warn:#A15C00; --warn-soft:#FDF1DC;
+  --bad:#C4320A; --bad-soft:#FDE8E1; --info:#2563A8; --info-soft:#E6EEF8;
+  --scrim:rgba(34,24,27,.42); --chrome:#ECE7E8; --frame:#1b1517;
+  --f-display:"Kanit","IBM Plex Sans Thai",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans Thai","Noto Sans Thai",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+  --ease-out:cubic-bezier(.2,.8,.2,1); --t-fast:150ms; --t-med:220ms;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#171214; --surface:#211A1C; --subtle:#2A2124; --border:#3A2E32;
+    --text:#F2ECEE; --muted:#A8999E; --faint:#5E5155;
+    --primary:#C23A62; --primary-hover:#D24C73; --on-primary:#FFFFFF;
+    --primary-soft:#3A1B25; --primary-text:#EE8FA8;
+    --accent:#E3B955; --accent-soft:#3A3018; --accent-text:#E8C76F;
+    --mark:#5C4A12; --mark-text:#FFF6DA;
+    --ok:#5BC48C; --ok-soft:#173226; --warn:#E9A23B; --warn-soft:#3A2A12;
+    --bad:#F07A54; --bad-soft:#3D1D14; --info:#7AAEE8; --info-soft:#18283C;
+    --scrim:rgba(0,0,0,.55); --chrome:#2A2124; --frame:#000;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#171214; --surface:#211A1C; --subtle:#2A2124; --border:#3A2E32;
+  --text:#F2ECEE; --muted:#A8999E; --faint:#5E5155;
+  --primary:#C23A62; --primary-hover:#D24C73; --on-primary:#FFFFFF;
+  --primary-soft:#3A1B25; --primary-text:#EE8FA8;
+  --accent:#E3B955; --accent-soft:#3A3018; --accent-text:#E8C76F;
+  --mark:#5C4A12; --mark-text:#FFF6DA;
+  --ok:#5BC48C; --ok-soft:#173226; --warn:#E9A23B; --warn-soft:#3A2A12;
+  --bad:#F07A54; --bad-soft:#3D1D14; --info:#7AAEE8; --info-soft:#18283C;
+  --scrim:rgba(0,0,0,.55); --chrome:#2A2124; --frame:#000;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--f-body);font-size:15px;line-height:1.6}
+.wrap{max-width:1160px;margin:0 auto;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;text-wrap:balance;margin:0;line-height:1.25}
+h1{font-size:30px} h2{font-size:21px}
+p{margin:0;max-width:70ch}
+.lede{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:16px}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.cap{font-size:13px;color:var(--muted);margin-top:8px}
+.cno{font-family:var(--f-mono);font-size:12.5px;color:var(--primary-text)}
+mark{background:var(--mark);color:var(--mark-text);border-radius:3px;padding:0 2px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;padding:1px 9px 1px 7px;border-radius:999px;white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.b-processing{background:var(--info-soft);color:var(--info)} .b-needs_review{background:var(--warn-soft);color:var(--warn)}
+.b-ready{background:var(--ok-soft);color:var(--ok)} .b-failed{background:var(--bad-soft);color:var(--bad)}
+
+.mocks{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:28px;align-items:start}
+@media (max-width:1040px){.mocks{grid-template-columns:minmax(0,1fr)}}
+
+/* PC */
+.pc-scroll{overflow-x:auto;border-radius:12px;border:1px solid var(--border);box-shadow:0 24px 48px -30px rgba(40,10,20,.45)}
+.pc{min-width:780px;background:var(--bg)}
+.chrome{background:var(--chrome);display:flex;align-items:center;gap:10px;padding:8px 12px}
+.dots{display:flex;gap:6px} .dots i{width:10px;height:10px;border-radius:50%;background:var(--border)}
+.url{flex:1;background:var(--surface);border-radius:6px;padding:3px 10px;font-family:var(--f-mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip{height:3px;background:var(--primary)}
+.top{display:flex;align-items:center;gap:18px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);height:56px}
+.brand{font-family:var(--f-display);font-weight:600;color:var(--primary-text);font-size:15px;white-space:nowrap}
+.tabs{display:flex;gap:4px;height:100%}
+.tabs span{display:flex;align-items:center;padding:0 12px;font-size:14px;color:var(--muted)}
+.tabs span.on{color:var(--text);font-weight:600;box-shadow:inset 0 -3px 0 var(--primary)}
+.top .sp{flex:1}
+.qin{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:0 10px;width:240px;transition:border-color var(--t-fast)}
+.qin:focus-within{border-color:var(--primary)}
+.qin input{border:0;background:none;outline:none;padding:7px 0;font-size:13.5px;width:100%;min-width:0}
+.qin svg,.ps svg{width:16px;height:16px;flex:none;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round}
+.btn{border:0;border-radius:10px;padding:8px 14px;background:var(--primary);color:var(--on-primary);font-weight:600;font-size:13.5px;white-space:nowrap;transition:background var(--t-fast),transform var(--t-fast)}
+.btn:hover{background:var(--primary-hover)} .btn:active{transform:scale(.97)}
+.ghost{border:1px solid var(--border);border-radius:10px;padding:8px 14px;background:var(--surface);font-weight:500;font-size:13.5px}
+.body{display:grid;grid-template-columns:236px minmax(0,1fr);height:560px}
+.side{border-right:1px solid var(--border);background:var(--surface);overflow:auto;padding:12px 10px 20px}
+.side-h{display:flex;justify-content:space-between;align-items:center;padding:2px 6px 8px}
+.side-h b{font-family:var(--f-display);font-weight:500;font-size:15px}
+.link{border:0;background:none;color:var(--primary-text);font-size:12.5px;font-weight:500;padding:2px 4px}
+.link[disabled]{color:var(--faint);cursor:default}
+.main{overflow:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;min-width:0}
+
+/* filter groups (shared) */
+.fg{border-top:1px solid var(--border)}
+.fg summary{list-style:none;display:flex;align-items:center;gap:6px;padding:9px 6px;font-size:13.5px;font-weight:600;cursor:pointer;border-radius:6px}
+.fg summary::-webkit-details-marker{display:none}
+.fg summary::after{content:"";margin-left:auto;width:7px;height:7px;border-right:1.6px solid var(--muted);border-bottom:1.6px solid var(--muted);transform:rotate(45deg) translateY(-2px);transition:transform var(--t-fast) var(--ease-out)}
+.fg[open] summary::after{transform:rotate(-135deg) translateY(-1px)}
+.fg summary .n{font-size:11px;font-weight:600;background:var(--accent-soft);color:var(--accent-text);border-radius:999px;padding:0 7px}
+.fg summary .n:empty{display:none}
+.opts{display:flex;flex-direction:column;padding:0 2px 8px}
+.opt{display:flex;align-items:center;gap:9px;padding:5px 6px;border-radius:7px;font-size:13px;cursor:pointer;transition:background var(--t-fast)}
+.opt:hover{background:var(--subtle)}
+.opt input{accent-color:var(--primary);width:16px;height:16px;margin:0;flex:none}
+.opt .l{flex:1;min-width:0;line-height:1.35}
+.opt .c{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:2ch;text-align:right}
+.opt.zero{color:var(--faint);cursor:default}
+.opt.zero .c{color:var(--faint)}
+.more{border:0;background:none;color:var(--primary-text);font-size:12.5px;padding:2px 6px;text-align:left}
+.field{padding:6px 6px 10px;display:flex;flex-direction:column;gap:6px}
+.field input[type=text]{border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;background:var(--bg);width:100%}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 6px;border-top:1px solid var(--border);font-size:13.5px;font-weight:600;cursor:pointer}
+.sw input{appearance:none;width:36px;height:20px;border-radius:999px;background:var(--border);position:relative;cursor:pointer;transition:background var(--t-fast);flex:none;margin:0}
+.sw input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);transition:transform var(--t-fast) var(--ease-out);box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.sw input:checked{background:var(--primary)}
+.sw input:checked::after{transform:translateX(16px)}
+
+/* toolbar + chips */
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.total{font-size:13.5px;color:var(--muted)} .total b{color:var(--text);font-variant-numeric:tabular-nums}
+.bar .sp{flex:1}
+.sort{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.sort select{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:4px 8px;font-size:13px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-text);border-radius:999px;padding:2px 6px 2px 11px;font-size:12.5px;font-weight:500;animation:chipin var(--t-med) var(--ease-out)}
+.chip button{border:0;background:none;color:inherit;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;padding:0}
+.chip button:hover{background:rgba(0,0,0,.08)}
+@keyframes chipin{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+
+.list{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:opacity 120ms}
+.list.fade{opacity:.35}
+.row{display:grid;grid-template-columns:100px minmax(0,1fr) auto;gap:14px;padding:11px 14px;border-top:1px solid var(--border);align-items:start}
+.row:first-child{border-top:0}
+.row:hover{background:var(--subtle)}
+.row .t{font-weight:500;font-size:13.5px}
+.row .s{font-size:12px;color:var(--muted)}
+.row .meta{font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:3px;align-items:flex-end;white-space:nowrap}
+.none{padding:30px 16px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center;font-size:13.5px;color:var(--muted)}
+
+/* phone */
+.phone{width:100%;max-width:330px;margin:0 auto;border:10px solid var(--frame);border-radius:36px;overflow:hidden;background:var(--bg);box-shadow:0 24px 48px -26px rgba(40,10,20,.5)}
+.papp{position:relative;height:660px;display:flex;flex-direction:column;overflow:hidden}
+.ph-head{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px}
+.ph-row{display:flex;gap:8px;align-items:center}
+.ps{flex:1;display:flex;align-items:center;gap:8px;border:1px solid var(--primary);border-radius:10px;background:var(--bg);padding:0 10px}
+.ps input{border:0;background:none;outline:none;padding:8px 0;font-size:15px;min-width:0;width:100%}
+.fbtn{position:relative;border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:7px 10px;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px}
+.fbtn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.fbtn .n{position:absolute;top:-6px;right:-6px;background:var(--primary);color:var(--on-primary);font-size:10px;font-weight:600;min-width:17px;height:17px;border-radius:999px;display:grid;place-items:center;padding:0 4px}
+.fbtn .n:empty{display:none}
+.qchips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -12px;padding:0 12px 2px}
+.qchips::-webkit-scrollbar{display:none}
+.qc{flex:none;border:1px solid var(--border);background:var(--surface);border-radius:999px;padding:3px 12px;font-size:12.5px;white-space:nowrap;transition:background var(--t-fast),border-color var(--t-fast),color var(--t-fast)}
+.qc[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text);font-weight:500}
+.ph-main{flex:1;overflow:auto;padding:10px 12px 20px}
+.ph-total{font-size:12.5px;color:var(--muted);margin:0 2px 8px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+.card .t{font-size:13.5px;font-weight:500;line-height:1.4}
+.card .r{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+.dl{border:0;background:var(--primary);color:var(--on-primary);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:600}
+.scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity var(--t-med) var(--ease-out);z-index:8}
+.sheet{position:absolute;left:0;right:0;bottom:0;height:86%;background:var(--surface);border-radius:20px 20px 0 0;z-index:9;transform:translateY(100%);transition:transform var(--t-med) var(--ease-out);display:flex;flex-direction:column}
+.papp.filtering .scrim{opacity:1;pointer-events:auto}
+.papp.filtering .sheet{transform:none}
+.grab{width:36px;height:4px;border-radius:2px;background:var(--border);margin:8px auto 2px}
+.sh{display:flex;justify-content:space-between;align-items:center;padding:4px 14px 8px}
+.sh b{font-family:var(--f-display);font-weight:500;font-size:16px}
+.sb{flex:1;overflow:auto;padding:0 8px}
+.sf{display:flex;gap:8px;padding:10px 12px 14px;border-top:1px solid var(--border)}
+.sf .btn{flex:1;padding:11px}
+.sf .ghost{padding:11px 14px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.box b{font-family:var(--f-display);font-weight:500;font-size:15px}
+.box p,.box li{font-size:14px;color:var(--muted)}
+.box ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.box code{font-family:var(--f-mono);font-size:12px;color:var(--text)}
+.gap{border-color:var(--accent)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;transition-duration:1ms!important}}
+@media (max-width:560px){h1{font-size:25px}}
+</style>
+
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:10px">
+    <div class="eyebrow">Phase 3 · UI brainstorm · step 3 · search filters</div>
+    <h1>DBresearch search filters</h1>
+    <p class="lede">On PC the filters sit in a column beside the results and apply as you click. On a phone, the most-used filters are one-tap chips under the search box, and the full list opens in a bottom sheet. Every option shows how many documents it would give, so nobody filters their way into an empty page. Both mocks below work on 12 example documents.</p>
+  </header>
+
+  <section>
+    <h2>Live mocks</h2>
+    <div class="mocks">
+      <div style="min-width:0">
+        <div class="pc-scroll">
+          <div class="pc">
+            <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url" id="pc-url">research.eng.example/documents</span></div>
+            <div class="strip"></div>
+            <div class="top">
+              <span class="brand">คลังเอกสารวิจัย</span>
+              <nav class="tabs"><span class="on">เอกสาร</span><span>รอตรวจสอบ</span><span>ลิงก์แชร์</span><span>ผู้ดูแลระบบ</span></nav>
+              <span class="sp"></span>
+              <label class="qin"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><input id="pc-q" type="search" placeholder="ค้นหาชื่อเรื่อง เลขสัญญา ข้อความในเอกสาร" aria-label="ค้นหา"></label>
+              <button class="btn">อัปโหลด</button>
+            </div>
+            <div class="body">
+              <aside class="side" aria-label="ตัวกรอง">
+                <div class="side-h"><b>ตัวกรอง</b><button class="link" id="pc-clear">ล้างทั้งหมด</button></div>
+                <div id="pc-filters"></div>
+              </aside>
+              <div class="main">
+                <div class="bar">
+                  <span class="total" id="pc-total"></span>
+                  <span class="sp"></span>
+                  <label class="sort">เรียงตาม
+                    <select id="pc-sort">
+                      <option value="relevance">เกี่ยวข้องที่สุด</option>
+                      <option value="newest">อัปเดตล่าสุด</option>
+                      <option value="oldest">เก่าที่สุด</option>
+                      <option value="title">ชื่อเรื่อง ก–ฮ</option>
+                      <option value="reference">เลขที่สัญญา</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="chips" id="pc-chips"></div>
+                <div class="list" id="pc-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="cap">PC: filter column on the left, active filters as removable chips above the results. The address bar follows the filters, so a filtered view can be bookmarked or sent to a colleague. Example data.</p>
+      </div>
+
+      <div>
+        <div class="phone">
+          <div class="papp" id="ph">
+            <div class="ph-head">
+              <div class="ph-row">
+                <label class="ps"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><input id="ph-q" type="search" placeholder="ค้นหาเอกสาร" aria-label="ค้นหา"></label>
+                <button class="fbtn" id="ph-open"><svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>ตัวกรอง<span class="n" id="ph-n"></span></button>
+              </div>
+              <div class="qchips" id="ph-quick"></div>
+            </div>
+            <div class="ph-main"><div class="ph-total" id="ph-total"></div><div id="ph-list"></div></div>
+            <div class="scrim" id="ph-scrim"></div>
+            <div class="sheet" role="dialog" aria-label="ตัวกรอง">
+              <div class="grab"></div>
+              <div class="sh"><b>ตัวกรอง</b><label class="sort">เรียง <select id="ph-sort"><option value="relevance">เกี่ยวข้อง</option><option value="newest">ล่าสุด</option><option value="reference">เลขสัญญา</option><option value="title">ชื่อเรื่อง</option></select></label></div>
+              <div class="sb" id="ph-filters"></div>
+              <div class="sf"><button class="ghost" id="ph-reset">ล้าง</button><button class="btn" id="ph-apply">แสดง 0 รายการ</button></div>
+            </div>
+          </div>
+        </div>
+        <p class="cap">Phone: one-tap chips for fiscal year, funding and "needs review". The filter sheet changes a draft, and its button shows the live count before you apply.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Filters, in order</h2>
+    <div class="grid">
+      <div class="box"><b>Always open</b><ul><li>ปีงบประมาณ (shown in พ.ศ., sent to the API in ค.ศ.)</li><li>ประเภทเงินทุน: ทุนภายใน / ทุนภายนอก</li><li>สถานะ</li></ul></div>
+      <div class="box"><b>Folded, open on tap</b><ul><li>ประเภทเอกสาร: สัญญา / ทุนวิจัย</li><li>Category groups set by the admin: แหล่งทุน, ประเภทการวิจัย, กลุ่มการวิจัย and the rest</li><li>ชื่อนักวิจัย (type part of a name)</li><li>เฉพาะที่ฉันอัปโหลด</li></ul></div>
+      <div class="box"><b>How it behaves</b><ul><li>Several ticks in one group mean "any of these". Ticks in different groups must all match.</li><li>Options that would give 0 results are greyed out.</li><li>Long groups show 5 options and a "ดูเพิ่ม" link.</li><li>Clearing the search box keeps the filters.</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Two small backend changes this needs</h2>
+    <div class="grid">
+      <div class="box gap"><b>1 · Tick more than one year</b><p>The API accepts one value each for <code>fiscal_year</code>, <code>kind</code> and <code>funding_type</code>. To allow "2567 or 2568", they become lists, the way <code>status</code> and <code>category</code> already are.</p></div>
+      <div class="box gap"><b>2 · Counts that don't hide other options</b><p>Counts are worked out with every filter applied, including the group's own. So after ticking 2568, the other years drop to 0 and can't be added. Each group's counts should leave out that group's own filter. The mock already behaves this way.</p></div>
+      <div class="box"><b>Not in v1</b><p>Date-range and budget-range filters. Searching by contract number already works through the search box, e.g. <code>R2568E</code>.</p></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  /* ---------- example data (fictional) ---------- */
+  var DOCS = [
+    {no:'R2568E001',t:'การพัฒนาระบบตรวจวัดคุณภาพน้ำแบบเรียลไทม์ด้วยเซนเซอร์ IoT',kind:'contract',fund:'internal',fy:2568,st:'ready',rtype:'ทดลองและพัฒนา',rgroup:'วิทยาศาสตร์เทคโนโลยี',agency:'รายได้คณะ',lead:'ผศ.ดร.กิตติพงษ์ ตัวอย่าง',mine:true,d:'2024-10-12'},
+    {no:'R2568A002',t:'วัสดุคอมโพสิตจากเส้นใยธรรมชาติสำหรับงานก่อสร้าง',kind:'contract',fund:'external',fy:2568,st:'ready',rtype:'พื้นฐาน',rgroup:'วิทยาศาสตร์เทคโนโลยี',agency:'สป.อว.',lead:'รศ.ดร.วิภาวี สมมติ',mine:false,d:'2024-11-20'},
+    {no:'R2568E004',t:'แบบจำลองการไหลของน้ำใต้ดินในลุ่มน้ำน่าน',kind:'contract',fund:'internal',fy:2568,st:'needs_review',rtype:'เพื่อแก้ปัญหา',rgroup:'วิทยาศาสตร์เทคโนโลยี',agency:'รายได้คณะ',lead:'ดร.ธนากร ตัวอย่าง',mine:true,d:'2025-01-03'},
+    {no:'R2568E005',t:'เครื่องอบแห้งพลังงานแสงอาทิตย์สำหรับผลผลิตเกษตร',kind:'grant',fund:'internal',fy:2568,st:'needs_review',rtype:'ทดลองและพัฒนา',rgroup:'วิทยาศาสตร์เทคโนโลยี',agency:'รายได้คณะ',lead:'ผศ.ดร.กิตติพงษ์ ตัวอย่าง',mine:false,d:'2025-01-04'},
+    {no:'R2568E006',t:'ระบบบำบัดน้ำเสียชุมชนต้นทุนต่ำ',kind:'contract',fund:'internal',fy:2568,st:'failed',rtype:'เพื่อแก้ปัญหา',rgroup:'อาคารสถานที่ และสิ่งอำนวยความสะดวก',agency:'รายได้คณะ',lead:'ดร.ศิริพร สมมติ',mine:true,d:'2025-02-11'},
+    {no:'R2567E031',t:'ระบบจัดการพลังงานในอาคารด้วยการเรียนรู้ของเครื่อง',kind:'contract',fund:'internal',fy:2567,st:'ready',rtype:'ทดลองและพัฒนา',rgroup:'อาคารสถานที่ และสิ่งอำนวยความสะดวก',agency:'รายได้คณะ',lead:'ดร.ธนากร ตัวอย่าง',mine:false,d:'2024-08-08'},
+    {no:'R2567A008',t:'การประเมินความปลอดภัยของสะพานคอนกรีตอายุเกิน 30 ปี',kind:'contract',fund:'external',fy:2567,st:'ready',rtype:'เพื่อแก้ปัญหา',rgroup:'วิทยาศาสตร์เทคโนโลยี',agency:'สป.อว.',lead:'รศ.ดร.วิภาวี สมมติ',mine:false,d:'2024-03-15'},
+    {no:'R2567E019',t:'หุ่นยนต์คัดแยกผลไม้ด้วยการประมวลผลภาพ',kind:'grant',fund:'internal',fy:2567,st:'ready',rtype:'ทดลองและพัฒนา',rgroup:'วิทยาศาสตร์เทคโนโลยี',agency:'รายได้คณะ',lead:'ดร.ศิริพร สมมติ',mine:false,d:'2024-05-02'},
+    {no:'R2566E012',t:'แอปพลิเคชันติดตามคุณภาพอากาศ PM2.5 สำหรับชุมชน',kind:'contract',fund:'internal',fy:2566,st:'ready',rtype:'เพื่อแก้ปัญหา',rgroup:'วิทยาศาสตร์สุขภาพ',agency:'รายได้คณะ',lead:'ผศ.ดร.กิตติพงษ์ ตัวอย่าง',mine:true,d:'2023-07-21'},
+    {no:'R2566A003',t:'การจัดการน้ำเสียจากโรงงานแปรรูปอาหาร',kind:'contract',fund:'external',fy:2566,st:'ready',rtype:'เพื่อแก้ปัญหา',rgroup:'วิทยาศาสตร์เทคโนโลยี',agency:'สป.อว.',lead:'ดร.ศิริพร สมมติ',mine:false,d:'2023-02-09'},
+    {no:'R2569E002',t:'ระบบเตือนภัยน้ำท่วมระดับชุมชน',kind:'contract',fund:'internal',fy:2569,st:'processing',rtype:'เพื่อแก้ปัญหา',rgroup:'วิทยาศาสตร์เทคโนโลยี',agency:'รายได้คณะ',lead:'ดร.ธนากร ตัวอย่าง',mine:true,d:'2025-10-27'},
+    {no:'R2569A001',t:'การพัฒนาหลักสูตรวิศวกรรมดิจิทัลแบบโมดูล',kind:'grant',fund:'external',fy:2569,st:'ready',rtype:'เพื่อการวางแผนพัฒนา',rgroup:'หลักสูตร / โปรแกรมการศึกษา',agency:'สป.อว.',lead:'รศ.ดร.วิภาวี สมมติ',mine:false,d:'2025-10-20'}
+  ];
+  var STATUS = {ready:'พร้อมใช้งาน',needs_review:'รอตรวจสอบ',processing:'กำลังอ่านเอกสาร',failed:'อ่านไม่สำเร็จ'};
+  var GROUPS = [
+    {key:'fy',label:'ปีงบประมาณ',open:true,opts:[[2569,'พ.ศ. 2569'],[2568,'พ.ศ. 2568'],[2567,'พ.ศ. 2567'],[2566,'พ.ศ. 2566']],get:function(d){return d.fy;}},
+    {key:'fund',label:'ประเภทเงินทุน',open:true,opts:[['internal','ทุนภายใน'],['external','ทุนภายนอก']],get:function(d){return d.fund;}},
+    {key:'st',label:'สถานะ',open:true,opts:[['ready','พร้อมใช้งาน'],['needs_review','รอตรวจสอบ'],['processing','กำลังอ่านเอกสาร'],['failed','อ่านไม่สำเร็จ']],get:function(d){return d.st;}},
+    {key:'kind',label:'ประเภทเอกสาร',open:false,opts:[['contract','สัญญา'],['grant','ทุนวิจัย']],get:function(d){return d.kind;}},
+    {key:'agency',label:'แหล่งทุน',open:false,opts:[['สป.อว.','สป.อว.'],['รายได้คณะ','งบประมาณรายได้คณะ']],get:function(d){return d.agency;}},
+    {key:'rtype',label:'ประเภทการวิจัย',open:false,opts:['เพื่อแก้ปัญหา','เพื่อการวางแผนพัฒนา','เพื่อการประกันคุณภาพ','พื้นฐาน','ทดลองและพัฒนา'].map(function(x){return [x,x];}),get:function(d){return d.rtype;}},
+    {key:'rgroup',label:'กลุ่มการวิจัย',open:false,opts:['นิสิต / นักศึกษา','บุคลากร','หลักสูตร / โปรแกรมการศึกษา','การเงิน / งบประมาณ','อาคารสถานที่ และสิ่งอำนวยความสะดวก','วิทยาศาสตร์เทคโนโลยี','วิทยาศาสตร์สุขภาพ'].map(function(x){return [x,x];}),get:function(d){return d.rgroup;}}
+  ];
+  var LABEL = {};
+  GROUPS.forEach(function(g){ LABEL[g.key] = {}; g.opts.forEach(function(o){ LABEL[g.key][String(o[0])] = o[1]; }); });
+
+  function fresh(){ var s = {q:'',person:'',mine:false,sort:'relevance',sel:{}}; GROUPS.forEach(function(g){ s.sel[g.key] = new Set(); }); return s; }
+  function clone(s){ var c = {q:s.q,person:s.person,mine:s.mine,sort:s.sort,sel:{}}; GROUPS.forEach(function(g){ c.sel[g.key] = new Set(s.sel[g.key]); }); return c; }
+  function compact(x){ return (x||'').replace(/\s+/g,'').toLowerCase(); }
+  function matches(d, s, skip){
+    var q = compact(s.q);
+    if (q && compact(d.t + d.no + d.lead).indexOf(q) < 0) return false;
+    for (var i = 0; i < GROUPS.length; i++){
+      var g = GROUPS[i]; if (g.key === skip) continue;
+      var set = s.sel[g.key]; if (set.size && !set.has(String(g.get(d)))) return false;
+    }
+    if (s.person && compact(d.lead).indexOf(compact(s.person)) < 0) return false;
+    if (s.mine && !d.mine) return false;
+    return true;
+  }
+  function results(s){
+    var r = DOCS.filter(function(d){ return matches(d, s); });
+    var by = {
+      newest:function(a,b){ return b.d < a.d ? -1 : 1; },
+      oldest:function(a,b){ return a.d < b.d ? -1 : 1; },
+      title:function(a,b){ return a.t.localeCompare(b.t,'th'); },
+      reference:function(a,b){ return b.no.slice(1,5) - a.no.slice(1,5) || a.no.localeCompare(b.no); }
+    }[s.sort];
+    if (!by && s.q){ var q = s.q.trim(); by = function(a,b){ return (b.t.indexOf(q) >= 0) - (a.t.indexOf(q) >= 0) || (b.d < a.d ? -1 : 1); }; }
+    if (!by) by = function(a,b){ return b.d < a.d ? -1 : 1; };
+    return r.sort(by);
+  }
+  function countSel(s){ var n = 0; GROUPS.forEach(function(g){ n += s.sel[g.key].size; }); return n + (s.person ? 1 : 0) + (s.mine ? 1 : 0); }
+  function esc(x){ return String(x).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function hl(text, q){
+    q = (q||'').trim(); if (!q) return esc(text);
+    var out = esc(text);
+    q.split(/\s+/).forEach(function(w){ if (!w) return; out = out.split(esc(w)).join('<mark>' + esc(w) + '</mark>'); });
+    return out;
+  }
+  function thDate(iso){
+    var m = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+    var p = iso.split('-'); return (+p[2]) + ' ' + m[+p[1]-1] + ' ' + (+p[0] + 543);
+  }
+
+  /* ---------- filter panel (built once, then updated in place) ---------- */
+  function buildFilters(root, getS, onChange, idp){
+    var refs = [];
+    GROUPS.forEach(function(g){
+      var det = document.createElement('details'); det.className = 'fg'; det.open = g.open;
+      var sum = document.createElement('summary'); sum.innerHTML = esc(g.label) + ' <span class="n"></span>';
+      det.appendChild(sum);
+      var box = document.createElement('div'); box.className = 'opts';
+      g.opts.forEach(function(o, i){
+        var lab = document.createElement('label'); lab.className = 'opt';
+        var id = idp + '-' + g.key + '-' + i;
+        lab.innerHTML = '<input type="checkbox" id="' + id + '"><span class="l">' + esc(o[1]) + '</span><span class="c"></span>';
+        if (i >= 5) lab.hidden = true;
+        var inp = lab.querySelector('input');
+        inp.addEventListener('change', function(){
+          var set = getS().sel[g.key], v = String(o[0]);
+          if (inp.checked) set.add(v); else set.delete(v);
+          onChange();
+        });
+        refs.push({g:g, v:String(o[0]), lab:lab, inp:inp, c:lab.querySelector('.c')});
+        box.appendChild(lab);
+      });
+      if (g.opts.length > 5){
+        var more = document.createElement('button'); more.className = 'more'; more.type = 'button';
+        more.textContent = 'ดูเพิ่ม ' + (g.opts.length - 5) + ' รายการ';
+        more.addEventListener('click', function(){ box.querySelectorAll('.opt[hidden]').forEach(function(x){ x.hidden = false; }); more.remove(); });
+        box.appendChild(more);
+      }
+      det.appendChild(box); root.appendChild(det);
+      g['_n' + idp] = sum.querySelector('.n');
+    });
+    var pdet = document.createElement('details'); pdet.className = 'fg';
+    pdet.innerHTML = '<summary>ชื่อนักวิจัย <span class="n"></span></summary><div class="field"><input type="text" id="' + idp + '-person" placeholder="พิมพ์บางส่วนของชื่อ" autocomplete="off"></div>';
+    root.appendChild(pdet);
+    var pin = pdet.querySelector('input'), pn = pdet.querySelector('.n'), pt;
+    pin.addEventListener('input', function(){ clearTimeout(pt); pt = setTimeout(function(){ getS().person = pin.value.trim(); onChange(); }, 250); });
+    var sw = document.createElement('label'); sw.className = 'sw';
+    sw.innerHTML = 'เฉพาะที่ฉันอัปโหลด<input type="checkbox" role="switch" id="' + idp + '-mine">';
+    root.appendChild(sw);
+    var mine = sw.querySelector('input');
+    mine.addEventListener('change', function(){ getS().mine = mine.checked; onChange(); });
+
+    return function update(){
+      var s = getS();
+      refs.forEach(function(r){
+        var n = DOCS.filter(function(d){ return matches(d, s, r.g.key) && String(r.g.get(d)) === r.v; }).length;
+        var on = s.sel[r.g.key].has(r.v);
+        r.inp.checked = on; r.c.textContent = n;
+        r.inp.disabled = !n && !on; r.lab.classList.toggle('zero', !n && !on);
+      });
+      GROUPS.forEach(function(g){ var n = s.sel[g.key].size; g['_n' + idp].textContent = n ? n : ''; });
+      if (document.activeElement !== pin) pin.value = s.person;
+      pn.textContent = s.person ? '1' : '';
+      mine.checked = s.mine;
+    };
+  }
+
+  function chipsFor(s){
+    var out = [];
+    GROUPS.forEach(function(g){ s.sel[g.key].forEach(function(v){ out.push({k:g.key, v:v, label:(g.key === 'fy' ? 'ปีงบ ' : '') + LABEL[g.key][v].replace('พ.ศ. ','')}); }); });
+    if (s.person) out.push({k:'person', label:'นักวิจัย: ' + s.person});
+    if (s.mine) out.push({k:'mine', label:'ของฉัน'});
+    return out;
+  }
+  function removeChip(s, c){ if (c.k === 'person') s.person = ''; else if (c.k === 'mine') s.mine = false; else s.sel[c.k].delete(c.v); }
+
+  /* ---------- PC ---------- */
+  var pcS = fresh(); pcS.sel.fy.add('2568');
+  var pcList = document.getElementById('pc-list');
+  var pcUpdate = buildFilters(document.getElementById('pc-filters'), function(){ return pcS; }, pcRender, 'pc');
+  function pcRender(){
+    pcUpdate();
+    var r = results(pcS);
+    document.getElementById('pc-total').innerHTML = 'พบ <b>' + r.length + '</b> รายการ';
+    var chips = document.getElementById('pc-chips'); chips.innerHTML = '';
+    chipsFor(pcS).forEach(function(c){
+      var el = document.createElement('span'); el.className = 'chip';
+      el.innerHTML = esc(c.label) + '<button type="button" aria-label="เอาออก">✕</button>';
+      el.querySelector('button').addEventListener('click', function(){ removeChip(pcS, c); pcRender(); });
+      chips.appendChild(el);
+    });
+    document.getElementById('pc-clear').disabled = !countSel(pcS);
+    pcList.classList.add('fade');
+    requestAnimationFrame(function(){
+      pcList.innerHTML = r.length ? r.map(function(d){
+        return '<div class="row"><span class="cno">' + d.no + '</span><div><div class="t">' + hl(d.t, pcS.q) + '</div><div class="s">' + esc(d.lead) + ' · ' + (d.fund === 'internal' ? 'ทุนภายใน' : 'ทุนภายนอก') + ' · ปีงบ ' + d.fy + '</div></div><div class="meta"><span class="badge b-' + d.st + '">' + STATUS[d.st] + '</span>' + thDate(d.d) + '</div></div>';
+      }).join('') : '<div class="none">ไม่พบเอกสารที่ตรงกับตัวกรอง<button class="ghost" type="button" id="pc-none-clear">ล้างตัวกรองทั้งหมด</button></div>';
+      var nc = document.getElementById('pc-none-clear'); if (nc) nc.addEventListener('click', pcClear);
+      requestAnimationFrame(function(){ pcList.classList.remove('fade'); });
+    });
+    var params = [];
+    if (pcS.q) params.push('q=' + encodeURIComponent(pcS.q));
+    GROUPS.forEach(function(g){ pcS.sel[g.key].forEach(function(v){ params.push(g.key + '=' + (g.key === 'fy' ? (+v - 543) : encodeURIComponent(v))); }); });
+    if (pcS.sort !== 'relevance') params.push('sort=' + pcS.sort);
+    document.getElementById('pc-url').textContent = 'research.eng.example/documents' + (params.length ? '?' + params.join('&') : '');
+  }
+  function pcClear(){ var q = pcS.q, sort = pcS.sort; pcS = fresh(); pcS.q = q; pcS.sort = sort; pcRender(); }
+  document.getElementById('pc-clear').addEventListener('click', pcClear);
+  document.getElementById('pc-sort').addEventListener('change', function(e){ pcS.sort = e.target.value; pcRender(); });
+  var pqt; document.getElementById('pc-q').addEventListener('input', function(e){ clearTimeout(pqt); pqt = setTimeout(function(){ pcS.q = e.target.value; pcRender(); }, 250); });
+  pcRender();
+
+  /* ---------- Phone ---------- */
+  var ph = document.getElementById('ph');
+  var phS = fresh(), draft = clone(phS);
+  var QUICK = [['fy','2569','ปีงบ 2569'],['fy','2568','ปีงบ 2568'],['fund','internal','ทุนภายใน'],['fund','external','ทุนภายนอก'],['st','needs_review','รอตรวจสอบ']];
+  var quick = document.getElementById('ph-quick');
+  QUICK.forEach(function(q){
+    var b = document.createElement('button'); b.className = 'qc'; b.type = 'button'; b.textContent = q[2];
+    b.addEventListener('click', function(){ var set = phS.sel[q[0]]; if (set.has(q[1])) set.delete(q[1]); else set.add(q[1]); phRender(); });
+    q.el = b; quick.appendChild(b);
+  });
+  var sheetUpdate = buildFilters(document.getElementById('ph-filters'), function(){ return draft; }, sheetRender, 'ph');
+  function sheetRender(){
+    sheetUpdate();
+    document.getElementById('ph-apply').textContent = 'แสดง ' + results(draft).length + ' รายการ';
+  }
+  function phRender(){
+    QUICK.forEach(function(q){ q.el.setAttribute('aria-pressed', phS.sel[q[0]].has(q[1]) ? 'true' : 'false'); });
+    var n = countSel(phS); document.getElementById('ph-n').textContent = n ? n : '';
+    var r = results(phS);
+    document.getElementById('ph-total').textContent = 'พบ ' + r.length + ' รายการ';
+    document.getElementById('ph-list').innerHTML = r.length ? r.map(function(d){
+      return '<div class="card"><div class="t">' + hl(d.t, phS.q) + '</div><div class="r"><span class="cno">' + d.no + '</span><span class="badge b-' + d.st + '">' + STATUS[d.st] + '</span></div><div class="r"><span>ปีงบ ' + d.fy + ' · ' + (d.fund === 'internal' ? 'ทุนภายใน' : 'ทุนภายนอก') + '</span><button class="dl" type="button">ดาวน์โหลด</button></div></div>';
+    }).join('') : '<div class="none">ไม่พบเอกสาร ลองเอาตัวกรองบางอันออก</div>';
+  }
+  document.getElementById('ph-open').addEventListener('click', function(){
+    draft = clone(phS); document.getElementById('ph-sort').value = draft.sort; sheetRender(); ph.classList.add('filtering');
+  });
+  function closeSheet(){ ph.classList.remove('filtering'); }
+  document.getElementById('ph-scrim').addEventListener('click', closeSheet);
+  ph.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeSheet(); });
+  document.getElementById('ph-apply').addEventListener('click', function(){ phS = clone(draft); closeSheet(); phRender(); });
+  document.getElementById('ph-reset').addEventListener('click', function(){ var q = draft.q; draft = fresh(); draft.q = q; document.getElementById('ph-sort').value = 'relevance'; sheetRender(); });
+  document.getElementById('ph-sort').addEventListener('change', function(e){ draft.sort = e.target.value; sheetRender(); });
+  var hqt; document.getElementById('ph-q').addEventListener('input', function(e){ clearTimeout(hqt); hqt = setTimeout(function(){ phS.q = e.target.value; phRender(); }, 250); });
+  phRender();
+})();
+</script>

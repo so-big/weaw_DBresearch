@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 ENV_FILE=${ENV_FILE:-backup.env}
 [ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE (see backup.env.example)" >&2; exit 2; }
 # shellcheck disable=SC1090
-source "$ENV_FILE"
+set -a; source "$ENV_FILE"; set +a  # export for docker -e
 : "${RESTIC_REPOSITORY:?set in $ENV_FILE}" "${RESTIC_PASSWORD_FILE:?set in $ENV_FILE}"
 RESTIC_IMAGE=${RESTIC_IMAGE:-restic/restic:0.19.1}
 PROJECT=${COMPOSE_PROJECT_NAME:-dbresearch}

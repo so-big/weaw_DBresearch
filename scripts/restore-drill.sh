@@ -10,7 +10,7 @@
 # Exit code 0 = the backup is usable. Everything scratch is deleted afterwards.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-source "${ENV_FILE:-backup.env}"
+set -a; source "${ENV_FILE:-backup.env}"; set +a
 RESTIC_IMAGE=${RESTIC_IMAGE:-restic/restic:0.19.1}
 SAMPLE=${SAMPLE:-20}
 drill=dbresearch-drill-$$

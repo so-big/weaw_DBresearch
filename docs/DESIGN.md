@@ -142,7 +142,7 @@ CREATE TABLE documents (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   kind               doc_kind     NOT NULL,
   funding_type       funding_type NOT NULL,
-  title              text NOT NULL,       -- Thai title
+  title              text NOT NULL,       -- main title as written (Thai, or English when that's all there is)
   title_en           text,
   reference_no       text,                -- contract no., normalised: uppercase, no spaces (e.g. R2568A001)
   -- Parsed parts: R + B.E. year + series letter (E internal / A external) + running no. within that year+series.
@@ -180,6 +180,7 @@ CREATE TABLE budget_lines (
   group_label text,                       -- 'หมวด 1' for items; NULL for installments
   label       text NOT NULL,              -- 'ค่าตอบแทน…' or 'งวดที่ 1'
   amount      numeric(14,2) NOT NULL CHECK (amount >= 0),
+  percent     numeric(5,2),               -- installments: ร้อยละ 70
   due_date    date,                       -- installments only
   condition   text,                       -- installment condition, e.g. 'เมื่อส่งรายงานความก้าวหน้า'
   sort        int NOT NULL DEFAULT 0
@@ -215,7 +216,7 @@ ALTER TABLE documents ADD FOREIGN KEY (current_version_id)
 CREATE TABLE document_sections (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   version_id    uuid NOT NULL REFERENCES document_versions(id) ON DELETE CASCADE,
-  attachment_no int,                      -- NULL = main body
+  attachment_no int,                      -- NULL = main body. Not unique: the same number can appear twice in one PDF
   heading       text,                     -- e.g. 'แบบเสนอโครงการวิจัย …'
   page_from     int NOT NULL,
   page_to       int NOT NULL,
@@ -226,7 +227,8 @@ CREATE TABLE document_sections (
 
 CREATE TABLE document_pages (
   version_id     uuid NOT NULL REFERENCES document_versions(id) ON DELETE CASCADE,
-  page_no        int  NOT NULL,
+  page_no        int  NOT NULL,           -- position in this PDF (1..n)
+  printed_page_no int,                    -- 'หน้า N' from the footer; scans often contain only selected pages
   text           text NOT NULL,           -- normalised OCR text
   words          jsonb,                   -- [{t, x, y, w, h, conf, line}] for re-extraction without re-OCR
   checkboxes     jsonb,                   -- [{x, y, size, fill, checked, label, group_heading}]
@@ -239,7 +241,9 @@ CREATE TYPE person_role AS ENUM ('owner', 'co_investigator', 'party', 'signer');
 CREATE TABLE document_people (
   document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   person_id   uuid NOT NULL REFERENCES people(id),
-  role        person_role NOT NULL,
+  role        person_role NOT NULL,       -- หัวหน้าโครงการ → owner, ผู้ร่วมวิจัย → co_investigator
+  share_pct   numeric(5,2) CHECK (share_pct BETWEEN 0 AND 100),  -- สัดส่วนการทำวิจัย (%)
+  unit        text,                       -- หน่วยงาน as written on this document
   PRIMARY KEY (document_id, person_id, role)
 );
 
@@ -431,7 +435,7 @@ documents 1─* budget_lines   (manual: items or installments)
 
 ---
 
-## 6. Auto-fill pipeline (from the internal-funding sample)
+## 6. Auto-fill pipeline (from the mock and the first real scan)
 
 ### What the sample shows (`docs/sample document-1.pdf`, 3 pages, gitignored)
 
@@ -451,16 +455,24 @@ Observations that shape the design:
 
 ### Steps (worker)
 
-1. **Render** each page at 300 dpi (`pdftoppm`) into tmpfs. Light deskew and denoise with OpenCV (input is scanner PDFs, so no perspective correction).
+1. **Render** each page into tmpfs at an effective 300 dpi. If the embedded image is lower (the phone test captures are 150–190 dpi), upscale it (Thai vowel and tone marks need the resolution). Then:
+   - crop to the page outline (a safeguard; test photos show neighbouring sheets and clips at the edges, scanner PDFs rarely do)
+   - light deskew (1–2°)
+   - remove the background and shadows, then binarise (adaptive threshold), so faint seal watermarks and coloured stamps drop out
+   - no perspective correction in production (scanner PDFs)
 2. **Checkbox detection** (OpenCV): find small near-square contours (≈ 2–6 mm) with a hollow border. Fill ratio = dark pixels inside the box after trimming its border. Above the threshold → checked; inside an uncertainty band → `checked: null` + warning. This works for typed ☑ and pen ✓/✗.
 3. **Line removal + OCR**: remove long horizontal strokes (strikethrough, table rules) with a morphological opening, then `tesseract -l tha+eng` with **TSV output** (words + boxes + confidence). Normalise the text (§5). Store it in `document_pages`.
-4. **Sectioning**: split on the regex `เอกสารแนบ\s*หมายเลข\s*(ที่)?\s*([0-9๐-๙]+)` near the top of a page. Pages without a marker continue the previous section; pages before the first marker are the main body.
+4. **Sectioning**: classify **each page by its heading** (template `match_rules` on the top third of the page), and use the attachment marker only as a hint. Marker regex: `เอกสารแนบ\s*(หมายเลข)?\s*(ที่)?\s*([0-9๐-๙]+)`. The real scan shows it as a boxed label, as underlined text, and **even on the main contract page** (`เอกสารแนบ 1` on the contract itself), so a marker alone doesn't start a new section. Consecutive pages with the same classification form one section. Pages that match nothing join the previous section.
 5. **Template match per section**: score each active template's `match_rules` against the section text. The best one above its minimum score is assigned. The template may imply `kind` / `funding_type`.
 6. **Field extraction**: each field rule lists **label variants** and, for each, a layout:
    - `inline`: value after the label on the same line (`โครงการ : X`)
    - `right`: value in the column to the right, possibly continuing on following lines (`(ภาษาไทย)  X`)
    - `below`: value on the next line(s)
    - `footer`: majority vote over all pages' footers (contract no., owner)
+   - `sentence`: regex over running text, for contract clauses (`เมื่อวันที่ <date>`, `นับตั้งแต่วันที่ <date> ถึงวันที่ <date>`, `ในวงเงิน <amount> บาท (<words>)`, `เรื่อง “<title>”`)
+   - `block`: repeated label groups, e.g. the research-team block (`ชื่อ – สกุล` / `หน่วยงาน` / `บทบาทในโครงการ` / `สัดส่วนการทำวิจัย (%)`), producing one record per repeat
+
+   Values are cleaned of dotted leaders (`.....`), and academic prefixes (`ผศ.ดร.`, `นางสาว`, …) are split into `people.prefix_th`.
 
    When several sections produce a value, the highest confidence wins. The losing candidates are kept for the review UI.
 7. **Checkbox → categories** (sections whose template has `checkbox_groups = true`):
@@ -473,6 +485,10 @@ Observations that shape the design:
    - funding type from the contract no. letter ≠ funding type implied by the header text
    - contract no. differs between pages
    - contract no. already exists on a live document → suggest *new version* instead
+   - **more than one contract no. in one PDF** → warn *"this PDF seems to contain N contracts"* (the first real scan held two)
+   - more than one box checked in a single-choice group (`ระบุ…เพียงข้อเดียว`)
+   - research-team shares don't add up to 100 %
+   - installment amounts ≠ percent × total, or don't sum to the total (once typed)
    - required field missing
 9. Write `document_sections` and `extracted_fields`, set `status = needs_review`.
 
@@ -492,14 +508,36 @@ Parse with `R(\d{4})([A-Z])(\d+)`, after normalising Thai digits and fixing comm
 - **Missing numbers report** (ADMIN): for each year + series, list the gaps between 1 and the highest `ref_seq` (e.g. internal 2568: E004, E007 missing). Shows which contracts haven't been archived yet.
 - Search accepts both the short and padded forms (`A1` → `A001`).
 
-### Seed data from the sample (ADMIN can edit)
+### Findings from the first real scan (`samples/`, 5 pages, confidential, gitignored)
 
-| Group (`key`) | Heading variants | Options |
+**Test capture only:** phone scanner app (ML Kit) → image-only PDF, colour JPEG, **149–191 dpi**, no text layer. Production uploads are office-scanner PDFs of the **same documents**, so the layout findings apply; the photo artifacts (marked *photo*) mostly don't. Pages 1–3 are an internal contract (`R2568E0xx`); pages 4–5 are an external contract (`R2568A0xx`). Footers show `หน้า 1/5/10`, so only selected pages were scanned.
+
+| Topic | What the scan shows | Design consequence |
 |---|---|---|
-| `grant_type` | ประเภททุน | นักวิจัยรุ่นใหม่ · ทุนวิจัยสำหรับนักวิจัยที่มีประสบการณ์ด้านการวิจัย |
-| `research_type` | ประเภทวิจัย, ประเภทการวิจัย | พื้นฐาน · ทดลองและพัฒนา · เพื่อการวางแผนพัฒนา |
-| `research_group` | กลุ่มการวิจัย | วิทยาศาสตร์เทคโนโลยี · วิทยาศาสตร์สุขภาพ |
-| `discipline` | สาขาวิชาการ | วิศวกรรมศาสตร์และอุตสาหกรรมวิจัย · นิติศาสตร์ |
+| Page noise | *photo:* edges of other sheets, a paper clip, folded corners, low dpi. *Real document:* a `คู่ฉบับ` stamp, a confidentiality notice top-left, faint seal watermark mid-page | Stamps and watermark are real → adaptive threshold + ignore the stamp words. Page-outline cropping is a cheap safeguard, needed mainly for test photos |
+| Attachment markers | `เอกสารแนบ 1` (boxed, on the **contract page itself**), `เอกสารแนบหมายเลข 1` (underlined), `เอกสารแนบหมายเลข 5` (boxed) | Classify pages by heading; marker is only a hint (step 4) |
+| Header, internal | `สัญญารับทุนอุดหนุนการวิจัย [วิจัยสถาบัน] จากงบประมาณรายได้คณะ… ประจำปีงบประมาณ พ.ศ. 2568` | `[…]` = grant programme → category. `รายได้คณะ` → internal |
+| Header, external | `สัญญารับทุนอุดหนุนการวิจัย ภายใต้บันทึกความเข้าใจ… ประจำปี พ.ศ. 2568 ระหว่าง <agency> กับมหาวิทยาลัยนเรศวร` | Fiscal-year label variant `ประจำปี พ.ศ.`; agency name → `agency` category (with aliases such as `สป.อว.`) |
+| Contract body | Signing date `เมื่อวันที่ …`, period `นับตั้งแต่วันที่ … ถึงวันที่ …`, amount `ในวงเงิน … บาท (…)`, title in `ข้อ 1 … เรื่อง “…”` | Auto-fill `document_date`, `effective_from/to`, a second `budget_total` source and a second title source |
+| Recipient | Named in the internal body; **blank** in the external body | The footer name is the reliable owner source; body is a fallback |
+| Title | External title is **English only** (with a collaborator name in brackets) | `title` holds whichever language is present |
+| Checkbox page | Typed ☑ (no strikethrough). Headings carry instructions: `1. ประเภทการวิจัย (ระบุความสอดคล้องเพียงข้อเดียว)` | Strip numbering **and** the bracketed instruction before matching; `เพียงข้อเดียว` ⇒ single choice |
+| Research team | `ส่วน ข` repeats `ชื่อ – สกุล / หน่วยงาน / บทบาทในโครงการ / สัดส่วนการทำวิจัย (%)` with dotted leaders | `block` rule → `document_people` (role + `share_pct` + `unit`) |
+| External budget | `งวดที่ N (ร้อยละ P) จำนวนเงิน X บาท (…)` + condition text | Still typed manually (decision), but regular enough to auto-fill later; added `percent` column |
+| Internal budget | Table grouped by `หมวด…` with numbered items | Manual (decision) |
+
+### Seed data (ADMIN can edit)
+
+Category options differ between grant programmes, so each group holds the union. The `multi` column comes from the form instructions.
+
+| Group (`key`) | Heading variants | Multi | Options |
+|---|---|---|---|
+| `grant_programme` | text in `[…]` in the contract header | no | วิจัยสถาบัน |
+| `agency` | contract header (`ระหว่าง …`, `จากงบประมาณ…`) | no | สำนักงานปลัดกระทรวงการอุดมศึกษา วิทยาศาสตร์ วิจัยและนวัตกรรม (alias `สป.อว.`) · งบประมาณรายได้คณะวิศวกรรมศาสตร์ |
+| `research_type` | ประเภทการวิจัย, ประเภทวิจัย | no | เพื่อแก้ปัญหา · เพื่อการวางแผนพัฒนา · เพื่อการประกันคุณภาพ · พื้นฐาน · ทดลองและพัฒนา |
+| `research_group` | กลุ่มการวิจัย | no | นิสิต / นักศึกษา · บุคลากร · หลักสูตร / โปรแกรมการศึกษา · การเงิน / งบประมาณ · อาคารสถานที่ และสิ่งอำนวยความสะดวก · วิทยาศาสตร์เทคโนโลยี · วิทยาศาสตร์สุขภาพ |
+| `grant_type` | ประเภททุน | no | นักวิจัยรุ่นใหม่ · ทุนวิจัยสำหรับนักวิจัยที่มีประสบการณ์ด้านการวิจัย *(mock only)* |
+| `discipline` | สาขาวิชาการ | ? | วิศวกรรมศาสตร์และอุตสาหกรรมวิจัย · นิติศาสตร์ *(mock only)* |
 
 ### Python libraries
 `opencv-python-headless`, `pytesseract` (+ `tesseract-ocr-tha` in the image), `pdf2image`/`pdftoppm` (poppler), `rapidfuzz`, `pythainlp`.
@@ -538,6 +576,8 @@ ADMIN: /admin/reports/missing-numbers?year=2568&series=E
 
 ## 9. Open questions
 
-- Real **scanned** samples (phone scanner app, censored, key pages only), ideally with pen ticks, to tune OCR and checkbox thresholds. Include one external (`A`) sample.
+- A scanned page with **pen ticks** (the first real scan has typed ☑ only).
+- Can a real upload contain **several contracts** in one PDF, or was the first scan combined only for testing? (Decides warn-only vs. offering to split.)
+- Why does the contract page itself carry `เอกสารแนบ 1`? Is the contract an attachment of a cover memo?
 - Backup policy and retention period (affects crypto-shred guarantees).
 - Is the plaintext OCR text in the DB acceptable to the department (see §2 trade-off)?

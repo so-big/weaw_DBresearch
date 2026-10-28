@@ -59,13 +59,13 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 ## Phase 1 — Foundation (not started, no coding yet)
 
 - [x] Review internal-funding sample → DESIGN §6 (sections, label variants, checkbox groups, seed categories)
-- [ ] **Collect test samples** (user): key pages only, captured with a phone scanner app in document mode → PDF:
+- [~] **Collect test samples** (user): first real scan received (internal + external contract, typed ☑). Still need: pen-tick page: key pages only, captured with a phone scanner app in document mode → PDF:
   - page 1 (header with fiscal year + funding source) and any page showing the footer
   - a page with an `เอกสารแนบหมายเลข N` marker
   - the checkbox page, ideally with **pen ticks**
   - at least one **external** (`A`) contract
   - Censoring: replace names/amounts with fake text, or white them out. Don't black out checkboxes, their labels, headings, attachment markers, or the contract no. (swap in a fake one like `R2568A001`).
-- [ ] Copy samples to the server: `scp "docs/sample document-1.pdf" cs31@100.104.87.92:~/dbresearch/samples/`
+- [ ] Copy samples to the server: `scp samples/*.pdf "docs/sample document-1.pdf" cs31@100.104.87.92:~/dbresearch/samples/`
 - [ ] Spike: Tesseract `tha+eng` on rendered pages vs. the PDF text layer (on the server)
 - [ ] Spike: checkbox detection + fill threshold + strikethrough removal (on the server)
 - [ ] Re-test Thai search on real OCR text, then decide on the PyThaiNLP fallback
@@ -86,6 +86,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-10-28 — First real scan reviewed (DESIGN §6 findings): low dpi + page noise, marker on the contract page itself, header variants, team block, English-only title, 2 contracts in one PDF. Seed categories updated from the real form.
 - 2026-10-27 — Contract running number is per year + series → parsed columns, unique live contract no., missing-numbers report.
 - 2026-10-27 — External funding uses the internal format; contract letter E=internal/A=external. Budget breakdown is manual. Production uploads are scanner PDFs only.
 - 2026-10-27 — Internal-funding sample reviewed: PDF is a bundle of sections; titles use several labels/layouts; checked boxes drive auto-tags. Decided: SSH tunnel, push to `main`.

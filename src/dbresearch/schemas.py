@@ -9,7 +9,17 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from dbresearch.models import DocKind, DocStatus, FundingType, OcrStatus, UserRole, UserStatus
+from dbresearch.models import (
+    BudgetLineType,
+    DocKind,
+    DocStatus,
+    FundingType,
+    LabelSource,
+    OcrStatus,
+    PersonRole,
+    UserRole,
+    UserStatus,
+)
 
 BE_OFFSET = 543
 
@@ -67,3 +77,93 @@ class DocumentOut(BaseModel):
     @property
     def fiscal_year_be(self) -> int | None:
         return self.fiscal_year + BE_OFFSET if self.fiscal_year else None
+
+
+# ───────────── Review / metadata ─────────────
+class CategoryChoice(BaseModel):
+    category_id: uuid.UUID
+    source: LabelSource = LabelSource.MANUAL
+
+
+class TagChoice(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    source: LabelSource = LabelSource.MANUAL
+
+
+class PersonIn(BaseModel):
+    person_id: uuid.UUID | None = None  # reuse an existing person
+    prefix_th: str | None = Field(None, max_length=100)
+    name_th: str | None = Field(None, max_length=200)
+    name_en: str | None = Field(None, max_length=200)
+    role: PersonRole
+    share_pct: Decimal | None = Field(None, ge=0, le=100)
+    unit: str | None = Field(None, max_length=300)
+
+
+class BudgetLineIn(BaseModel):
+    line_type: BudgetLineType
+    group_label: str | None = Field(None, max_length=200)
+    label: str = Field(min_length=1, max_length=300)
+    amount: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    percent: Decimal | None = Field(None, ge=0, le=100)
+    due_date: date | None = None
+    condition: str | None = Field(None, max_length=1000)
+
+
+class MetadataIn(BaseModel):
+    """Everything the review screen confirms. Years are Gregorian; the UI converts พ.ศ."""
+
+    title: str = Field(min_length=1, max_length=500)
+    title_en: str | None = Field(None, max_length=500)
+    kind: DocKind
+    funding_type: FundingType
+    reference_no: str | None = Field(None, max_length=50)
+    document_date: date | None = None
+    effective_from: date | None = None
+    effective_to: date | None = None
+    fiscal_year: int | None = Field(None, ge=1950, le=2200)
+    budget_total: Decimal | None = Field(None, ge=0, max_digits=14, decimal_places=2)
+    categories: list[CategoryChoice] = []
+    tags: list[TagChoice] = []
+    people: list[PersonIn] = []
+    budget_lines: list[BudgetLineIn] | None = None  # None = keep the existing lines
+
+
+class CategoryOut(BaseModel):
+    id: uuid.UUID
+    name_th: str
+    group_key: str
+    source: LabelSource
+
+
+class TagOut(BaseModel):
+    name: str
+    source: LabelSource
+
+
+class PersonOut(BaseModel):
+    id: uuid.UUID
+    prefix_th: str | None
+    name_th: str | None
+    name_en: str | None
+    role: PersonRole
+    share_pct: Decimal | None
+    unit: str | None
+
+
+class BudgetLineOut(BudgetLineIn):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentDetail(DocumentOut):
+    categories: list[CategoryOut] = []
+    tags: list[TagOut] = []
+    people: list[PersonOut] = []
+    budget_lines: list[BudgetLineOut] = []
+
+
+class AutofillOut(BaseModel):
+    status: DocStatus
+    ocr_status: OcrStatus | None
+    version_no: int | None
+    suggestions: dict | None  # the extracted_fields payload (DESIGN §6)

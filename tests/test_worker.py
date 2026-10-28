@@ -1,0 +1,132 @@
+"""Job queue + worker, end to end with real Tesseract (runs in the server's containers)."""
+
+import io
+import shutil
+import uuid
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import select, update
+
+from dbresearch import jobs
+from dbresearch.config import get_settings
+from dbresearch.db import new_session
+from dbresearch.models import (
+    DocStatus,
+    Document,
+    DocumentPage,
+    DocumentVersion,
+    Job,
+    JobState,
+    OcrStatus,
+)
+from tests.conftest import needs_db
+
+pytestmark = needs_db
+needs_tesseract = pytest.mark.skipif(shutil.which("tesseract") is None, reason="no tesseract")
+
+
+def scanned_pdf(lines: list[tuple[int, str]], footer: str) -> bytes:
+    """An image-only A4 'scan' (like the real uploads), rendered with Pillow's own font."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("L", (2480, 3508), 255)
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=56)
+    for y, text in lines:
+        draw.text((300, y), text, fill=0, font=font)
+    draw.text((300, 3300), footer, fill=0, font=font)
+    buffer = io.BytesIO()
+    image.save(buffer, "PDF", resolution=300)
+    return buffer.getvalue()
+
+
+@needs_tesseract
+def test_upload_then_worker_suggests_contract_number_and_funding(client, login):
+    from dbresearch.worker.__main__ import run_once
+
+    login()
+    pdf = scanned_pdf(
+        [(300, "Research grant contract"), (400, "Example project")],
+        footer=f"R2568A{uuid.uuid4().int % 900 + 100} page 1",
+    )
+    doc_id = client.post("/documents", files={"file": ("scan.pdf", pdf, "application/pdf")}).json()[
+        "id"
+    ]
+
+    assert run_once() is True
+    assert run_once() is False  # queue empty
+
+    with new_session() as db:
+        document = db.get(Document, uuid.UUID(doc_id))
+        version = db.get(DocumentVersion, document.current_version_id)
+        pages = db.scalars(select(DocumentPage)).all()
+        job = db.scalar(select(Job))
+    assert job.state == JobState.DONE
+    assert version.ocr_status == OcrStatus.DONE and document.status == DocStatus.NEEDS_REVIEW
+    assert len(pages) == 1 and "Research grant contract" in pages[0].text
+    suggestions = version.extracted_fields
+    assert suggestions["fields"]["reference_no"]["value"].startswith("R2568A")
+    assert suggestions["inferred"]["funding_type"] == "external"  # series letter A
+    assert "researchgrantcontract" in document.search_text
+    # The decrypted copy was removed from the worker's scratch space.
+    assert not list(get_settings().work_dir.glob("*.pdf"))
+
+    review = client.get(f"/documents/{doc_id}/autofill").json()
+    assert review["ocr_status"] == "done" and review["suggestions"]["fields"]
+
+
+def test_claim_hands_out_each_job_once_and_retries_with_backoff(db_clean):
+    with new_session() as db:
+        jobs.enqueue(db, "noop", n=1)
+        jobs.enqueue(db, "noop", n=2)
+        db.commit()
+    with new_session() as a, new_session() as b:
+        first, second = jobs.claim(a), jobs.claim(b)
+        assert {first.payload["n"], second.payload["n"]} == {"1", "2"}
+        assert jobs.claim(a) is None
+        assert jobs.fail(a, first, "boom") is True  # attempt 1 of 3 → retry later
+        assert jobs.claim(a) is None  # backoff: not due yet
+        a.execute(update(Job).where(Job.id == first.id).values(run_after=datetime.now(UTC)))
+        a.commit()
+        again = jobs.claim(a)
+        assert again.id == first.id and again.attempts == 2
+
+
+def test_stale_running_job_is_reclaimed(db_clean):
+    with new_session() as db:
+        job = jobs.enqueue(db, "noop")
+        db.commit()
+        jobs.claim(db)
+        db.execute(
+            update(Job)
+            .where(Job.id == job.id)
+            .values(updated_at=datetime.now(UTC) - timedelta(hours=1))
+        )
+        db.commit()
+        assert jobs.claim(db).id == job.id  # its worker crashed: hand it out again
+
+
+def test_ocr_that_keeps_failing_falls_back_to_manual_review(client, login):
+    from dbresearch.blobstore import get_blobstore
+    from dbresearch.worker.__main__ import run_once
+    from tests.conftest import make_pdf
+
+    login()
+    doc_id = client.post(
+        "/documents", files={"file": ("x.pdf", make_pdf(), "application/pdf")}
+    ).json()["id"]
+    with new_session() as db:
+        version = db.scalar(select(DocumentVersion))
+        get_blobstore().delete(version.storage_key)  # simulate a lost blob
+        db.execute(update(Job).values(attempts=jobs.MAX_ATTEMPTS - 1))
+        db.commit()
+    assert run_once() is True
+    with new_session() as db:
+        document = db.get(Document, uuid.UUID(doc_id))
+        version = db.get(DocumentVersion, document.current_version_id)
+        job = db.scalar(select(Job))
+    assert job.state == JobState.FAILED and "FileNotFoundError" in job.last_error
+    assert version.ocr_status == OcrStatus.FAILED
+    assert document.status == DocStatus.NEEDS_REVIEW
+    assert version.extracted_fields["warnings"][0]["code"] == "ocr_failed"

@@ -13,6 +13,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from rapidfuzz import fuzz
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -79,18 +80,21 @@ def _json(value: Any) -> Any:
 
 
 # ───────────── Extraction ─────────────
-def collect_candidates(sections: list[Section], pages: list[Page]) -> list[Candidate]:
-    """Section rules per section; footer rules once for the whole PDF (deduplicated)."""
+def collect_candidates(
+    sections: list[Section], pages: list[Page], templates: list[TemplateSpec]
+) -> list[Candidate]:
+    """Section rules per matched section; footer rules of *all* templates once over the whole
+    PDF (the footer carries the contract no. even when no section template matched)."""
     candidates: list[Candidate] = []
-    footer_rules: dict[tuple[str, str], dict] = {}
     for section in sections:
-        if section.template is None:
-            continue
-        rules = [r for r in section.template.rules if r["layout"] != "footer"]
-        for rule in section.template.rules:
+        if section.template is not None:
+            rules = [r for r in section.template.rules if r["layout"] != "footer"]
+            candidates += extract(rules, section.pages, pages)
+    footer_rules: dict[tuple[str, str], dict] = {}
+    for template in templates:
+        for rule in template.rules:
             if rule["layout"] == "footer":
                 footer_rules.setdefault((rule["field"], rule.get("pattern", "")), rule)
-        candidates += extract(rules, section.pages, pages)
     candidates += extract(list(footer_rules.values()), [], pages)
     return candidates
 
@@ -117,51 +121,50 @@ def best_values(candidates: list[Candidate]) -> dict[str, dict[str, Any]]:
     return fields
 
 
+SAME_NAME_MIN = 85  # one misread character must not split a person in two
+
+
+def same_person(a: str, b: str) -> bool:
+    return fuzz.ratio(re.sub(r"\s+", "", a), re.sub(r"\s+", "", b)) >= SAME_NAME_MIN
+
+
 def team_people(candidates: list[Candidate], fields: dict[str, dict]) -> list[dict]:
+    """Research team from the proposal form, plus the footer owner if not already listed."""
     people: list[dict] = []
-    seen: set[str] = set()
     for c in sorted((c for c in candidates if c.field == "team"), key=lambda c: c.page):
-        key = re.sub(r"\s+", "", c.value["name"])
-        if key not in seen:
-            seen.add(key)
+        if not any(same_person(c.value["name"], p["name"]) for p in people):
             people.append({**c.value, "page": c.page, "confidence": c.confidence})
     owner = fields.get("owner", {}).get("value")
-    _infer_roles(people, owner)
-    if owner:
-        prefix, name = thai.split_person(owner)
-        key = re.sub(r"\s+", "", name)
-        if key not in seen and name:
-            people.insert(
-                0,
-                {
-                    "prefix_th": prefix,
-                    "name": name,
-                    "role": "owner",
-                    "share_pct": None,
-                    "unit": None,
-                    "page": None,
-                    "confidence": fields["owner"]["confidence"],
-                },
-            )
-        else:
-            for person in people:
-                if re.sub(r"\s+", "", person["name"]) == key and person.get("role") is None:
-                    person["role"] = "owner"
+    owner_name = thai.split_person(owner)[1] if owner else None
+    _infer_roles(people, owner_name)
+    if owner_name and not any(same_person(owner_name, p["name"]) for p in people):
+        people.insert(
+            0,
+            {
+                "prefix_th": thai.split_person(owner)[0],
+                "name": owner_name,
+                "role": "owner",
+                "role_source": "footer",
+                "share_pct": None,
+                "unit": None,
+                "page": None,
+                "confidence": fields["owner"]["confidence"],
+            },
+        )
     return people
 
 
-def _infer_roles(people: list[dict], owner: str | None) -> None:
+def _infer_roles(people: list[dict], owner_name: str | None) -> None:
     """Roles OCR badly (dotted lines). The footer owner, else the first person listed, is the
     project head; everyone else without a readable role is a co-researcher."""
-    owner_key = re.sub(r"\s+", "", thai.split_person(owner)[1]) if owner else None
     has_owner = any(p.get("role") == "owner" for p in people)
     for index, person in enumerate(people):
         if person.get("role") is not None:
             person["role_source"] = "ocr"
             continue
-        same = owner_key is not None and re.sub(r"\s+", "", person["name"]) == owner_key
-        first = not has_owner and owner_key is None and index == 0
-        person["role"] = "owner" if (same or first) and not has_owner else "co_investigator"
+        # Without a footer owner, the first person listed is taken as the project head.
+        is_owner = same_person(person["name"], owner_name) if owner_name else index == 0
+        person["role"] = "owner" if is_owner and not has_owner else "co_investigator"
         person["role_source"] = "inferred"
         has_owner = has_owner or person["role"] == "owner"
 
@@ -300,9 +303,10 @@ def field_warnings(
 def analyse(path: Path, db: Session) -> tuple[list[Page], list[Section], dict[str, Any]]:
     """Pure analysis (no writes): returns pages, sections and the review payload."""
     pages = analyse_pdf(path)
-    sections = split_sections(pages, load_templates(db))
+    templates = load_templates(db)
+    sections = split_sections(pages, templates)
     index = CategoryIndex.load(db)
-    candidates = collect_candidates(sections, pages)
+    candidates = collect_candidates(sections, pages, templates)
     fields = best_values(candidates)
     people = team_people(candidates, fields)
     checks, check_warnings = checkbox_suggestions(sections, index)

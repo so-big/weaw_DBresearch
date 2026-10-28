@@ -22,6 +22,8 @@ The agreed design, schema, and open questions live in @docs/DESIGN.md. Read it b
 - Soft-deleting a document revokes its share links in the same transaction. Only ADMIN purges (deletes the object + wrapped DEK).
 - Edit/delete/new version is allowed only for `uploaded_by` or ADMIN. Every USER can read every document.
 - Every download, share create/revoke, admin action, and purge writes an `audit_events` row.
+- Auth goes through the `AuthProvider` interface. College SSO will be plugged in by the IT team, so keep local login minimal (dev/demo). Don't build password reset, MFA, or self-registration.
+- Data must never be lost: backups are kept forever (never `restic forget`). The KEK and the restic password are never stored in git, the DB, or the data backups. Losing the KEK makes every file unreadable.
 
 ## Thai data gotchas
 - Create the DB with `LOCALE_PROVIDER icu ICU_LOCALE 'th-TH' LOCALE 'C.UTF-8'` (verified). With a plain `C` ctype, pg_trgm silently ignores Thai text.

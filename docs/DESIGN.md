@@ -20,7 +20,7 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 | Visibility | Every USER can view/download **all** documents. |
 | Edit rights | Only the **uploader or ADMIN** can edit metadata, add versions, delete. |
 | Roles | ADMIN, USER. **GUEST is not an account**: a guest is anyone holding a valid share link. |
-| Accounts | ADMIN creates accounts. Credentials live in `auth_identities`, so SSO/LDAP can be added later. |
+| Accounts | **Login will be integrated with the college system by the IT team.** We ship a minimal, swappable auth layer: local username/password for dev/demo only, behind an `AuthProvider` interface. Identity comes from the provider; **roles stay in our DB**, managed by ADMIN. No password reset, MFA or self-registration in v1. |
 | Encryption | App-level envelope encryption: one random key (DEK) per file version, wrapped by a master key (KEK). |
 | Auto-fill | Per page: OCR with word positions (Tesseract `tha+eng`), split the PDF into sections, then apply **section templates stored in the DB** (several label variants per field: inline / right / below). User confirms. Nothing leaves the server. See §6. |
 | Uploads | **Scanner PDFs only** (`application/pdf`; other types rejected). Phone photos are used only as test samples, taken in a scanner app's document mode. |
@@ -32,7 +32,8 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 | Tags | ADMIN-managed category groups (used for filters) + free user tags. |
 | Owner | The **person named in the document** (PI / contract party), kept in a `people` table, separate from the uploader. |
 | Dates | Store Gregorian dates and years. Parse/display Buddhist Era (พ.ศ. = year + 543). Fiscal year is a normal column: taken from the document text ("ประจำปีงบประมาณ พ.ศ. 2568") when present, otherwise computed from `document_date` (Oct–Sep). |
-| Delete | Soft delete → trash (share links die right away). ADMIN purges: deletes the object and its wrapped key (crypto-shred). |
+| Delete | Soft delete → trash (share links die right away). ADMIN purge removes it from the **live** system only. Because backups are kept forever, a purged document can still be restored from a backup. |
+| Backups | **Kept forever**: documents may be needed years later, and no data may be lost. Nightly, deduplicated, stored **off the server**. The KEK is backed up separately. See §2. |
 | Share links | One document per link. Default 24h; USER max 7 days, ADMIN max 30 days (values in `settings`). Public or password (auto-generated). Optional download limit, view-only mode, full access log. |
 | Scale | Small: < 10k docs, < 30 users. One server. OCR runs in a background worker. |
 | Job queue | PostgreSQL-backed (`SELECT … FOR UPDATE SKIP LOCKED`), so no Redis is needed. |
@@ -71,8 +72,24 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 - **KEK**: 32-byte master key loaded from a file or env var, with a `key_id`. The `kek_id` column on each version allows rotation (re-wrap the DEKs; the files are untouched). It can move to Vault/KMS later.
 - **DEK**: random 256-bit key per file version. Use **Tink Streaming AEAD (AES256_GCM_HKDF_1MB)** rather than custom chunking; associated data = `version_id`.
 - Only ciphertext ever goes to MinIO. Plaintext exists only in memory or on the worker's tmpfs.
-- **Known trade-off:** OCR text (`document_pages`, `documents.search_text`) and metadata are **plaintext in PostgreSQL** (required for pg_trgm search and auto-fill). Mitigations: put the DB volume on disk encryption, restrict DB access, encrypt backups. A stolen MinIO bucket alone reveals nothing; a stolen DB dump reveals OCR text but not the files.
-- **Crypto-shred caveat:** a purge deletes the wrapped DEK from the live DB, but older DB backups still hold it until they expire. Document the backup retention period.
+- **Accepted trade-off (department, 2026-10-28):** OCR text (`document_pages`, `documents.search_text`) and metadata are **plaintext in PostgreSQL**, which pg_trgm search and auto-fill require. The department considers this text low-sensitivity; the main protection is login (college SSO). The original files stay encrypted. Backups are encrypted anyway (restic).
+- **Purge is not permanent erasure:** it deletes the object and wrapped DEK from the live system, but forever-kept backups still hold both. This fits the "never lose data" requirement.
+
+### Backups (kept forever)
+
+| What | How | Why |
+|---|---|---|
+| PostgreSQL | Nightly `pg_dump -Fc` (custom format) → restic | Small; holds all metadata, OCR text and wrapped DEKs |
+| MinIO objects | restic over the bucket data (objects are write-once, so increments are tiny) | The encrypted files |
+| Retention | **Never `restic forget`**: every snapshot is kept. Dedup keeps growth ≈ new uploads only | No data loss, years later |
+| Location | **Off the server** (the shared server has a single disk). Target is TBD with IT: college NAS, another Tailscale machine, or S3-compatible cloud | A backup on the same disk isn't a backup |
+| Restore drill | Monthly: restore the latest snapshot into a scratch stack, open a few documents | An untested backup is a hope, not a backup |
+
+**KEK custody (most important):** every file is encrypted under the KEK. **If the KEK is lost, every document and every backup becomes unreadable forever.**
+- Keep at least two copies outside the server **and separate from the data backups**, e.g. a password manager or vault owned by the department plus an offline copy (USB in a safe, or a printed QR/hex sheet).
+- Never put the KEK in git, in the DB, or in the same restic repository as the data.
+- Rotating the KEK creates a new `kek_id`. Old KEKs must be kept as long as any backup references them, which means forever.
+- The restic repository password is a second secret with the same rule: lose it and the backups are gone.
 
 ---
 
@@ -584,8 +601,9 @@ ADMIN: /admin/reports/missing-numbers?year=2568&series=E
 7. Search & filters.
 8. Share links + access log + admin active-links screen.
 9. Trash/purge, audit views, settings.
+10. Backups: nightly `pg_dump` + restic (no forget), restore drill script, KEK custody runbook.
 
 ## 9. Open questions
 
-- Backup policy and retention period (affects crypto-shred guarantees).
-- Is the plaintext OCR text in the DB acceptable to the department (see §2 trade-off)?
+- **For the IT team**: backup target (NAS / other machine / cloud) and who holds the KEK copies.
+- **For the IT team**: SSO protocol of the college system (OIDC, SAML, LDAP, or a trusted reverse-proxy header) → which `AuthProvider` to implement. Do SSO users get auto-created as `user` on first login, or must ADMIN pre-create them?

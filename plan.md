@@ -50,12 +50,15 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Budget: auto-fill only `budget_total`. Line items / installments (`งวด`) are typed manually into `budget_lines`.
 - [x] One PDF = **exactly one contract** (one contract no.). Different numbers within a PDF → warning only, no split.
 - [x] Package = contract body + `เอกสารแนบ 1–5`. Auto-fill only from the body, att. 1 (money: total) and att. 5 (proposal: titles, checkboxes, team). Att. 2–4 are OCR'd for search only.
+- [x] OCR text stored **unencrypted** in the DB: accepted (low-sensitivity; files themselves stay encrypted).
+- [x] Login: the **IT team integrates college SSO**. We build a minimal swappable `AuthProvider` (local login for dev/demo only); roles live in our DB.
+- [x] Backups **kept forever** (never prune), off the server, nightly `pg_dump` + MinIO via restic. **KEK backed up separately**; losing it = losing every file.
 - [x] Production uploads: **scanner PDFs only**. Auto-fill is assistive; anything wrong or missing is typed by the user on the review screen.
 
 ## Decisions still open
 
-- [?] **OCR text plaintext in DB**: does the department accept this trade-off? (DESIGN §2)
-- [?] **Backup policy + retention**: affects the crypto-shred guarantee.
+- [?] **Backup target** (IT team): NAS, another machine, or cloud. Off the server in any case.
+- [?] **SSO protocol** (IT team): OIDC / SAML / LDAP / proxy header → which `AuthProvider` to build.
 - [?] **Frontend stack**: decide when the frontend phase starts (must work well on low-end phones).
 
 ## Phase 1 — Foundation (not started, no coding yet)
@@ -80,9 +83,11 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [ ] Share links + access log + admin active-links screen
 - [ ] Trash/purge, audit views, settings
 - [ ] Frontend
+- [ ] Backups: restic job (no forget), monthly restore drill, KEK custody runbook
 
 ## Log
 
+- 2026-10-28 — Decided: plaintext OCR text OK; login handled by IT (SSO) → swappable auth; backups kept forever + separate KEK custody.
 - 2026-10-28 — First real scan reviewed (DESIGN §6 findings): low dpi + page noise, marker on the contract page itself, header variants, team block, English-only title, 2 contracts in one PDF. Seed categories updated from the real form.
 - 2026-10-27 — Contract running number is per year + series → parsed columns, unique live contract no., missing-numbers report.
 - 2026-10-27 — External funding uses the internal format; contract letter E=internal/A=external. Budget breakdown is manual. Production uploads are scanner PDFs only.

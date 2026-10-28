@@ -49,6 +49,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] External funding uses the same document format as internal → same section templates; funding type comes from the contract no.
 - [x] Budget: auto-fill only `budget_total`. Line items / installments (`งวด`) are typed manually into `budget_lines`.
 - [x] One PDF = **exactly one contract** (one contract no.). Different numbers within a PDF → warning only, no split.
+- [x] Package = contract body + `เอกสารแนบ 1–5`. Auto-fill only from the body, att. 1 (money: total) and att. 5 (proposal: titles, checkboxes, team). Att. 2–4 are OCR'd for search only.
 - [x] Production uploads: **scanner PDFs only**. Auto-fill is assistive; anything wrong or missing is typed by the user on the review screen.
 
 ## Decisions still open

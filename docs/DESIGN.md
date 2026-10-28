@@ -508,6 +508,17 @@ Parse with `R(\d{4})([A-Z])(\d+)`, after normalising Thai digits and fixing comm
 - **Missing numbers report** (ADMIN): for each year + series, list the gaps between 1 and the highest `ref_seq` (e.g. internal 2568: E004, E007 missing). Shows which contracts haven't been archived yet.
 - Search accepts both the short and padded forms (`A1` → `A001`).
 
+### Package structure (one PDF = one contract)
+
+| Part | Content | Auto-fill |
+|---|---|---|
+| Contract body | Header (programme, funding source/agency, fiscal year), parties, clauses: signing date, period, amount, title | **Yes**: template `contract_body` |
+| `เอกสารแนบหมายเลข 1` | Money: total budget + item table (internal) or installments `งวด` (external) | **Yes**: `budget_total` only (breakdown is typed manually) |
+| `เอกสารแนบหมายเลข 2–4` | Supporting documents | **No**: OCR'd for search only, stored as sections with their attachment number and no template |
+| `เอกสารแนบหมายเลข 5` (last) | Project proposal form: Thai/English title, checkbox groups, research team | **Yes**: template `att_proposal_form` (checkboxes → categories, team → people) |
+
+So v1 needs three section templates. Pages that match none of them become sections keyed by their marker number (or join the previous section). A `เอกสารแนบ 1` label printed on the contract page itself is ignored, because the heading classifies that page as the contract body.
+
 ### Findings from the first real scan (`samples/`, 5 pages, confidential, gitignored)
 
 **Test capture only:** phone scanner app (ML Kit) → image-only PDF, colour JPEG, **149–191 dpi**, no text layer. Production uploads are office-scanner PDFs of the **same documents**, so the layout findings apply; the photo artifacts (marked *photo*) mostly don't. Pages 1–3 are an internal contract (`R2568E0xx`); pages 4–5 are an external contract (`R2568A0xx`). They were combined only as examples; **a real PDF always holds exactly one contract**. Footers show `หน้า 1/5/10`, so only selected pages were scanned.
@@ -577,6 +588,5 @@ ADMIN: /admin/reports/missing-numbers?year=2568&series=E
 ## 9. Open questions
 
 - A scanned page with **pen ticks** (the first real scan has typed ☑ only).
-- Why does the contract page itself carry `เอกสารแนบ 1`? Is the contract an attachment of a cover memo?
 - Backup policy and retention period (affects crypto-shred guarantees).
 - Is the plaintext OCR text in the DB acceptable to the department (see §2 trade-off)?

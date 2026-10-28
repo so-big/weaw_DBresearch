@@ -3,7 +3,7 @@
 Department web app for storing **contracts** and **research grant** documents (mostly scanned PDFs),
 encrypted at rest, with OCR auto-fill, search, and expiring share links.
 
-Status: design agreed 2026-10-27 (grill session). Internal-funding sample reviewed (§6); external funding uses the same format. Scanned samples and frontend layout still pending.
+Status: design agreed 2026-10-27 (grill session). Internal-funding sample reviewed (§6); external funding uses the same format. First real scan reviewed. Frontend layout still pending.
 
 ---
 
@@ -26,7 +26,7 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 | Uploads | **Scanner PDFs only** (`application/pdf`; other types rejected). Phone photos are used only as test samples, taken in a scanner app's document mode. |
 | Funding type | Taken from the contract number letter: `R2568`**`E`**`999` = internal, `R2568`**`A`**`001` = external. Cross-checked with the header text. |
 | Budget | `budget_total` is auto-filled from `งบประมาณรวม`. Line items (internal) and installments `งวด` (external) are **typed by the user** into `budget_lines`; no table parsing. |
-| Checkboxes | Detect boxes visually (OpenCV) and treat ink inside a box as checked (works for typed ☑ and pen ticks). **Checked** options → fuzzy-matched to ADMIN categories; unmatched → *suggested* free tag. **Unchecked boxes are ignored.** |
+| Checkboxes | Detect boxes visually (OpenCV) and treat ink inside a box as checked. Tuned for **typed ☑** (the only kind seen). Pen ticks aren't tuned for in v1: anything not detected confidently gives no suggestion, and the user adds tags by hand. **Checked** options → fuzzy-matched to ADMIN categories; unmatched → *suggested* free tag. **Unchecked boxes are ignored.** |
 | Versions | Keep version history. Share links serve the latest version unless pinned. |
 | Search | Metadata + OCR text, using PostgreSQL `pg_trgm` (substring match, no Thai word splitting needed). |
 | Tags | ADMIN-managed category groups (used for filters) + free user tags. |
@@ -460,7 +460,7 @@ Observations that shape the design:
    - light deskew (1–2°)
    - remove the background and shadows, then binarise (adaptive threshold), so faint seal watermarks and coloured stamps drop out
    - no perspective correction in production (scanner PDFs)
-2. **Checkbox detection** (OpenCV): find small near-square contours (≈ 2–6 mm) with a hollow border. Fill ratio = dark pixels inside the box after trimming its border. Above the threshold → checked; inside an uncertainty band → `checked: null` + warning. This works for typed ☑ and pen ✓/✗.
+2. **Checkbox detection** (OpenCV): find small near-square contours (≈ 2–6 mm) with a hollow border. Fill ratio = dark pixels inside the box after trimming its border. Above the threshold → checked. Inside the uncertainty band → `checked: null`, **no suggestion** (no warning needed; the user tags manually). Tuned on typed ☑; pen ✓/✗ may or may not be caught, and the fallback is always manual tagging.
 3. **Line removal + OCR**: remove long horizontal strokes (strikethrough, table rules) with a morphological opening, then `tesseract -l tha+eng` with **TSV output** (words + boxes + confidence). Normalise the text (§5). Store it in `document_pages`.
 4. **Sectioning**: classify **each page by its heading** (template `match_rules` on the top third of the page), and use the attachment marker only as a hint. Marker regex: `เอกสารแนบ\s*(หมายเลข)?\s*(ที่)?\s*([0-9๐-๙]+)`. The real scan shows it as a boxed label, as underlined text, and **even on the main contract page** (`เอกสารแนบ 1` on the contract itself), so a marker alone doesn't start a new section. Consecutive pages with the same classification form one section. Pages that match nothing join the previous section.
 5. **Template match per section**: score each active template's `match_rules` against the section text. The best one above its minimum score is assigned. The template may imply `kind` / `funding_type`.
@@ -576,7 +576,7 @@ ADMIN: /admin/reports/missing-numbers?year=2568&series=E
 ## 8. Build order
 
 1. **Spike: Thai search.** ICU `th-TH` + pg_trgm basics verified on synthetic text (2026-10-27). Still to do: re-test on real Thai OCR output and decide whether the PyThaiNLP fallback is needed.
-2. **Spike: OCR + checkboxes.** On the server: Tesseract `tha+eng` accuracy on the sample (rendered vs. text layer), checkbox detection + fill threshold, and strikethrough removal. Needs a **scanned** sample with pen ticks too.
+2. **Spike: OCR + checkboxes.** On the server: Tesseract `tha+eng` accuracy on the sample (rendered vs. text layer), checkbox detection + fill threshold, and strikethrough removal. Typed ☑ only (no pen-tick samples).
 3. Docker Compose (postgres, minio, api, worker) + Alembic baseline migration from §3.
 4. Auth (local identities, sessions, roles) + admin user CLI bootstrap.
 5. Upload/download with envelope encryption + versions.
@@ -587,6 +587,5 @@ ADMIN: /admin/reports/missing-numbers?year=2568&series=E
 
 ## 9. Open questions
 
-- A scanned page with **pen ticks** (the first real scan has typed ☑ only).
 - Backup policy and retention period (affects crypto-shred guarantees).
 - Is the plaintext OCR text in the DB acceptable to the department (see §2 trade-off)?

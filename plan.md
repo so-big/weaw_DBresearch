@@ -43,7 +43,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Git: **push straight to `main`**.
 - [x] One PDF = one full package with attachments (`เอกสารแนบหมายเลข N`). No separate Project table in v1 (DESIGN §1, §3).
 - [x] Auto-tags from **checked** boxes, matched to ADMIN categories; unmatched → suggested tag; unchecked ignored (DESIGN §6).
-- [x] Check marks can be typed ☑ or pen ticks → detect by ink inside the box, not by OCR.
+- [x] Checkbox detection is tuned for typed ☑ only. Pen ticks are out of scope for v1: if a box isn't detected confidently, there's no suggestion and the user tags manually.
 - [x] Contract no. = `R` + B.E. year + funding letter + running no.: `E` = internal (`R2568E999`), `A` = external (`R2568A001`). The letter sets `funding_type`.
 - [x] Running number counts per year + series (`R2568E001` = first internal of 2568). Used for sorting, duplicate-upload detection (unique per live doc), and an ADMIN missing-numbers report. The system stores numbers, never issues them.
 - [x] External funding uses the same document format as internal → same section templates; funding type comes from the contract no.
@@ -61,12 +61,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 ## Phase 1 — Foundation (not started, no coding yet)
 
 - [x] Review internal-funding sample → DESIGN §6 (sections, label variants, checkbox groups, seed categories)
-- [~] **Collect test samples** (user): first real scan received (internal + external contract, typed ☑). Still need: pen-tick page: key pages only, captured with a phone scanner app in document mode → PDF:
-  - page 1 (header with fiscal year + funding source) and any page showing the footer
-  - a page with an `เอกสารแนบหมายเลข N` marker
-  - the checkbox page, ideally with **pen ticks**
-  - at least one **external** (`A`) contract
-  - Censoring: replace names/amounts with fake text, or white them out. Don't black out checkboxes, their labels, headings, attachment markers, or the contract no. (swap in a fake one like `R2568A001`).
+- [x] Collect test samples: mock (`docs/`) + first real scan (`samples/`, internal + external, typed ☑). Real PDFs stay gitignored.
 - [ ] Copy samples to the server: `scp samples/*.pdf "docs/sample document-1.pdf" cs31@100.104.87.92:~/dbresearch/samples/`
 - [ ] Spike: Tesseract `tha+eng` on rendered pages vs. the PDF text layer (on the server)
 - [ ] Spike: checkbox detection + fill threshold + strikethrough removal (on the server)

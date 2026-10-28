@@ -238,3 +238,51 @@ def extract(rules: list[dict], section_pages: list[Page], all_pages: list[Page])
 
 def lines_of(pages: list[Page]) -> list[Line]:
     return [line for page in pages for line in page.lines]
+
+
+LAYOUTS = {"label", "footer", "sentence", "team"}
+POST_STEPS = {
+    "strip_leaders",
+    "compact",
+    "upper",
+    "be_year",
+    "thai_date",
+    "money",
+    "strip_brackets",
+}
+FIELDS = {
+    "title",
+    "title_en",
+    "reference_no",
+    "owner",
+    "fiscal_year",
+    "document_date",
+    "effective_from",
+    "effective_to",
+    "budget_total",
+    "team",
+}
+
+
+def validate_rules(rules: list[dict]) -> None:
+    """Reject template rules the engine can't run (raises ValueError with a readable reason)."""
+    for i, rule in enumerate(rules, 1):
+        where = f"rule {i}"
+        if rule.get("field") not in FIELDS:
+            raise ValueError(f"{where}: unknown field {rule.get('field')!r}")
+        if rule.get("layout") not in LAYOUTS:
+            raise ValueError(f"{where}: unknown layout {rule.get('layout')!r}")
+        if rule["layout"] == "label" and not rule.get("labels"):
+            raise ValueError(f"{where}: a label rule needs 'labels'")
+        if rule["layout"] in {"footer", "sentence"} and not rule.get("pattern"):
+            raise ValueError(f"{where}: a {rule['layout']} rule needs 'pattern'")
+        if pattern := rule.get("pattern"):
+            try:
+                compiled = re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(f"{where}: bad pattern ({exc})") from exc
+            if rule.get("group", 0) > compiled.groups:
+                raise ValueError(f"{where}: pattern has no group {rule['group']}")
+        unknown = set(rule.get("post", [])) - POST_STEPS
+        if unknown:
+            raise ValueError(f"{where}: unknown post-processor(s) {sorted(unknown)}")

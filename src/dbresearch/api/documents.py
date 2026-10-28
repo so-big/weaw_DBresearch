@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session
 
 from dbresearch import audit, jobs
 from dbresearch.auth import DB, CurrentUser, client_ip
-from dbresearch.documents import DuplicateUpload, UploadError, can_edit, read_version, store_version
+from dbresearch.documents import (
+    DuplicateUpload,
+    UploadError,
+    can_edit,
+    read_version,
+    soft_delete,
+    store_version,
+)
 from dbresearch.metadata import MetadataError, ReferenceTaken, apply_metadata
 from dbresearch.models import (
     BudgetLine,
@@ -173,6 +180,13 @@ def new_version(
 @router.get("/{document_id}", response_model=DocumentDetail)
 def get_document(document_id: uuid.UUID, db: DB, user: CurrentUser):
     return document_detail(db, live_document(db, document_id), user)
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(document_id: uuid.UUID, request: Request, db: DB, user: CurrentUser) -> None:
+    """Move to the trash (uploader or admin). Share links stop working immediately."""
+    soft_delete(db, user, editable_document(db, document_id, user), client_ip(request))
+    db.commit()
 
 
 @router.get("/{document_id}/autofill", response_model=AutofillOut)

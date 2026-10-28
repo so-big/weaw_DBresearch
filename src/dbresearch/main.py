@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from dbresearch.api import admin as admin_api
 from dbresearch.api import auth as auth_api
 from dbresearch.api import catalog as catalog_api
 from dbresearch.api import documents as documents_api
@@ -56,6 +57,7 @@ app.include_router(documents_api.router)
 app.include_router(catalog_api.router)
 app.include_router(shares_api.router)
 app.include_router(shares_api.guest)
+app.include_router(admin_api.router)
 
 
 def _check_database() -> dict[str, str]:

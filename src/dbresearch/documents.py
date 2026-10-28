@@ -3,6 +3,7 @@
 import hashlib
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import PurePath
 from typing import BinaryIO
 
@@ -184,3 +185,78 @@ def read_version(version: DocumentVersion) -> Iterator[bytes]:
     cipher = keyring.open_dek(version.wrapped_dek, associated_data)
     with get_blobstore().open(version.storage_key) as source:
         yield from decrypt_chunks(cipher, source, associated_data)
+
+
+# ───────────── Trash ─────────────
+class TrashError(ValueError):
+    pass
+
+
+def soft_delete(db: Session, user: User, document: Document, ip: str | None) -> int:
+    """Move to the trash: hidden at once, and its share links die in the same transaction."""
+    from dbresearch.shares import revoke_for_document  # avoid an import cycle
+
+    document.deleted_at = datetime.now(UTC)
+    document.deleted_by = user.id
+    revoked = revoke_for_document(db, document.id, user.id)
+    audit.record(
+        db,
+        "document.delete",
+        "document",
+        document.id,
+        actor_id=user.id,
+        ip=ip,
+        revoked_links=revoked,
+    )
+    return revoked
+
+
+def restore(db: Session, user: User, document: Document, ip: str | None) -> None:
+    if document.deleted_at is None:
+        raise TrashError("Document is not in the trash")
+    if document.reference_no and db.scalar(
+        select(Document.id).where(
+            Document.reference_no == document.reference_no,
+            Document.deleted_at.is_(None),
+            Document.id != document.id,
+        )
+    ):
+        raise TrashError("Another live document has the same contract number")
+    document.deleted_at = None
+    document.deleted_by = None
+    audit.record(db, "document.restore", "document", document.id, actor_id=user.id, ip=ip)
+
+
+def purge(db: Session, user: User, document: Document, ip: str | None) -> list[str]:
+    """Remove a trashed document from the live system (rows + wrapped DEKs).
+
+    Returns the blob keys to delete *after* the caller commits: a failed commit must never
+    leave rows pointing at deleted blobs. Backups are kept forever, so this is not erasure.
+    """
+    if document.deleted_at is None:
+        raise TrashError("Only documents in the trash can be purged")
+    keys = list(
+        db.scalars(
+            select(DocumentVersion.storage_key).where(DocumentVersion.document_id == document.id)
+        )
+    )
+    audit.record(
+        db,
+        "document.purge",
+        "document",
+        document.id,
+        actor_id=user.id,
+        ip=ip,
+        versions=len(keys),
+        reference_no=document.reference_no,
+    )
+    document.current_version_id = None
+    db.flush()
+    db.delete(document)  # cascades: versions, pages, sections, links, labels, people, budget
+    return keys
+
+
+def delete_blobs(keys: list[str]) -> None:
+    store = get_blobstore()
+    for key in keys:
+        store.delete(key)

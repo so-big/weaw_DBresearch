@@ -133,7 +133,8 @@ def test_my_bin_and_restore(client, login, make_user):
 
     log_in(admin, admin_pw)
     client.delete(f"/documents/{by_admin}")
-    assert client.get("/documents/trash").json() == []  # the admin uploaded nothing
+    # The admin's own bin holds what they deleted; everyone's is under /admin/trash.
+    assert [d["id"] for d in client.get("/documents/trash").json()] == [by_admin]
     assert {d["id"] for d in client.get("/admin/trash").json()} == {kept, by_admin}
 
     # Back as the uploader: both are in my bin, but only my own delete can be undone.

@@ -528,7 +528,9 @@ def overview(db: DB, admin: AdminUser) -> dict:
             .select_from(DocumentVersion)
             .where(DocumentVersion.ocr_status == OcrStatus.FAILED)
         ),
-        "stored_bytes": db.scalar(select(func.coalesce(func.sum(DocumentVersion.size_bytes), 0))),
+        "stored_bytes": int(
+            db.scalar(select(func.coalesce(func.sum(DocumentVersion.size_bytes), 0)))
+        ),
         "active_share_links": active_links,
         "users": db.scalar(
             select(func.count()).select_from(User).where(User.status == UserStatus.ACTIVE)

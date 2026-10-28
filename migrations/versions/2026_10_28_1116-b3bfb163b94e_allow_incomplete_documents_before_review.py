@@ -31,6 +31,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("ck_documents_ready_is_complete", "documents", type_="check")
+    op.drop_constraint(op.f("ck_documents_ready_is_complete"), "documents", type_="check")
     op.alter_column("documents", "funding_type", nullable=False)
     op.alter_column("documents", "kind", nullable=False)

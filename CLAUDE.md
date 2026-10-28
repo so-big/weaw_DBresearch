@@ -27,7 +27,8 @@ The agreed design, schema, and open questions live in @docs/DESIGN.md. Read it b
 
 ## Thai data gotchas
 - Create the DB with `LOCALE_PROVIDER icu ICU_LOCALE 'th-TH' LOCALE 'C.UTF-8'` (verified). With a plain `C` ctype, pg_trgm silently ignores Thai text.
-- Search uses `ILIKE '%q%'` backed by `gin_trgm_ops` indexes. Don't switch to `to_tsvector` with a language config (it can't split Thai words).
+- Search is **space-insensitive**: `documents.search_text` stores normalised text with all whitespace removed, and the query is compacted the same way before `ILIKE '%q%'` (backed by `gin_trgm_ops`). Tesseract's Thai spacing never matches what users type. Don't switch to `to_tsvector` with a language config (it can't split Thai words).
+- OCR lines are rebuilt from word boxes by gap (`dbresearch.ocr_layout`); never join Tesseract's Thai words with plain spaces.
 - Normalise text before storing and searching: NFC, Thai digits ๐–๙ → 0–9, collapse whitespace.
 - Store dates and years in the Gregorian calendar. Convert to พ.ศ. (+543) only at the API/UI edge. `fiscal_year` comes from the document text when stated, otherwise from `document_date` (Oct–Sep).
 - One PDF is a bundle of sections (`เอกสารแนบหมายเลข N`). Auto-fill works per section with several label variants per field (DESIGN §6). Don't assume a field appears once or uses one fixed label.

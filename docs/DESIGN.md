@@ -179,7 +179,7 @@ CREATE TABLE documents (
   status             doc_status NOT NULL DEFAULT 'processing',
   current_version_id uuid,                -- FK added below (circular)
   uploaded_by        uuid NOT NULL REFERENCES users(id),
-  search_text        text NOT NULL DEFAULT '',      -- denormalised: OCR text of current version
+  search_text        text NOT NULL DEFAULT '',      -- OCR text of current version + metadata, normalised, ALL whitespace removed (§5)
   created_at         timestamptz NOT NULL DEFAULT now(),
   updated_at         timestamptz NOT NULL DEFAULT now(),
   deleted_at         timestamptz,
@@ -446,7 +446,9 @@ documents 1─* budget_lines   (manual: items or installments)
 ## 5. Thai-specific handling
 
 - **DB locale (verified 2026-10-27 on postgres:17):** `CREATE DATABASE … TEMPLATE template0 ENCODING UTF8 LOCALE_PROVIDER icu ICU_LOCALE 'th-TH' LOCALE 'C.UTF-8'`. With this, pg_trgm keeps Thai words (combining marks included) intact and the GIN index serves `ILIKE '%ทุนวิจัย%'`. A plain `C` (non-UTF-8) ctype makes pg_trgm **ignore Thai**.
-- Always use `ILIKE '%q%'` for correctness; the trigram index only speeds it up. For ranking long OCR text, use `word_similarity()` / `strict_word_similarity()`, not `similarity()` (a short query against a long document scores near 0). Fallback if results are poor on real OCR text: pre-tokenise with PyThaiNLP into a `tsvector` column using the `simple` config.
+- **Search is space-insensitive.** OCR spacing in Thai never matches what a user types (`การพัฒนา ประสิทธิภาพ` found 0 pages as typed, 4 with spaces ignored). So `documents.search_text` stores the normalised text with **all whitespace removed**, and the query gets the same treatment: `search_text ILIKE '%' || compact(normalize(q)) || '%'`. Page text with spaces is kept in `document_pages.text` for display and snippets.
+- Always use `ILIKE` for correctness; the trigram index only speeds it up. For ranking, use `word_similarity()` / `strict_word_similarity()`, not `similarity()` (a short query against a long document scores near 0).
+- **Verified on real OCR text (2026-10-28):** 13/13 test queries found their pages (Thai titles, place names, `R2568A034` and lower-case `r2568e009`, amounts in Thai words, Thai dates, English words, `งวดที่ 2`), GIN index used. The PyThaiNLP fallback is **not needed**.
 - Normalise text before storing and searching: Unicode NFC, strip zero-width chars (U+200B/200C/200D/FEFF), recompose `ํ`+`า` → `ำ`, remove stray spaces before Thai combining marks (`ช ื่อ` → `ชื่อ`), Thai digits ๐–๙ → 0–9, collapse whitespace.
 - Date parser for the extractor: `12 มีนาคม 2567`, `12 มี.ค. 67`, `12/03/2567` → Gregorian `2024-03-12`.
 - Display: years as พ.ศ. (+543); fiscal year label `ปีงบประมาณ 2568`.
@@ -473,16 +475,21 @@ Observations that shape the design:
 
 ### Steps (worker)
 
-1. **Render** each page into tmpfs at an effective 300 dpi. If the embedded image is lower (the phone test captures are 150–190 dpi), upscale it (Thai vowel and tone marks need the resolution). Then:
-   - crop to the page outline (a safeguard; test photos show neighbouring sheets and clips at the edges, scanner PDFs rarely do)
-   - light deskew (1–2°)
-   - remove the background and shadows, then binarise (adaptive threshold), so faint seal watermarks and coloured stamps drop out
-   - no perspective correction in production (scanner PDFs)
-2. **Checkbox detection** (OpenCV): find small near-square contours (≈ 2–6 mm) with a hollow border. Fill ratio = dark pixels inside the box after trimming its border. Above the threshold → checked. Inside the uncertainty band → `checked: null`, **no suggestion** (no warning needed; the user tags manually). Tuned on typed ☑; pen ✓/✗ may or may not be caught, and the fallback is always manual tagging.
-3. **Line removal + OCR**: remove long horizontal strokes (strikethrough, table rules) with a morphological opening, then `tesseract -l tha+eng` with **TSV output** (words + boxes + confidence). Normalise the text (§5). Store it in `document_pages`.
+1. **Render** each page at 300 dpi, grayscale (`pypdfium2`; upsamples lower-dpi scans). Measured: **no extra cleaning needed**. A background-flattening + Otsu variant didn't improve confidence or label recall, so Tesseract gets the plain grayscale page. Ignore any embedded text layer (the mock's is garbled; scans have none). Later safeguards if real scans need them: crop to the page outline, light deskew.
+2. **Checkbox detection** (OpenCV, tuned on both samples; see §6 spike results):
+   - **find**: adaptive threshold (mean, block 35, C 15). A contour is a box if its side is **3–7 mm**, its aspect is 0.75–1.33, it approximates a **convex 4-gon**, its area is ≥ 70 % of its bounding rect, and **all four sides are ≥ 80 % continuous ink**. The last rule removes square-ish letters. Nested outer/inner border contours are merged.
+   - **state**: ink ratio inside the inner 60 % of the box: **≥ 0.12 checked**, **≤ 0.03 empty**, otherwise unsure → no suggestion (the user tags manually). Tuned on typed ☑; pen ✓/✗ is untested.
+   - **heading**: the nearest OCR line above the box that starts further left and isn't itself an option row. Strip numbering (`1.`) and bracketed instructions (`(ระบุ…เพียงข้อเดียว)`).
+   - **label**: page-OCR words on the box's row, right of the box. If that doesn't match an option (page OCR sometimes drops a row), re-OCR the strip right of the box as one line (`--psm 7`), with and without strikethrough removal, and keep the higher-confidence read.
+3. **OCR**: `tesseract -l tha+eng --oem 1 --psm 3` with **TSV output** (words + boxes + confidence).
+   - Tesseract splits Thai into clusters (`สั ญ ญ า`). Rebuild lines by **box gap**: insert a space only where the gap is > 0.45 × the line's median word height between two Thai clusters, or > 0.2 × otherwise. The threshold sits in the measured valley of the gap distribution (`dbresearch.ocr_layout`).
+   - Normalise (§5).
+   - Drop lines with mean confidence < 50 (watermark/seal noise).
+   - Store page text in `document_pages`.
+   - Checkbox glyphs OCR as junk (`CD`, `M`, `[ ]`), so labels never rely on them.
 4. **Sectioning**: classify **each page by its heading** (template `match_rules` on the top third of the page), and use the attachment marker only as a hint. Marker regex: `เอกสารแนบ\s*(หมายเลข)?\s*(ที่)?\s*([0-9๐-๙]+)`. The real scan shows it as a boxed label, as underlined text, and **even on the main contract page** (`เอกสารแนบ 1` on the contract itself), so a marker alone doesn't start a new section. Consecutive pages with the same classification form one section. Pages that match nothing join the previous section.
 5. **Template match per section**: score each active template's `match_rules` against the section text. The best one above its minimum score is assigned. The template may imply `kind` / `funding_type`.
-6. **Field extraction**: each field rule lists **label variants** and, for each, a layout:
+6. **Field extraction**. **Labels are matched at the start of a line** (numbering stripped) with fuzzy ratio **≥ 88** over a window of label length ± 2. Measured: real labels 88–100, false hits ≤ 84 (mid-sentence `โครงการวิจัย` must not match `ชื่อโครงการวิจัย`). OCR misreads single characters (`ชื่อ` → `ขือ`, `บาท` → `vin`), so exact matching fails. Values inside sentences use tolerant regexes, e.g. fiscal year `ประจำปี.{0,25}?(25\d\d)` because `พ.ศ.` comes out as `พ . ศ .` or `พ fl.`. Each field rule lists **label variants** and, for each, a layout:
    - `inline`: value after the label on the same line (`โครงการ : X`)
    - `right`: value in the column to the right, possibly continuing on following lines (`(ภาษาไทย)  X`)
    - `below`: value on the next line(s)
@@ -568,8 +575,21 @@ Category options differ between grant programmes, so each group holds the union.
 | `grant_type` | ประเภททุน | no | นักวิจัยรุ่นใหม่ · ทุนวิจัยสำหรับนักวิจัยที่มีประสบการณ์ด้านการวิจัย *(mock only)* |
 | `discipline` | สาขาวิชาการ | ? | วิศวกรรมศาสตร์และอุตสาหกรรมวิจัย · นิติศาสตร์ *(mock only)* |
 
+### Spike results (2026-10-28, server, Tesseract 5.5.0)
+
+| Check | Real scan (5 pages) | Mock (3 pages) |
+|---|---|---|
+| OCR confidence / time per page | 86–94 % / 1.8–4.5 s | 86–94 % / 0.4–1.0 s |
+| Expected labels found (line-start fuzzy ≥ 88) | all, 0 false | all except `(ภาษาไทย)` on the mock |
+| Values (contract no., amounts, Thai dates, fiscal year) | all found | all found |
+| Checkboxes found / false boxes | 8 / 0 | 9 / 0 |
+| Checked state correct | 8 / 8 (fill 0.27 vs 0.00) | 9 / 9 (fill 0.21–0.24 vs 0.00) |
+| Box → group + category | 8 / 8 (scores 91–100) | 9 / 9 (score 100) |
+
+Scripts: `spikes/ocr_probe.py`, `spikes/checkbox_probe.py` (run in the worker container; output text stays on tmpfs).
+
 ### Python libraries
-`opencv-python-headless`, `pytesseract` (+ `tesseract-ocr-tha` in the image), `pdf2image`/`pdftoppm` (poppler), `rapidfuzz`, `pythainlp`.
+`pypdfium2` (render), `pytesseract` (+ `tesseract-ocr-tha` in the image), `opencv-python-headless`, `rapidfuzz`, `numpy`. `pythainlp` is only needed for `thaiword_to_num` (amount-in-words check).
 
 ---
 
@@ -593,8 +613,8 @@ ADMIN: /admin/reports/missing-numbers?year=2568&series=E
 
 ## 8. Build order
 
-1. **Spike: Thai search.** ICU `th-TH` + pg_trgm basics verified on synthetic text (2026-10-27). Still to do: re-test on real Thai OCR output and decide whether the PyThaiNLP fallback is needed.
-2. **Spike: OCR + checkboxes.** On the server: Tesseract `tha+eng` accuracy on the sample (rendered vs. text layer), checkbox detection + fill threshold, and strikethrough removal. Typed ☑ only (no pen-tick samples).
+1. ~~**Spike: Thai search.**~~ Done: ICU `th-TH` + pg_trgm, space-insensitive `search_text`. No PyThaiNLP fallback needed (§5).
+2. ~~**Spike: OCR + checkboxes.**~~ Done: see §6 spike results.
 3. Docker Compose (postgres, api, worker; blobs volume) + Alembic baseline migration from §3.
 4. Auth (local identities, sessions, roles) + admin user CLI bootstrap.
 5. Upload/download with envelope encryption + versions.

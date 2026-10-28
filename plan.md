@@ -62,16 +62,16 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [?] **SSO protocol** (IT team): OIDC / SAML / LDAP / proxy header → which `AuthProvider` to build.
 - [?] **Frontend stack**: decide when the frontend phase starts (must work well on low-end phones).
 
-## Phase 1 — Foundation (not started, no coding yet)
+## Phase 1 — Foundation (in progress)
 
 - [x] Review internal-funding sample → DESIGN §6 (sections, label variants, checkbox groups, seed categories)
 - [x] Collect test samples: mock (`docs/`) + first real scan (`samples/`, internal + external, typed ☑). Real PDFs stay gitignored.
-- [ ] Copy samples to the server: `scp samples/*.pdf "docs/sample document-1.pdf" cs31@100.104.87.92:~/dbresearch/samples/`
-- [ ] Spike: Tesseract `tha+eng` on rendered pages vs. the PDF text layer (on the server)
-- [ ] Spike: checkbox detection + fill threshold + strikethrough removal (on the server)
-- [ ] Re-test Thai search on real OCR text, then decide on the PyThaiNLP fallback
-- [ ] Project scaffold: `pyproject.toml` (uv), ruff config, FastAPI skeleton, Dockerfile (with `tesseract-ocr-tha`, poppler)
-- [ ] `docker-compose.yml`: postgres (ICU th-TH), api (`127.0.0.1:8120`), worker, `blobs` volume
+- [x] Copy samples to the server (read-only ACL for container uid 10001): `scp samples/*.pdf "docs/sample document-1.pdf" cs31@100.104.87.92:~/dbresearch/samples/`
+- [x] Spike: Tesseract `tha+eng`: 86–94 % confidence; gap-based Thai joining; line-start fuzzy labels (DESIGN §6)
+- [x] Spike: checkboxes: 17/17 boxes, 0 false, all states + categories correct on both samples
+- [x] Thai search on real OCR text: 13/13 queries; space-insensitive `search_text`; no PyThaiNLP fallback
+- [x] Project scaffold: `pyproject.toml` (uv), ruff config, FastAPI skeleton, Dockerfile (with `tesseract-ocr-tha`, poppler)
+- [x] `docker-compose.yml`: postgres (ICU th-TH), api (`127.0.0.1:8120`), worker, `blobs` volume
 - [ ] Alembic baseline migration from DESIGN §3 + seed categories from DESIGN §6
 - [ ] pytest against a throwaway Postgres on the server
 
@@ -88,6 +88,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-10-28 — Phase 1: stack runs on the server (health OK, ICU th-TH). Spikes done: OCR, checkboxes, Thai search all work on the real scan. MinIO replaced by a local BlobStore folder (MinIO discontinued).
 - 2026-10-28 — Decided: plaintext OCR text OK; login handled by IT (SSO) → swappable auth; backups kept forever + separate KEK custody.
 - 2026-10-28 — First real scan reviewed (DESIGN §6 findings): low dpi + page noise, marker on the contract page itself, header variants, team block, English-only title, 2 contracts in one PDF. Seed categories updated from the real form.
 - 2026-10-27 — Contract running number is per year + series → parsed columns, unique live contract no., missing-numbers report.

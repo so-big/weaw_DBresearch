@@ -127,8 +127,7 @@ def _footer_rule(rule: dict, all_pages: list[Page]) -> list[Candidate]:
     votes: Counter[Any] = Counter()
     first_page: dict[Any, int] = {}
     for page in all_pages:
-        text = " ".join(line.text for line in page.footer)
-        raw, _ = _apply_pattern(rule, text)
+        raw, _ = _apply_pattern(rule, page.footer_text)
         value = _post(raw, rule.get("post", [])) if raw else None
         if value is not None:
             votes[value] += 1
@@ -167,8 +166,20 @@ def _sentence_rule(rule: dict, pages: list[Page]) -> list[Candidate]:
     return found
 
 
-_ROLE_WORDS = {"หัวหน้า": "owner", "ผู้ร่วม": "co_investigator"}
-_SHARE = re.compile(r"สัดส่วน\S*\s*(?:\(\s*%\s*\))?[\s.…]*(\d{1,3}(?:\.\d+)?)")
+_ROLES = {"หัวหน้าโครงการ": "owner", "ผู้ร่วมวิจัย": "co_investigator", "นักวิจัย": "co_investigator"}
+ROLE_MIN = 60  # role values sit on dotted lines and OCR badly; below this the role is inferred
+# 'สัดส่วน' is often misread ('สัตส่วน'); the % value follows within a few characters.
+_SHARE_LABEL = re.compile(r"ส\S{0,2}ส่วน")
+_SHARE = re.compile(r"ส\S{0,2}ส่วน[^\d]{0,25}?(\d(?:\s?\d){0,2})(?!\d)")
+
+
+def _role(text: str) -> str | None:
+    compact = re.sub(r"[\s.…_,]+", "", text)
+    if not compact:
+        return None
+    scores = {code: fuzz.partial_ratio(word, compact) for word, code in _ROLES.items()}
+    code, best = max(scores.items(), key=lambda kv: kv[1])
+    return code if best >= ROLE_MIN else None
 
 
 def _team_rule(rule: dict, pages: list[Page]) -> list[Candidate]:
@@ -183,14 +194,15 @@ def _team_rule(rule: dict, pages: list[Page]) -> list[Candidate]:
                 continue
             rest = line.text[hit[1] :]
             share = _SHARE.search(rest)
-            name_text = rest[: share.start()] if share else re.split(r"สัดส่วน", rest)[0]
+            name_text = _SHARE_LABEL.split(rest)[0]
             prefix, name = thai.split_person(name_text)
             if not name:
                 continue
+            share_pct = float(share[1].replace(" ", "")) if share else None
             person: dict[str, Any] = {
                 "prefix_th": prefix,
                 "name": name,
-                "share_pct": float(share[1]) if share else None,
+                "share_pct": share_pct if share_pct is not None and share_pct <= 100 else None,
                 "unit": None,
                 "role": None,
             }
@@ -198,11 +210,7 @@ def _team_rule(rule: dict, pages: list[Page]) -> list[Candidate]:
                 if unit := match_label("หน่วยงาน", nxt.text):
                     person["unit"] = thai.strip_leaders(nxt.text[unit[1] :]) or None
                 elif role := match_label("บทบาทในโครงการ", nxt.text):
-                    text = nxt.text[role[1] :]
-                    person["role"] = next(
-                        (code for word, code in _ROLE_WORDS.items() if word in text), None
-                    )
-                    person["role_text"] = thai.strip_leaders(text) or None
+                    person["role"] = _role(nxt.text[role[1] :])
             conf = round(hit[0] / 100 * line.conf / 100, 3)
             found.append(Candidate("team", person, conf, page.number, "team"))
     return found

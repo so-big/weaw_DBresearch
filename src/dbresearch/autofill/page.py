@@ -12,7 +12,14 @@ import numpy as np
 import pypdfium2 as pdfium
 import pytesseract
 
-from dbresearch.ocr_layout import Line, Word, build_lines, join_words, page_text
+from dbresearch.ocr_layout import (
+    MIN_LINE_CONFIDENCE,
+    Line,
+    Word,
+    build_lines,
+    join_words,
+    page_text,
+)
 from dbresearch.textnorm import normalize
 
 DPI = 300
@@ -55,11 +62,38 @@ class Page:
 
     @property
     def body(self) -> list[Line]:
-        return [line for line in self.lines if line.top < self.height * FOOTER_ZONE]
+        """Confident lines above the footer (low-confidence lines are watermark/seal noise)."""
+        return [
+            line
+            for line in self.lines
+            if line.top < self.height * FOOTER_ZONE and line.conf >= MIN_LINE_CONFIDENCE
+        ]
 
     @property
     def footer(self) -> list[Line]:
-        return [line for line in self.lines if line.top >= self.height * FOOTER_ZONE]
+        return [
+            line
+            for line in self.lines
+            if line.top >= self.height * FOOTER_ZONE and line.conf >= MIN_LINE_CONFIDENCE
+        ]
+
+    @property
+    def footer_text(self) -> str:
+        """Footer words regrouped into visual rows, left to right.
+
+        Tesseract may split one footer row into several 'lines' (contract no. / page / name)
+        in arbitrary order; regrouping restores reading order.
+        """
+        words = sorted((w for line in self.footer for w in line.words), key=lambda w: w.top)
+        rows: list[list[Word]] = []
+        for word in words:
+            centre = word.top + word.height / 2
+            row = rows[-1] if rows else None
+            if row and abs(centre - (row[0].top + row[0].height / 2)) < 0.6 * row[0].height:
+                row.append(word)
+            else:
+                rows.append([word])
+        return " ".join(normalize(join_words(row)) for row in rows)
 
     @property
     def text(self) -> str:

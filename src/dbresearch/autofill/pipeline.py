@@ -126,6 +126,7 @@ def team_people(candidates: list[Candidate], fields: dict[str, dict]) -> list[di
             seen.add(key)
             people.append({**c.value, "page": c.page, "confidence": c.confidence})
     owner = fields.get("owner", {}).get("value")
+    _infer_roles(people, owner)
     if owner:
         prefix, name = thai.split_person(owner)
         key = re.sub(r"\s+", "", name)
@@ -147,6 +148,22 @@ def team_people(candidates: list[Candidate], fields: dict[str, dict]) -> list[di
                 if re.sub(r"\s+", "", person["name"]) == key and person.get("role") is None:
                     person["role"] = "owner"
     return people
+
+
+def _infer_roles(people: list[dict], owner: str | None) -> None:
+    """Roles OCR badly (dotted lines). The footer owner, else the first person listed, is the
+    project head; everyone else without a readable role is a co-researcher."""
+    owner_key = re.sub(r"\s+", "", thai.split_person(owner)[1]) if owner else None
+    has_owner = any(p.get("role") == "owner" for p in people)
+    for index, person in enumerate(people):
+        if person.get("role") is not None:
+            person["role_source"] = "ocr"
+            continue
+        same = owner_key is not None and re.sub(r"\s+", "", person["name"]) == owner_key
+        first = not has_owner and owner_key is None and index == 0
+        person["role"] = "owner" if (same or first) and not has_owner else "co_investigator"
+        person["role_source"] = "inferred"
+        has_owner = has_owner or person["role"] == "owner"
 
 
 def checkbox_suggestions(

@@ -125,7 +125,8 @@ def words_to_amount(text: str) -> int | None:
 def strip_leaders(text: str) -> str:
     """Remove dotted fill-in leaders ('.นางสาวรุ่งนภา.........') and stray quotes."""
     text = _LEADERS.sub(" ", text)
-    return re.sub(r"\s+", " ", text.strip(" .…_:“”\"'")).strip()
+    junk = " .…_:,;“”\"'"
+    return re.sub(r"\s+", " ", text.strip(junk)).strip(junk)
 
 
 def split_person(text: str) -> tuple[str | None, str]:

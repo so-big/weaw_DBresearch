@@ -15,13 +15,14 @@ import cv2
 import numpy as np
 import pypdfium2 as pdfium
 import pytesseract
+from rapidfuzz import fuzz, process
 
 from dbresearch.ocr_layout import Line, Word, build_lines, join_words
 from dbresearch.textnorm import normalize
 
 DPI = 300
 MM = DPI / 25.4
-MIN_SIDE, MAX_SIDE = 2.0 * MM, 7.0 * MM  # printed checkboxes are ~3–5 mm
+MIN_SIDE, MAX_SIDE = 3.0 * MM, 7.0 * MM  # printed checkboxes are ~3.5–5 mm; bold letters < 3 mm
 INSET = 0.2  # ignore the border: measure ink only in the inner 60 % of the box
 CHECKED_MIN, EMPTY_MAX = 0.12, 0.03  # interior ink ratio; in between = unsure → no suggestion
 
@@ -82,7 +83,73 @@ def find_boxes(gray: np.ndarray) -> list[Box]:
     return sorted(boxes, key=lambda b: (b.y, b.x))
 
 
-def label_for(box: Box, gray: np.ndarray) -> str:
+# Seed categories from DESIGN §6 (form option labels, not personal data).
+GROUPS = {
+    "grant_type": (["ประเภททุน"], ["นักวิจัยรุ่นใหม่", "ทุนวิจัยสำหรับนักวิจัยที่มีประสบการณ์ด้านการวิจัย"]),
+    "research_type": (
+        ["ประเภทการวิจัย", "ประเภทวิจัย"],
+        ["เพื่อแก้ปัญหา", "เพื่อการวางแผนพัฒนา", "เพื่อการประกันคุณภาพ", "พื้นฐาน", "ทดลองและพัฒนา"],
+    ),
+    "research_group": (
+        ["กลุ่มการวิจัย"],
+        [
+            "นิสิต / นักศึกษา",
+            "บุคลากร",
+            "หลักสูตร / โปรแกรมการศึกษา",
+            "การเงิน / งบประมาณ",
+            "อาคารสถานที่ และสิ่งอำนวยความสะดวก",
+            "วิทยาศาสตร์เทคโนโลยี",
+            "วิทยาศาสตร์สุขภาพ",
+        ],
+    ),
+    "discipline": (["สาขาวิชาการ"], ["วิศวกรรมศาสตร์และอุตสาหกรรมวิจัย", "นิติศาสตร์"]),
+}
+GROUP_MIN, OPTION_MIN, OPTION_MARGIN = 80, 70, 10
+
+
+def _compact(text: str) -> str:
+    return re.sub(r"\s+", "", re.sub(r"\(.*?\)", "", text))
+
+
+def match_group(heading: str) -> str | None:
+    best = max(
+        (
+            (key, fuzz.ratio(_compact(alias), _compact(heading)[: len(_compact(alias)) + 2]))
+            for key, (aliases, _) in GROUPS.items()
+            for alias in aliases
+        ),
+        key=lambda kv: kv[1],
+    )
+    return best[0] if best[1] >= GROUP_MIN else None
+
+
+def match_option(group: str, label: str) -> tuple[str | None, float]:
+    """Best option in the group, only if clearly better than the runner-up."""
+    options = GROUPS[group][1]
+    ranked = process.extract(
+        _compact(label), [_compact(o) for o in options], scorer=fuzz.ratio, limit=2
+    )
+    best, runner = ranked[0], (ranked[1] if len(ranked) > 1 else (None, 0, None))
+    if best[1] >= OPTION_MIN and best[1] - runner[1] >= OPTION_MARGIN:
+        return options[best[2]], best[1]
+    return None, best[1]
+
+
+def row_label(box: Box, lines: list[Line]) -> str:
+    """Page-OCR words on the box's row, right of the box (page OCR reads clean scans best)."""
+    mid = box.y + box.h / 2
+    words = [
+        w
+        for line in lines
+        for w in line.words
+        if w.left > box.x + box.w * 0.9
+        and w.top <= mid <= w.top + w.height
+        and w.left < box.x + box.w + 90 * MM
+    ]
+    return normalize(join_words(words))
+
+
+def strip_label(box: Box, gray: np.ndarray) -> str:
     """OCR the strip right of the box as one line, after erasing strikethrough lines.
 
     Page-level OCR sometimes drops option lines entirely, so each label is read on its own.
@@ -95,8 +162,14 @@ def label_for(box: Box, gray: np.ndarray) -> str:
     long_lines = cv2.morphologyEx(ink, cv2.MORPH_OPEN, kernel)
     cleaned = strip.copy()
     cleaned[long_lines > 0] = 255
+    # Strikethrough removal helps struck labels but can hurt clean ones: keep the surer read.
+    reads = [_read_line(img) for img in (strip, cleaned)]
+    return max(reads, key=lambda r: r[1])[0]
+
+
+def _read_line(image: np.ndarray) -> tuple[str, float]:
     data = pytesseract.image_to_data(
-        cleaned, lang="tha+eng", config="--oem 1 --psm 7", output_type=pytesseract.Output.DICT
+        image, lang="tha+eng", config="--oem 1 --psm 7", output_type=pytesseract.Output.DICT
     )
     words = [
         Word(
@@ -110,7 +183,8 @@ def label_for(box: Box, gray: np.ndarray) -> str:
         for i, text in enumerate(data["text"])
         if text.strip() and float(data["conf"][i]) >= 0
     ]
-    return normalize(join_words(words))
+    conf = sum(w.conf for w in words) / len(words) if words else 0.0
+    return normalize(join_words(words)), conf
 
 
 def heading_for(box: Box, boxes: list[Box], lines: list[Line]) -> str:
@@ -145,10 +219,17 @@ def main() -> None:
     lines = build_lines(data)
     print(f"{args.pdf.name} p{args.page}: {len(boxes)} boxes")
     for b in boxes:
-        print(
-            f"  y={b.y:5} x={b.x:5} {b.w}x{b.h}px fill={b.fill:.3f} {b.state:7} "
-            f"label='{label_for(b, gray)[:40]}'  heading='{heading_for(b, boxes, lines)[:30]}'"
+        heading = heading_for(b, boxes, lines)
+        group = match_group(heading)
+        label = row_label(b, lines)
+        option, score = match_option(group, label) if group else (None, 0)
+        if group and option is None:  # page OCR missed or garbled the row: read the strip
+            label = strip_label(b, gray)
+            option, score = match_option(group, label)
+        verdict = (
+            f"{group}={option} ({score:.0f})" if option else f"{group}: no match ({score:.0f})"
         )
+        print(f"  y={b.y:5} {b.w}x{b.h}px fill={b.fill:.3f} {b.state:7} {verdict}")
 
 
 if __name__ == "__main__":

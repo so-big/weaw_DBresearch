@@ -35,6 +35,7 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 | Dates | Store Gregorian dates and years. Parse/display Buddhist Era (พ.ศ. = year + 543). Fiscal year is a normal column: taken from the document text ("ประจำปีงบประมาณ พ.ศ. 2568") when present, otherwise computed from `document_date` (Oct–Sep). |
 | Delete | Soft delete → trash (share links die right away). ADMIN purge removes it from the **live** system only. Because backups are kept forever, a purged document can still be restored from a backup. |
 | Backups | **Kept forever**: documents may be needed years later, and no data may be lost. Nightly, deduplicated, stored **off the server**. The KEK is backed up separately. See §2. |
+| Sharing rights | Any USER can share a document they can read; the link's creator or an ADMIN manages it. |
 | Share links | One document per link. Default 24h; USER max 7 days, ADMIN max 30 days (values in `settings`). Public or password (auto-generated). Optional download limit, view-only mode, full access log. |
 | Scale | Small: < 10k docs, < 30 users. One server. OCR runs in a background worker. |
 | Job queue | PostgreSQL-backed (`SELECT … FOR UPDATE SKIP LOCKED`), so no Redis is needed. |
@@ -595,18 +596,23 @@ Scripts: `spikes/ocr_probe.py`, `spikes/checkbox_probe.py` (run in the worker co
 
 ## 7. API sketch
 
+Implemented (Phase 2). Interactive docs: `/docs` on the API. Every state-changing request needs
+the header `X-Requested-With: dbresearch` (CSRF guard).
+
 ```
-POST   /auth/login                 POST /auth/logout             GET /me
-GET    /documents?q=&kind=&funding=&fy=&category=&tag=&owner=&page=
-POST   /documents                  (upload → returns id, status=processing)
-GET    /documents/{id}             PATCH /documents/{id}         DELETE /documents/{id}  (soft)
-POST   /documents/{id}/confirm     (accept reviewed auto-fill → ready)
-POST   /documents/{id}/versions    GET /documents/{id}/versions/{n}/download
-POST   /documents/{id}/shares      GET /shares (mine)            DELETE /shares/{id} (revoke)
-GET    /s/{token}                  POST /s/{token}/unlock        GET /s/{token}/file   (guest)
-ADMIN: /admin/reports/missing-numbers?year=2568&series=E
-       /admin/users · /admin/shares (all active + logs) · /admin/trash (restore/purge)
-       /admin/categories · /admin/templates · /admin/settings · /admin/audit
+Auth       POST /auth/login · POST /auth/logout · GET /auth/me
+Documents  POST /documents (multipart upload) · GET /documents (search: q, kind, funding_type,
+           fiscal_year, status, category[], tag[], person, ref_year_be, ref_series, mine, sort,
+           page, page_size, with_facets) · GET /documents/{id} · DELETE /documents/{id} (trash)
+           POST /documents/{id}/versions · GET /documents/{id}/file?version=&inline=
+           GET /documents/{id}/autofill · PUT /documents/{id}/metadata · POST /documents/{id}/reprocess
+Pickers    GET /categories · GET /people?q=
+Shares     POST /documents/{id}/shares · GET /shares · GET /shares/{id}/log
+           DELETE /shares/{id} · POST /shares/{id}/password
+Guest      GET /s/{token} · POST /s/{token}/unlock · GET /s/{token}/file?download=
+Admin      /admin/users (+ PATCH, /password) · /admin/shares · /admin/trash (restore, purge)
+           /admin/audit · /admin/settings · /admin/category-groups · /admin/categories
+           /admin/templates · /admin/reports/missing-numbers · /admin/reports/overview
 ```
 
 ---
@@ -615,14 +621,9 @@ ADMIN: /admin/reports/missing-numbers?year=2568&series=E
 
 1. ~~**Spike: Thai search.**~~ Done: ICU `th-TH` + pg_trgm, space-insensitive `search_text`. No PyThaiNLP fallback needed (§5).
 2. ~~**Spike: OCR + checkboxes.**~~ Done: see §6 spike results.
-3. Docker Compose (postgres, api, worker; blobs volume) + Alembic baseline migration from §3.
-4. Auth (local identities, sessions, roles) + admin user CLI bootstrap.
-5. Upload/download with envelope encryption + versions.
-6. Worker + jobs queue + auto-fill pipeline (§6) + review/confirm flow.
-7. Search & filters.
-8. Share links + access log + admin active-links screen.
-9. Trash/purge, audit views, settings.
-10. Backups: nightly `pg_dump` + restic (no forget), restore drill script, KEK custody runbook.
+3–10. ~~Stack, auth, encrypted storage, auto-fill worker + review, search, share links,
+   admin, backups~~ Done 2026-10-28 (Phase 2, 87 tests on the server). Operations: `docs/OPERATIONS.md`.
+11. Frontend (Phase 3, after a design brainstorm).
 
 ## 9. Open questions
 

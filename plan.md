@@ -54,6 +54,9 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Login: the **IT team integrates college SSO**. We build a minimal swappable `AuthProvider` (local login for dev/demo only); roles live in our DB.
 - [x] Backups **kept forever** (never prune), off the server, nightly `pg_dump` + blob folder via restic, to the college NAS (assumed). **KEK backed up separately**; losing it = losing every file.
 - [x] File store: **local folder + `BlobStore` interface** (MinIO discontinued 2026-04).
+- [x] Sharing: **any USER** can share any document they can read; only the link's creator or an ADMIN manages it.
+- [x] kind / funding_type may be empty until review; a document can only become `ready` with both set.
+- [x] If OCR fails 3 times, the document still goes to review (warning `ocr_failed`) so metadata can be typed by hand.
 - [x] Production uploads: **scanner PDFs only**. Auto-fill is assistive; anything wrong or missing is typed by the user on the review screen.
 
 ## Decisions still open
@@ -75,19 +78,31 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Alembic baseline migration from DESIGN §3 + seed categories/settings (DESIGN §6); one-shot `migrate` service
 - [x] pytest against a throwaway ICU th-TH Postgres on the server: up/down/up, `alembic check`, key constraints
 
-## Phase 2+ — Features (order from DESIGN §8)
+## Phase 2 — Backend ✅ done 2026-10-28 (87 tests pass on the server)
 
-- [ ] Auth: local identities, sessions, roles, admin bootstrap CLI
-- [ ] Upload/download with envelope encryption + versions
-- [ ] Worker + jobs queue + auto-fill pipeline (sections, fields, checkboxes, warnings) + review/confirm flow
-- [ ] Search & filters
-- [ ] Share links + access log + admin active-links screen
-- [ ] Trash/purge, audit views, settings
-- [ ] Frontend
-- [ ] Backups: restic job (no forget), monthly restore drill, KEK custody runbook
+- [x] Auth: `AuthProvider` (local argon2id, swappable for college SSO), server-side sessions, CSRF header, roles, `create-admin` CLI
+- [x] Upload/download with Tink envelope encryption (per-version streaming DEK, KEK file) + versions + duplicate detection
+- [x] Worker + PostgreSQL job queue + auto-fill pipeline (sections, field rules, checkboxes → categories, team, warnings) + review/metadata flow + reprocess
+- [x] Search: space-insensitive text, filters, facets, snippets, sort by contract running number
+- [x] Share links: TTL caps, public/password, view-only, download cap, lockout, access log; guest pages
+- [x] Admin: users, all links, trash/restore/purge, audit browser, settings, categories, templates (validated), missing-numbers + overview reports
+- [x] Backups: `scripts/backup.sh` (no forget), `scripts/restore-drill.sh` (passed on the demo server), `verify-storage`, `docs/OPERATIONS.md`
+- [ ] **Backups to the college NAS + nightly timer**: waiting for IT (demo uses a local test repo; timer not installed)
+- [ ] **KEK custody**: copy `secrets/kek.json` and `secrets/restic-password` to two places off the server (docs/OPERATIONS.md)
+
+## Phase 3 — Frontend (next: brainstorm first)
+
+- [ ] Brainstorm: stack, screens (upload → review → search → share), mobile/low-end constraints, Thai typography, พ.ศ. dates
+- [ ] Build against the API (`http://localhost:8120/docs` through the SSH tunnel)
+
+## Demo environment
+
+- Demo admin: username `admin`, password in `~/dbresearch/secrets/demo-admin-password` on the server (mode 600).
+- Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
 ## Log
 
+- 2026-10-28 — Phase 2 backend done: auth, encrypted storage, auto-fill worker, review, search, share links, admin, backups + passing restore drill. Next: frontend brainstorm.
 - 2026-10-28 — Phase 1 done: models + baseline/seed migrations on the live demo DB; 24 tests (9 need Postgres) pass on the server.
 - 2026-10-28 — Phase 1: stack runs on the server (health OK, ICU th-TH). Spikes done: OCR, checkboxes, Thai search all work on the real scan. MinIO replaced by a local BlobStore folder (MinIO discontinued).
 - 2026-10-28 — Decided: plaintext OCR text OK; login handled by IT (SSO) → swappable auth; backups kept forever + separate KEK custody.

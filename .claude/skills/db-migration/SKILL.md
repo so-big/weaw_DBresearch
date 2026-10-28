@@ -12,6 +12,7 @@ description: Create, review, and test an Alembic migration for this project's Po
    - **Generated columns** (`documents.ref_year_be` / `ref_series` / `ref_seq`) must use `Computed(..., persisted=True)` in models *and* migration. Without it, PostgreSQL 18+ makes them VIRTUAL, which can't be indexed.
    - Partial indexes (`WHERE deleted_at IS NULL`) and `gin_trgm_ops` indexes: declare them in the model (`postgresql_where`, `postgresql_using`/`postgresql_ops`) so autogenerate and `alembic check` see them.
    - **Shared enum types** (used by two tables): create them once at the top of `upgrade()`, reference them with `postgresql.ENUM(name=..., create_type=False)`, and drop them at the end of `downgrade()`. See the baseline migration.
+   - **Constraint names in hand-written ops**: wrap the full name in `op.f("ck_<table>_<name>")` in *both* create and drop. A bare name gets the naming convention applied again (`ck_documents_ck_documents_…`).
    - **Extensions** (`pgcrypto`, `pg_trgm`, `citext`): only in the baseline migration.
    - **Circular FK** `documents.current_version_id`: must stay `DEFERRABLE INITIALLY DEFERRED`.
    - Server defaults (`gen_random_uuid()`, `now()`) must be `server_default=sa.text(...)`.

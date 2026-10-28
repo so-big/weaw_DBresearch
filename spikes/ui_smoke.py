@@ -1,4 +1,4 @@
-"""Click through the demo web app at PC and phone sizes (light + dark); save screenshots and JS errors.
+"""Click through the demo web app (PC + phone, light + dark); save screenshots and JS errors.
 
 Runs in a throwaway Playwright container on the server (nothing installed on the host):
 
@@ -7,7 +7,8 @@ Runs in a throwaway Playwright container on the server (nothing installed on the
       -v ~/dbresearch/spikes/ui_smoke.py:/shoot.py:ro -v $D/out:/out \
       -v ~/dbresearch/secrets/demo-admin-password:/secret/demo-admin-password:ro \
       mcr.microsoft.com/playwright/python:v1.49.0-noble \
-      sh -c "pip install -q --target /tmp/pw playwright==1.49.0; PYTHONPATH=/tmp/pw python /shoot.py"
+      sh -c "pip install -q --target /tmp/pw playwright==1.49.0;
+             PYTHONPATH=/tmp/pw python /shoot.py"
 
 Expected noise in the error list: 401 before login, 404 for the deliberately invalid guest link.
 It creates one 1-hour share link on the first document and revokes it again.
@@ -110,9 +111,12 @@ def run(p, tag, viewport, mobile, scheme):
         # Guest flow: a 1-hour link, opened without a session, then revoked.
         if scheme == "light":
             link = page.evaluate(
-                """id => fetch(`/api/documents/${id}/shares`, {method: 'POST',
-                     headers: {'Content-Type': 'application/json', 'X-Requested-With': 'dbresearch'},
-                     body: JSON.stringify({ttl_hours: 1, note: 'ui smoke test'})}).then(r => r.json())""",
+                """id => fetch(`/api/documents/${id}/shares`, {
+                     method: 'POST',
+                     headers: {'Content-Type': 'application/json',
+                               'X-Requested-With': 'dbresearch'},
+                     body: JSON.stringify({ttl_hours: 1, note: 'ui smoke test'}),
+                   }).then(r => r.json())""",
                 doc_id,
             )
             guest = browser.new_context(

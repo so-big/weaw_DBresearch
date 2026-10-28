@@ -238,6 +238,7 @@ def upgrade() -> None:
             sa.Integer(),
             sa.Computed(
                 "(substring(reference_no FROM '^R(\\d{4})[A-Z]\\d+$'))::integer",
+                persisted=True,
             ),
             nullable=True,
         ),
@@ -246,6 +247,7 @@ def upgrade() -> None:
             sa.Text(),
             sa.Computed(
                 "substring(reference_no FROM '^R\\d{4}([A-Z])\\d+$')",
+                persisted=True,
             ),
             nullable=True,
         ),
@@ -254,6 +256,7 @@ def upgrade() -> None:
             sa.Integer(),
             sa.Computed(
                 "(substring(reference_no FROM '^R\\d{4}[A-Z](\\d+)$'))::integer",
+                persisted=True,
             ),
             nullable=True,
         ),

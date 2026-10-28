@@ -281,13 +281,15 @@ class Document(Base):
     # Contract no., normalised (uppercase, no spaces): R + B.E. year + series + running no.
     reference_no: Mapped[str | None]
     ref_year_be: Mapped[int | None] = mapped_column(
-        Integer, Computed(r"(substring(reference_no FROM '^R(\d{4})[A-Z]\d+$'))::integer")
+        Integer,
+        Computed(r"(substring(reference_no FROM '^R(\d{4})[A-Z]\d+$'))::integer", persisted=True),
     )
     ref_series: Mapped[str | None] = mapped_column(
-        Text, Computed(r"substring(reference_no FROM '^R\d{4}([A-Z])\d+$')")
+        Text, Computed(r"substring(reference_no FROM '^R\d{4}([A-Z])\d+$')", persisted=True)
     )
     ref_seq: Mapped[int | None] = mapped_column(
-        Integer, Computed(r"(substring(reference_no FROM '^R\d{4}[A-Z](\d+)$'))::integer")
+        Integer,
+        Computed(r"(substring(reference_no FROM '^R\d{4}[A-Z](\d+)$'))::integer", persisted=True),
     )
     document_date: Mapped[date | None]
     effective_from: Mapped[date | None]

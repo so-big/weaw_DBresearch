@@ -187,6 +187,7 @@ def test_current_version_fk_is_checked_at_commit(engine: Engine) -> None:
         )
         with pytest.raises(IntegrityError, match="fk_documents_current_version_id"):
             transaction.commit()
+        transaction.rollback()
         with connection.begin():  # clean up the committed rows
             connection.execute(text("DELETE FROM documents WHERE id = :d"), {"d": doc})
             connection.execute(text("DELETE FROM users WHERE id = :u"), {"u": user})

@@ -62,7 +62,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [?] **SSO protocol** (IT team): OIDC / SAML / LDAP / proxy header → which `AuthProvider` to build.
 - [?] **Frontend stack**: decide when the frontend phase starts (must work well on low-end phones).
 
-## Phase 1 — Foundation (in progress)
+## Phase 1 — Foundation ✅ done 2026-10-28
 
 - [x] Review internal-funding sample → DESIGN §6 (sections, label variants, checkbox groups, seed categories)
 - [x] Collect test samples: mock (`docs/`) + first real scan (`samples/`, internal + external, typed ☑). Real PDFs stay gitignored.
@@ -72,8 +72,8 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Thai search on real OCR text: 13/13 queries; space-insensitive `search_text`; no PyThaiNLP fallback
 - [x] Project scaffold: `pyproject.toml` (uv), ruff config, FastAPI skeleton, Dockerfile (with `tesseract-ocr-tha`, poppler)
 - [x] `docker-compose.yml`: postgres (ICU th-TH), api (`127.0.0.1:8120`), worker, `blobs` volume
-- [ ] Alembic baseline migration from DESIGN §3 + seed categories from DESIGN §6
-- [ ] pytest against a throwaway Postgres on the server
+- [x] Alembic baseline migration from DESIGN §3 + seed categories/settings (DESIGN §6); one-shot `migrate` service
+- [x] pytest against a throwaway ICU th-TH Postgres on the server: up/down/up, `alembic check`, key constraints
 
 ## Phase 2+ — Features (order from DESIGN §8)
 
@@ -88,6 +88,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-10-28 — Phase 1 done: models + baseline/seed migrations on the live demo DB; 24 tests (9 need Postgres) pass on the server.
 - 2026-10-28 — Phase 1: stack runs on the server (health OK, ICU th-TH). Spikes done: OCR, checkboxes, Thai search all work on the real scan. MinIO replaced by a local BlobStore folder (MinIO discontinued).
 - 2026-10-28 — Decided: plaintext OCR text OK; login handled by IT (SSO) → swappable auth; backups kept forever + separate KEK custody.
 - 2026-10-28 — First real scan reviewed (DESIGN §6 findings): low dpi + page noise, marker on the contract page itself, header variants, team block, English-only title, 2 contracts in one PDF. Seed categories updated from the real form.

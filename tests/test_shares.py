@@ -52,6 +52,28 @@ def test_public_link_lets_a_guest_download_and_logs_it(client, login):
     assert "document.download" in actions
     events = [e["event"] for e in client.get(f"/shares/{link['id']}/log").json()]
     assert set(events) == {"open", "download"}
+    assert {e["user_name"] for e in client.get(f"/shares/{link['id']}/log").json()} == {None}
+
+
+def test_share_log_names_a_logged_in_visitor(client, login, make_user):
+    login()
+    doc_id, _ = setup_doc(client)
+    link = share(client, doc_id)
+    _, colleague, password = make_user()
+    with guest() as g:
+        g.get(link["path"])  # an outsider: IP only
+        assert g.post("/auth/login", json={"username": colleague, "password": password}).is_success
+        g.get(link["path"])
+        assert g.get(f"{link['path']}/file").status_code == 200
+    log = client.get(f"/shares/{link['id']}/log").json()
+    assert [(e["event"], e["user_name"]) for e in log] == [
+        ("view", colleague),
+        ("open", colleague),
+        ("open", None),
+    ]
+    with new_session() as db:
+        viewed = db.scalar(select(AuditEvent).where(AuditEvent.action == "document.view"))
+    assert viewed.actor_id is not None
 
 
 def test_ttl_caps_from_settings(client, login):

@@ -116,10 +116,10 @@
     {:else}
       <div class="table-wrap">
         <table class="data">
-          <thead><tr><th>เวลา</th><th>เหตุการณ์</th><th>IP</th></tr></thead>
+          <thead><tr><th>เวลา</th><th>ผู้เข้าถึง</th><th>เหตุการณ์</th><th>IP</th></tr></thead>
           <tbody>
             {#each log as e, i (i)}
-              <tr><td class="num">{thDateTime(e.at)}</td><td>{EVENT[e.event] || e.event}{e.reason ? ` (${e.reason})` : ''}</td><td class="mono">{e.ip || '–'}</td></tr>
+              <tr><td class="num">{thDateTime(e.at)}</td><td>{#if e.user_name}<span class="who"><Icon name="user" size={13} />{e.user_name}</span>{:else}<span class="muted">บุคคลภายนอก</span>{/if}</td><td>{EVENT[e.event] || e.event}{e.reason ? ` (${e.reason})` : ''}</td><td class="mono">{e.ip || '–'}</td></tr>
             {/each}
           </tbody>
         </table>
@@ -138,6 +138,7 @@
   .meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); }
   .note { font-style: italic; }
   .acc { display: inline-flex; align-items: center; gap: 4px; }
+  .who { display: inline-flex; align-items: center; gap: 5px; font-weight: 500; white-space: nowrap; }
   .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-left: -4px; }
   .danger { color: var(--bad); }
   .empty { padding: 36px 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--muted); }

@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from dbresearch import audit, shares
 from dbresearch.api.documents import live_document, stream_version
-from dbresearch.auth import DB, CurrentUser, client_ip
+from dbresearch.auth import DB, CurrentUser, MaybeUser, client_ip
 from dbresearch.models import (
     Document,
     DocumentVersion,
@@ -105,11 +105,16 @@ def my_shares(db: DB, user: CurrentUser, active_only: bool = False):
 @router.get("/shares/{link_id}/log", response_model=list[ShareLogOut])
 def share_log(link_id: uuid.UUID, db: DB, user: CurrentUser):
     link = managed_link(db, link_id, user)
-    return db.scalars(
-        select(ShareAccessLog)
+    rows = db.execute(
+        select(ShareAccessLog, User.display_name)
+        .outerjoin(User, User.id == ShareAccessLog.user_id)
         .where(ShareAccessLog.share_link_id == link.id)
         .order_by(ShareAccessLog.at.desc())
     ).all()
+    return [
+        ShareLogOut.model_validate(entry).model_copy(update={"user_name": name})
+        for entry, name in rows
+    ]
 
 
 @router.delete("/shares/{link_id}", status_code=204)
@@ -131,8 +136,13 @@ def new_password(link_id: uuid.UUID, request: Request, db: DB, user: CurrentUser
 
 
 # ───────────── Guest side (no login) ─────────────
-def _guest_link(db, token: str, request: Request) -> tuple[ShareLink, Document]:
-    """The link if usable; otherwise 404 (the reason is logged, not shown)."""
+def _guest_link(
+    db, token: str, request: Request, viewer: User | None
+) -> tuple[ShareLink, Document]:
+    """The link if usable; otherwise 404 (the reason is logged, not shown).
+
+    `viewer` is whoever is logged in on this browser, so the link's owner can tell a
+    colleague's visit from an outsider's. Guests stay anonymous (IP only)."""
     link = shares.by_token(db, token)
     if link is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This link is invalid or has expired")
@@ -146,6 +156,7 @@ def _guest_link(db, token: str, request: Request) -> tuple[ShareLink, Document]:
             client_ip(request),
             request.headers.get("user-agent"),
             reason=current.value,
+            user=viewer,
         )
         db.commit()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This link is invalid or has expired")
@@ -162,11 +173,16 @@ def _unlocked(link: ShareLink, grant: str | None) -> bool:
 
 @guest.get("/{token}", response_model=GuestInfo)
 def guest_info(
-    token: str, request: Request, db: DB, dbr_grant: Annotated[str | None, Cookie()] = None
+    token: str,
+    request: Request,
+    db: DB,
+    viewer: MaybeUser,
+    dbr_grant: Annotated[str | None, Cookie()] = None,
 ):
-    link, document = _guest_link(db, token, request)
+    link, document = _guest_link(db, token, request, viewer)
     version = _version(db, link, document)
-    shares.log(db, link, ShareEvent.OPEN, client_ip(request), request.headers.get("user-agent"))
+    agent = request.headers.get("user-agent")
+    shares.log(db, link, ShareEvent.OPEN, client_ip(request), agent, user=viewer)
     db.commit()
     left = None if link.max_downloads is None else link.max_downloads - link.download_count
     return GuestInfo(
@@ -183,13 +199,15 @@ def guest_info(
 
 
 @guest.post("/{token}/unlock", status_code=204)
-def guest_unlock(token: str, body: UnlockIn, request: Request, response: Response, db: DB):
-    link, _ = _guest_link(db, token, request)
+def guest_unlock(
+    token: str, body: UnlockIn, request: Request, response: Response, db: DB, viewer: MaybeUser
+):
+    link, _ = _guest_link(db, token, request, viewer)
     ip, agent = client_ip(request), request.headers.get("user-agent")
     if link.access != ShareAccess.PASSWORD:
         return
     if not shares.check_password(db, link, body.password):
-        shares.log(db, link, ShareEvent.BAD_PASSWORD, ip, agent)
+        shares.log(db, link, ShareEvent.BAD_PASSWORD, ip, agent, user=viewer)
         db.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Wrong password")
     response.set_cookie(
@@ -207,26 +225,29 @@ def guest_file(
     token: str,
     request: Request,
     db: DB,
+    viewer: MaybeUser,
     download: bool = False,
     dbr_grant: Annotated[str | None, Cookie()] = None,
 ):
-    link, document = _guest_link(db, token, request)
+    link, document = _guest_link(db, token, request, viewer)
     ip, agent = client_ip(request), request.headers.get("user-agent")
     if not _unlocked(link, dbr_grant):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Password required")
     if download and not link.allow_download:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This link is view-only")
     if download and not shares.take_download(db, link):
-        shares.log(db, link, ShareEvent.DENIED, ip, agent, reason="exhausted")
+        shares.log(db, link, ShareEvent.DENIED, ip, agent, reason="exhausted", user=viewer)
         db.commit()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This link is invalid or has expired")
     version = _version(db, link, document)
-    shares.log(db, link, ShareEvent.DOWNLOAD if download else ShareEvent.VIEW, ip, agent)
+    event = ShareEvent.DOWNLOAD if download else ShareEvent.VIEW
+    shares.log(db, link, event, ip, agent, user=viewer)
     audit.record(
         db,
         "document.download" if download else "document.view",
         "document",
         document.id,
+        actor_id=viewer.id if viewer else None,
         ip=ip,
         via="share",
         share_link_id=link.id,

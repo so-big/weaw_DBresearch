@@ -124,6 +124,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-10-29 — Share-link access log names the visitor when they are logged in (new `share_access_log.user_id`); guests stay IP-only.
 - 2026-10-28 — Select mode (zip download, bulk trash with undo), overview for every user, per-user bin with restore.
 - 2026-10-28 — Phase 4: public demo live; per-file upload cancel, chart overview, visual refresh.
 

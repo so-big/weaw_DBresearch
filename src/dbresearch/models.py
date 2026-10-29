@@ -532,6 +532,8 @@ class ShareAccessLog(Base):
     at: Mapped[datetime] = mapped_column(server_default=NOW)
     ip: Mapped[str | None] = mapped_column(INET)
     user_agent: Mapped[str | None]
+    # Set when the visitor was logged in (a colleague opening the link); NULL for a guest.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
 
 
 Index("share_log_link_idx", ShareAccessLog.share_link_id, ShareAccessLog.at.desc())

@@ -365,7 +365,8 @@ CREATE TABLE share_access_log (
   reason        text,                     -- for 'denied': expired / revoked / limit / locked
   at            timestamptz NOT NULL DEFAULT now(),
   ip            inet,
-  user_agent    text
+  user_agent    text,
+  user_id       uuid REFERENCES users(id)  -- set when the visitor was logged in; NULL = guest
 );
 
 -- ───────────── Audit, settings, jobs ─────────────

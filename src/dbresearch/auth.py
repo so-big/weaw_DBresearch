@@ -151,6 +151,12 @@ def current_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> U
     return user
 
 
+def optional_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> User | None:
+    """The logged-in user, or None for a guest (share-link pages work either way)."""
+    token = request.cookies.get(get_settings().session_cookie)
+    return resolve_session(db, token) if token else None
+
+
 def require_admin(user: Annotated[User, Depends(current_user)]) -> User:
     if user.role != UserRole.ADMIN:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin only")
@@ -158,5 +164,6 @@ def require_admin(user: Annotated[User, Depends(current_user)]) -> User:
 
 
 CurrentUser = Annotated[User, Depends(current_user)]
+MaybeUser = Annotated[User | None, Depends(optional_user)]
 AdminUser = Annotated[User, Depends(require_admin)]
 DB = Annotated[Session, Depends(get_db)]

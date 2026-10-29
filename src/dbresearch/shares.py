@@ -153,6 +153,7 @@ def log(
     ip: str | None,
     user_agent: str | None,
     reason: str | None = None,
+    user: User | None = None,
 ) -> None:
     db.add(
         ShareAccessLog(
@@ -161,6 +162,7 @@ def log(
             reason=reason,
             ip=ip,
             user_agent=(user_agent or "")[:300],
+            user_id=user.id if user else None,
         )
     )
 

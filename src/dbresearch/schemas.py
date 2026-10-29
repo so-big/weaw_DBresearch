@@ -287,6 +287,7 @@ class ShareLogOut(BaseModel):
     at: datetime
     ip: IpText
     user_agent: str | None
+    user_name: str | None = None  # who it was, when they were logged in
 
 
 class GuestInfo(BaseModel):

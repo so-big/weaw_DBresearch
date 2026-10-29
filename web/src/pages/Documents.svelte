@@ -551,9 +551,8 @@
   .list.dim { opacity: 0.55; }
   .item { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 14px; padding: 13px 16px; border-top: 1px solid var(--border); color: inherit; text-decoration: none; transition: background var(--t-fast); }
   .item:first-child { border-top: 0; }
-  .layout.wide .item { grid-template-columns: 42px minmax(0, 1fr) auto 40px; align-items: center; }
-  .layout.wide .item .side-meta { align-self: start; }
-  .dl-cell { width: 40px; height: 40px; }
+  .layout.wide .item { grid-template-columns: 42px minmax(0, 1fr) auto 40px; }
+  .dl-cell { width: 40px; height: 40px; align-self: center; }
   .dl-pc {
     position: relative; z-index: 2; width: 40px; height: 40px; display: grid; place-items: center;
     border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--muted);

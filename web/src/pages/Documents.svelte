@@ -440,6 +440,14 @@
                 <a class="btn small dl" href={fileUrl(d.id)} aria-label="ดาวน์โหลด {d.title}"><Icon name="download" size={15} /></a>
               {/if}
             </div>
+            {#if screen.wide}
+              <!-- reserved column, so rows don't shift when select mode hides the button -->
+              <span class="dl-cell">
+                {#if !selecting}
+                  <a class="dl-pc" href={fileUrl(d.id)} title="ดาวน์โหลด PDF" aria-label="ดาวน์โหลด {d.title}"><Icon name="download" size={18} /></a>
+                {/if}
+              </span>
+            {/if}
           </div>
         {/each}
       </div>
@@ -543,6 +551,16 @@
   .list.dim { opacity: 0.55; }
   .item { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 14px; padding: 13px 16px; border-top: 1px solid var(--border); color: inherit; text-decoration: none; transition: background var(--t-fast); }
   .item:first-child { border-top: 0; }
+  .layout.wide .item { grid-template-columns: 42px minmax(0, 1fr) auto 40px; align-items: center; }
+  .layout.wide .item .side-meta { align-self: start; }
+  .dl-cell { width: 40px; height: 40px; }
+  .dl-pc {
+    position: relative; z-index: 2; width: 40px; height: 40px; display: grid; place-items: center;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--muted);
+    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast), transform var(--t-fast) var(--ease-out);
+  }
+  .dl-pc:hover { color: var(--primary-text); border-color: var(--primary-soft); background: var(--primary-soft); }
+  .dl-pc:active { transform: scale(0.94); }
   .item:hover { background: var(--subtle); }
   .cover { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
   .cover:focus-visible { outline-offset: -3px; }

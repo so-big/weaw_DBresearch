@@ -555,10 +555,10 @@
   .dl-cell { width: 40px; height: 40px; align-self: center; }
   .dl-pc {
     position: relative; z-index: 2; width: 40px; height: 40px; display: grid; place-items: center;
-    border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--muted);
-    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast), transform var(--t-fast) var(--ease-out);
+    border: 0; border-radius: 10px; background: var(--primary); color: var(--on-primary);
+    transition: background var(--t-fast), transform var(--t-fast) var(--ease-out);
   }
-  .dl-pc:hover { color: var(--primary-text); border-color: var(--primary-soft); background: var(--primary-soft); }
+  .dl-pc:hover { background: var(--primary-hover); }
   .dl-pc:active { transform: scale(0.94); }
   .item:hover { background: var(--subtle); }
   .cover { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }

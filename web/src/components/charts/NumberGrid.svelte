@@ -18,7 +18,7 @@
 <div class="rows">
   {#each rows as r (r.year_be + r.series)}
     {@const s = SERIES[r.series] || { label: r.series, color: 'var(--c-unset)' }}
-    <div class="row">
+    <div class="series">
       <div class="head">
         <b class="num">{r.year_be}</b>
         <span class="tag" style="--c:{s.color}">{r.series} · {s.label}</span>
@@ -53,7 +53,7 @@
 
 <style>
   .rows { display: flex; flex-direction: column; gap: 16px; }
-  .row { display: flex; flex-direction: column; gap: 7px; }
+  .series { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
   .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
   .head b { font-family: var(--f-display); font-weight: 500; font-size: 17px; }
   .tag { font-size: 12px; font-weight: 600; padding: 0 8px; border-radius: 999px; color: var(--text); background: color-mix(in srgb, var(--c) 16%, transparent); }

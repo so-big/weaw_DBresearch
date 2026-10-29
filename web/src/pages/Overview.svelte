@@ -52,8 +52,9 @@
     ['ov-numbers', 'เลขที่สัญญา'],
   ];
   let active = $state('');
-  function jump(id) {
+  function jump(id, e) {
     active = id;
+    e?.currentTarget.scrollIntoView({ inline: 'nearest', block: 'nearest' });
     document.getElementById(id)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
   }
 </script>
@@ -98,7 +99,7 @@
   {#if phone}
     <nav class="jump" aria-label="ไปยังหัวข้อ">
       {#each SECTIONS as [id, label] (id)}
-        <button class="chip" aria-pressed={active === id} onclick={() => jump(id)}>{label}</button>
+        <button class="chip" aria-pressed={active === id} onclick={(e) => jump(id, e)}>{label}</button>
       {/each}
     </nav>
   {/if}

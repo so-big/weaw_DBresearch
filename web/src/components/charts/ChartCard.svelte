@@ -1,10 +1,10 @@
 <script>
   // Frame for one chart: title, short note, legend, and a table view for screen readers / exact numbers.
-  let { title, note = '', legend = [], children, table, wide = false } = $props();
+  let { title, note = '', legend = [], children, table, wide = false, id = undefined } = $props();
   let showTable = $state(false);
 </script>
 
-<section class="card chart-card" class:wide>
+<section class="card chart-card" class:wide {id}>
   <header>
     <div class="titles">
       <h3>{title}</h3>
@@ -34,4 +34,11 @@
   .legend li { display: inline-flex; align-items: center; gap: 6px; }
   .sw { width: 10px; height: 10px; border-radius: 3px; }
   .body { min-width: 0; position: relative; }
+  header .link-btn { flex: none; white-space: nowrap; }
+  .table-wrap { overflow-x: auto; margin: 0 -4px; }
+  .chart-card { scroll-margin-top: calc(var(--header-h) + 60px); }
+  @media (max-width: 767px) {
+    .chart-card { padding: 14px 14px 12px; border-radius: 14px; }
+    h3 { font-size: 15.5px; }
+  }
 </style>

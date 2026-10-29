@@ -38,7 +38,7 @@
         <text x="-8" y={y(t)} dy="0.32em" text-anchor="end" class="axis">{short(t)}</text>
       {/each}
       {#each data as d, i (i)}
-        {#if i % labelEvery === 0 || i === data.length - 1}
+        {#if i === data.length - 1 || (i % labelEvery === 0 && data.length - 1 - i >= labelEvery * 0.75)}
           <text x={x(i)} y={plotH + 17} text-anchor={i === data.length - 1 ? 'end' : i === 0 ? 'start' : 'middle'} class="axis">{d.label}</text>
         {/if}
       {/each}

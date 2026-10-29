@@ -2,6 +2,8 @@
   // Contract-number coverage: one small tile per running number (R{year}{series}{001…}).
   // Filled = a file is stored; outlined = missing. A row per year + series.
   let { rows = [] } = $props(); // [{ year_be, series, highest, stored, missing: ['R2568E004', …] }]
+  const FIRST = 12;
+  let open = $state({}); // row key → show every missing number
 
   const SERIES = { E: { label: 'ภายใน', color: 'var(--c-internal)' }, A: { label: 'ภายนอก', color: 'var(--c-external)' } };
   const tiles = (r) => {
@@ -32,7 +34,16 @@
         {/each}
       </div>
       {#if r.missing.length}
-        <p class="list"><span class="muted">เลขที่ขาด:</span> <span class="cno">{r.missing.slice(0, 12).join(', ')}{r.missing.length > 12 ? ` และอีก ${r.missing.length - 12}` : ''}</span></p>
+        {@const key = `${r.year_be}${r.series}`}
+        <div class="list">
+          <span class="muted">เลขที่ขาด</span>
+          <ul>
+            {#each open[key] ? r.missing : r.missing.slice(0, FIRST) as no (no)}<li class="cno">{no}</li>{/each}
+          </ul>
+          {#if r.missing.length > FIRST}
+            <button class="link-btn" onclick={() => (open[key] = !open[key])}>{open[key] ? 'ย่อ' : `แสดงทั้งหมด (${r.missing.length})`}</button>
+          {/if}
+        </div>
       {/if}
     </div>
   {:else}
@@ -52,6 +63,9 @@
   .tile.have { background: var(--c); transition: transform var(--t-fast); }
   .tile.have:hover { transform: scale(1.25); }
   .tile.miss { border: 1.5px dashed var(--warn); background: var(--warn-soft); }
-  .list { font-size: 12.5px; overflow-wrap: anywhere; }
-  .list .cno { font-size: 12px; color: var(--warn); }
+  .list { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; font-size: 12.5px; min-width: 0; }
+  .list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+  .list .cno { font-size: 11.5px; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 1px 6px; }
+  .list .link-btn { padding: 2px 0; font-size: 12.5px; }
+  @media (max-width: 767px) { .tile { width: 16px; height: 16px; } .tiles { gap: 4px; } }
 </style>

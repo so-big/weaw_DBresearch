@@ -2,7 +2,7 @@
   // Overview for everyone: library figures and charts. Admins also get the system figures
   // (users, all share links, the whole trash, storage); the API only sends those to them.
   import { get, errorText } from '../lib/api.js';
-  import { bytes, STATUS } from '../lib/format.js';
+  import { bytes, STATUS, FACULTY } from '../lib/format.js';
   import { isAdmin, screen } from '../lib/state.svelte.js';
   import ChartCard from '../components/charts/ChartCard.svelte';
   import Columns from '../components/charts/Columns.svelte';
@@ -177,8 +177,8 @@
     <ChartCard id="ov-numbers" title="เลขที่สัญญาในระบบ" note="ช่องทึบ = มีไฟล์แล้ว (กดเพื่อค้นหา) · ช่องเส้นประ = ยังไม่มีไฟล์ นับจาก 001 ถึงเลขสูงสุดของแต่ละปี" wide>
       <NumberGrid rows={gaps || []} />
       {#snippet table()}
-        <table class="data"><thead><tr><th>ปี (พ.ศ.)</th><th>ชุด</th><th class="r">มีแล้ว / เลขสูงสุด</th><th>เลขที่ขาด</th></tr></thead>
-          <tbody>{#each gaps || [] as g (g.year_be + g.series)}<tr><td class="num">{g.year_be}</td><td>{g.series}</td><td class="r num">{g.stored} / {g.highest}</td><td class="cno wraps">{g.missing.join(', ') || 'ครบ'}</td></tr>{/each}</tbody></table>
+        <table class="data"><thead><tr><th>ปี (พ.ศ.)</th><th>คณะ</th><th class="r">มีแล้ว / เลขสูงสุด</th><th>เลขที่ขาด</th></tr></thead>
+          <tbody>{#each gaps || [] as g (g.year_be + g.series)}<tr><td class="num">{g.year_be}</td><td>{FACULTY[g.series] || g.series}</td><td class="r num">{g.stored} / {g.highest}</td><td class="cno wraps">{g.missing.join(', ') || 'ครบ'}</td></tr>{/each}</tbody></table>
       {/snippet}
     </ChartCard>
   </div>

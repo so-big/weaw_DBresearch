@@ -536,16 +536,16 @@ Observations that shape the design:
 ### Contract number
 Format: `R` + B.E. year + faculty letter + running number.
 
-| Example | Year | Letter | Funding type |
+| Example | Year | Letter | Faculty |
 |---|---|---|---|
-| `R2568E001` | 2568 (FY 2025) | `E` | engineering (internal or external: see the title block) |
+| `R2568E001` | 2568 (FY 2025) | `E` | engineering (funding type comes from the title block, not the letter) |
 
 Parse with `R(\d{4})([A-Z])(\d+)`, after normalising Thai digits and fixing OCR mix-ups inside the digit groups (`B`→`8`, `S`→`5`, `O`→`0`, `I`/`l`→`1`: `R256BE001` → `R2568E001`). The year cross-checks `fiscal_year`. The letter is the faculty and is kept as read.
 
 **Running number:** counts up separately for each year + series (faculty). `R2568E001` is engineering's first contract of 2568. (This is the department's understanding; confirm it against more samples.) The system only **stores** numbers issued by the department; it never generates them. What it's used for:
 - **Sorting**: order lists by `(ref_year_be, ref_series, ref_seq)` so `E002` comes before `E010`, not by the raw text.
 - **Duplicate upload**: if the extracted number matches a live document, the review screen offers *"add as a new version of R2568A001"* instead of creating a duplicate. The partial unique index enforces it.
-- **Missing numbers report** (ADMIN): for each year + series, list the gaps between 1 and the highest `ref_seq` (e.g. internal 2568: E004, E007 missing). Shows which contracts haven't been archived yet.
+- **Missing numbers report** (ADMIN): for each year + series, list the gaps between 1 and the highest `ref_seq` (e.g. 2568 engineering: E004, E007 missing). Shows which contracts haven't been archived yet.
 - Search accepts both the short and padded forms (`A1` → `A001`).
 
 ### Package structure (one PDF = one contract)

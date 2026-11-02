@@ -32,7 +32,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 def missing_numbers(
     db: DB, user: CurrentUser, year_be: int | None = None, series: str | None = None
 ) -> list[dict]:
-    """Gaps in each year + series of contract numbers, e.g. internal 2568: E004, E007."""
+    """Gaps in each year + series of contract numbers, e.g. 2568 engineering (E): E004, E007."""
     query = (
         select(
             Document.ref_year_be,

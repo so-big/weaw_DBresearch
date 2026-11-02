@@ -44,7 +44,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] One PDF = one full package with attachments (`เอกสารแนบหมายเลข N`). No separate Project table in v1 (DESIGN §1, §3).
 - [x] Auto-tags from **checked** boxes, matched to ADMIN categories; unmatched → suggested tag; unchecked ignored (DESIGN §6).
 - [x] Checkbox detection is tuned for typed ☑ only. Pen ticks are out of scope for v1: if a box isn't detected confidently, there's no suggestion and the user tags manually.
-- [x] Contract no. = `R` + B.E. year + funding letter + running no.: `E` = internal (`R2568E999`), `A` = external (`R2568A001`). The letter sets `funding_type`.
+- [x] Contract no. = `R` + B.E. year + faculty letter + running no. (`R2568E047`, E = engineering). *(Was "E = internal / A = external"; corrected 2026-11-02, see Feedback round 1.)*
 - [x] Running number counts per year + series (`R2568E001` = first internal of 2568). Used for sorting, duplicate-upload detection (unique per live doc), and an ADMIN missing-numbers report. The system stores numbers, never issues them.
 - [x] External funding uses the same document format as internal → same section templates; funding type comes from the contract no.
 - [x] Budget: auto-fill only `budget_total`. Line items / installments (`งวด`) are typed manually into `budget_lines`.

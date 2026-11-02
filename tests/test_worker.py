@@ -143,7 +143,7 @@ def test_closing_paper_is_read_without_touching_the_review(client, login):
         "/documents", files={"file": ("c.pdf", contract, "application/pdf")}
     ).json()["id"]
     assert run_once() is True  # the contract itself → needs_review
-    paper = scanned_pdf([(300, "Closing memo zebracorn")], footer="R2567E101")
+    paper = scanned_pdf([(300, "Closing memo zebracorn"), (400, "Contract R2567E101")], footer="1")
     response = client.post(
         f"/documents/{doc_id}/closure-files",
         files={"file": ("close.pdf", paper, "application/pdf")},

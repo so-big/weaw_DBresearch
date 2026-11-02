@@ -11,6 +11,8 @@ export const STATUS = {
 };
 export const KIND = { contract: 'สัญญา', grant: 'ทุนวิจัย' };
 export const FUNDING = { internal: 'ทุนภายใน', external: 'ทุนภายนอก' };
+// Letter in the contract no. (R2568E001) = the faculty that issued it. Add more as they turn up.
+export const FACULTY = { E: 'คณะวิศวกรรมศาสตร์' };
 export const ROLE = {
   owner: 'หัวหน้าโครงการ',
   co_investigator: 'ผู้ร่วมวิจัย',

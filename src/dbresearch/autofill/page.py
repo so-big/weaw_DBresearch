@@ -12,6 +12,7 @@ import numpy as np
 import pypdfium2 as pdfium
 import pytesseract
 
+from dbresearch.autofill.thai import is_noise
 from dbresearch.ocr_layout import (
     MIN_LINE_CONFIDENCE,
     Line,
@@ -62,11 +63,15 @@ class Page:
 
     @property
     def body(self) -> list[Line]:
-        """Confident lines above the footer (low-confidence lines are watermark/seal noise)."""
+        """Confident lines above the footer. Low-confidence lines and lines without a real
+        word are watermark, seal or stamp noise; dropping them keeps clauses that wrap around
+        a stamp ('เมื่อวันที่20 / at / มกราคม 2568') readable as one sentence."""
         return [
             line
             for line in self.lines
-            if line.top < self.height * FOOTER_ZONE and line.conf >= MIN_LINE_CONFIDENCE
+            if line.top < self.height * FOOTER_ZONE
+            and line.conf >= MIN_LINE_CONFIDENCE
+            and not is_noise(line.text)
         ]
 
     @property

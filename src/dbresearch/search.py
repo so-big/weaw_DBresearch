@@ -17,10 +17,12 @@ from dbresearch.models import (
     DocumentPage,
     DocumentPerson,
     DocumentTag,
+    DocumentVersion,
     FundingType,
     Person,
     PersonRole,
     Tag,
+    VersionPurpose,
 )
 from dbresearch.search_text import compact
 from dbresearch.textnorm import normalize
@@ -43,6 +45,7 @@ class Filters:
     ref_year_be: int | None = None
     ref_series: str | None = None
     uploaded_by: uuid.UUID | None = None
+    project: list[str] = field(default_factory=list)  # 'open' / 'closed' (ปิดโครงการ = archive)
 
 
 def _like(text: str) -> str:
@@ -69,6 +72,10 @@ def _conditions(db: Session, f: Filters) -> list:
         conds.append(Document.ref_series == f.ref_series.upper())
     if f.uploaded_by:
         conds.append(Document.uploaded_by == f.uploaded_by)
+    if set(f.project) == {"open"}:
+        conds.append(Document.closed_at.is_(None))
+    elif set(f.project) == {"closed"}:
+        conds.append(Document.closed_at.is_not(None))
     if f.categories:
         # OR within a group (either research type), AND across groups (type and group).
         by_group: dict[uuid.UUID, list[uuid.UUID]] = {}
@@ -174,7 +181,14 @@ def facets(db: Session, f: Filters) -> dict[str, list[dict]]:
             .group_by(Category.id, Category.name_th, CategoryGroup.key)
             .order_by(func.count().desc())
         ).all()
+    project = case((Document.closed_at.is_(None), "open"), else_="closed")
+    project_rows = db.execute(
+        select(project, func.count())
+        .where(Document.id.in_(ids_without(project=[])))
+        .group_by(project)
+    ).all()
     return {
+        "project": [{"value": value, "count": count} for value, count in project_rows],
         "kind": counts(Document.kind, "kind"),
         "funding_type": counts(Document.funding_type, "funding_type"),
         "fiscal_year": counts(Document.fiscal_year, "fiscal_year"),
@@ -205,10 +219,17 @@ def snippet(db: Session, document: Document, q: str | None) -> str | None:
     needle = compact(q) if q else ""
     if len(needle) < 2 or document.current_version_id is None:
         return None
+    closing = select(DocumentVersion.id).where(
+        DocumentVersion.document_id == document.id,
+        DocumentVersion.purpose == VersionPurpose.CLOSURE,
+    )
     for text in db.scalars(
         select(DocumentPage.text)
-        .where(DocumentPage.version_id == document.current_version_id)
-        .order_by(DocumentPage.page_no)
+        .where(
+            (DocumentPage.version_id == document.current_version_id)
+            | DocumentPage.version_id.in_(closing)
+        )
+        .order_by(DocumentPage.version_id != document.current_version_id, DocumentPage.page_no)
     ):
         positions = [i for i, ch in enumerate(text) if not ch.isspace()]
         squashed = "".join(text[i] for i in positions).lower()

@@ -80,8 +80,8 @@ export function uploadFile(path, file, onProgress, onStart) {
   });
 }
 
-export const fileUrl = (id, { inline = false, version } = {}) =>
-  `/api/documents/${id}/file${query({ inline: inline || undefined, version })}`;
+export const fileUrl = (id, { inline = false, version, closure } = {}) =>
+  `/api/documents/${id}/file${query({ inline: inline || undefined, version, closure })}`;
 
 /** Several documents as one zip, built by the server. */
 export const zipUrl = (ids) => `/api/documents/zip${query({ id: ids })}`;

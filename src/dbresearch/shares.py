@@ -25,6 +25,7 @@ from dbresearch.models import (
     ShareLink,
     User,
     UserRole,
+    VersionPurpose,
 )
 from dbresearch.security import (
     generate_share_password,
@@ -103,6 +104,7 @@ def create(
         version_id = db.scalar(
             select(DocumentVersion.id).where(
                 DocumentVersion.document_id == document.id,
+                DocumentVersion.purpose == VersionPurpose.MAIN,
                 DocumentVersion.version_no == version_no,
             )
         )

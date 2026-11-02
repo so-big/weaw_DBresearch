@@ -25,8 +25,11 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 | Encryption | App-level envelope encryption: one random key (DEK) per file version, wrapped by a master key (KEK). |
 | Auto-fill | Per page: OCR with word positions (Tesseract `tha+eng`), split the PDF into sections, then apply **section templates stored in the DB** (several label variants per field: inline / right / below). User confirms. Nothing leaves the server. See §6. |
 | Uploads | **Scanner PDFs only** (`application/pdf`; other types rejected). Phone photos are used only as test samples, taken in a scanner app's document mode. |
-| Funding type | Taken from the contract number letter: `R2568`**`E`**`999` = internal, `R2568`**`A`**`001` = external. Cross-checked with the header text. |
-| Budget | `budget_total` is auto-filled from `งบประมาณรวม`. Line items (internal) and installments `งวด` (external) are **typed by the user** into `budget_lines`; no table parsing. |
+| Funding type | Taken from the contract's **title block** (the lines above `โครงการ :`): a contract *between* an outside agency and the university (`… ระหว่าง <agency> กับมหาวิทยาลัย…`) is **external**; one paid `จากงบประมาณ…` of a single unit (e.g. `รายได้คณะวิศวกรรมศาสตร์`) is **internal**. The parties clause below the title also says `ระหว่างคณะ… กับ <researcher>`, so it is ignored. *(Corrected 2026-11-02: the contract-number letter is the faculty, not the funding type.)* |
+| Contract-number letter | `R2568`**`E`**`047`: the letter is the **faculty** that issued the number (`E` = engineering; others A–… are other faculties). It never sets the funding type. |
+| Close a project | ปิดโครงการ: the uploader or an admin attaches the closing papers (approval memo, faculty-meeting resolution) **to the contract** and marks it closed with the approval date and memo/resolution no. Closed projects form an **archive**: hidden from the default list, one filter away, still searchable (their closing papers too). Reopening is allowed and logged. |
+| Category options | Any USER may add an option to a category group from the review form (decided 2026-11-02, no admin approval). Admins tidy the list later. Still never created automatically from OCR. |
+| Budget | `budget_total` is auto-filled from `งบประมาณรวม`. Installments `งวดที่ N` are **suggested** from the budget attachment (both internal and external contracts use them) and confirmed by the user with one click; item tables (`หมวด…`) are still typed by hand. |
 | Checkboxes | Detect boxes visually (OpenCV) and treat ink inside a box as checked. Tuned for **typed ☑** (the only kind seen). Pen ticks aren't tuned for in v1: anything not detected confidently gives no suggestion, and the user adds tags by hand. **Checked** options → fuzzy-matched to ADMIN categories; unmatched → *suggested* free tag. **Unchecked boxes are ignored.** |
 | Versions | Keep version history. Share links serve the latest version unless pinned. |
 | Search | Metadata + OCR text, using PostgreSQL `pg_trgm` (substring match, no Thai word splitting needed). |
@@ -164,7 +167,7 @@ CREATE TABLE documents (
   title              text NOT NULL,       -- main title as written (Thai, or English when that's all there is)
   title_en           text,
   reference_no       text,                -- contract no., normalised: uppercase, no spaces (e.g. R2568A001)
-  -- Parsed parts: R + B.E. year + series letter (E internal / A external) + running no. within that year+series.
+  -- Parsed parts: R + B.E. year + series letter (the issuing faculty, E = engineering) + running no. within that year+series.
   -- NULL when reference_no doesn't follow the pattern (still allowed, e.g. old or odd documents).
   ref_year_be        int  GENERATED ALWAYS AS (substring(reference_no FROM '^R(\d{4})[A-Z]\d+$')::int) STORED,
   ref_series         text GENERATED ALWAYS AS (substring(reference_no FROM '^R\d{4}([A-Z])\d+$')) STORED,
@@ -185,6 +188,12 @@ CREATE TABLE documents (
   updated_at         timestamptz NOT NULL DEFAULT now(),
   deleted_at         timestamptz,
   deleted_by         uuid REFERENCES users(id),
+  -- ปิดโครงการ (archive). Closing papers are document_versions with purpose = 'closure'.
+  closed_on          date,                -- approval date on the closing papers
+  closed_at          timestamptz,         -- marked closed in the system (NULL = active project)
+  closed_by          uuid REFERENCES users(id),
+  closure_ref        text,                -- memo / resolution no., e.g. อว 0000.00/123
+  closure_note       text,
   CHECK (effective_to IS NULL OR effective_from IS NULL OR effective_to >= effective_from)
 );
 
@@ -208,9 +217,12 @@ CREATE TABLE budget_lines (
 
 CREATE TYPE ocr_status AS ENUM ('pending', 'running', 'done', 'failed', 'skipped');
 
+CREATE TYPE version_purpose AS ENUM ('main', 'closure');
+
 CREATE TABLE document_versions (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id       uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  purpose           version_purpose NOT NULL DEFAULT 'main', -- 'closure' = a closing paper (own numbering)
   version_no        int  NOT NULL,
   storage_key       text NOT NULL UNIQUE,           -- BlobStore key (random, no filename)
   original_filename text NOT NULL,
@@ -224,7 +236,7 @@ CREATE TABLE document_versions (
   extracted_fields  jsonb,   -- {"fields": {"title": {"value":…, "confidence":0.92, "page":3}}, "checks": […], "warnings": […]}
   uploaded_by       uuid NOT NULL REFERENCES users(id),
   created_at        timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (document_id, version_no)
+  UNIQUE (document_id, purpose, version_no)
 );
 
 ALTER TABLE documents ADD FOREIGN KEY (current_version_id)
@@ -440,6 +452,7 @@ documents 1─* budget_lines   (manual: items or installments)
 - Share tokens and passwords are **shown once** and never stored in plaintext. If a password is lost, the user regenerates it.
 - View-only links stream the PDF inline or as rendered page images, without a download button. This is best effort (screenshots can't be blocked).
 - `multi = false` category groups allow at most one category per document.
+- Closing a project: uploader or admin, like other edits. Closing papers never replace the current version and don't change the review status; a purge removes them with the document.
 - Edit/delete/new version: `uploaded_by = me OR role = admin`. Purge: admin only.
 - Restore from the trash: an admin, or the uploader when they deleted it themselves (an admin's delete stays with the admin). Each user sees their own bin (documents they uploaded or deleted); restoring never revives old share links.
 - Bulk actions (select mode) are all-or-nothing in one transaction, at most 100 documents. A zip download writes one `document.download` audit row per file.
@@ -511,7 +524,6 @@ Observations that shape the design:
 8. **Validation warnings** (shown in the review UI, never block):
    - amount in digits ≠ amount in Thai words (`thaiword_to_num` from PyThaiNLP)
    - fiscal year in the header ≠ year in the contract no. (`R2568…`)
-   - funding type from the contract no. letter ≠ funding type implied by the header text
    - contract no. differs between pages
    - contract no. already exists on a live document → suggest *new version* instead
    - **more than one contract no. in one PDF** → warn *"pages show different contract numbers"* (a real PDF is always one contract, so this means a wrong upload or an OCR misread; no auto-split)
@@ -522,16 +534,15 @@ Observations that shape the design:
 9. Write `document_sections` and `extracted_fields`, set `status = needs_review`.
 
 ### Contract number
-Format: `R` + B.E. year + funding letter + running number.
+Format: `R` + B.E. year + faculty letter + running number.
 
 | Example | Year | Letter | Funding type |
 |---|---|---|---|
-| `R2568E999` | 2568 (FY 2025) | `E` | internal |
-| `R2568A001` | 2568 (FY 2025) | `A` | external |
+| `R2568E001` | 2568 (FY 2025) | `E` | engineering (internal or external: see the title block) |
 
-Parse with `R(\d{4})([A-Z])(\d+)`, after normalising Thai digits and fixing common OCR mix-ups (`O`→`0` and `I`/`l`→`1` inside the digit groups). The letter sets `funding_type` (the strongest signal), and the year cross-checks `fiscal_year`. An unknown letter → no funding type + warning; the user picks it.
+Parse with `R(\d{4})([A-Z])(\d+)`, after normalising Thai digits and fixing OCR mix-ups inside the digit groups (`B`→`8`, `S`→`5`, `O`→`0`, `I`/`l`→`1`: `R256BE001` → `R2568E001`). The year cross-checks `fiscal_year`. The letter is the faculty and is kept as read.
 
-**Running number:** counts up separately for each year + series. `R2568E001` is the first internal contract of 2568, and `R2568A001` is the first external one. (This is the department's understanding; confirm it against more samples.) The system only **stores** numbers issued by the department; it never generates them. What it's used for:
+**Running number:** counts up separately for each year + series (faculty). `R2568E001` is engineering's first contract of 2568. (This is the department's understanding; confirm it against more samples.) The system only **stores** numbers issued by the department; it never generates them. What it's used for:
 - **Sorting**: order lists by `(ref_year_be, ref_series, ref_seq)` so `E002` comes before `E010`, not by the raw text.
 - **Duplicate upload**: if the extracted number matches a live document, the review screen offers *"add as a new version of R2568A001"* instead of creating a duplicate. The partial unique index enforces it.
 - **Missing numbers report** (ADMIN): for each year + series, list the gaps between 1 and the highest `ref_seq` (e.g. internal 2568: E004, E007 missing). Shows which contracts haven't been archived yet.
@@ -565,6 +576,30 @@ So v1 needs three section templates. Pages that match none of them become sectio
 | Research team | `ส่วน ข` repeats `ชื่อ – สกุล / หน่วยงาน / บทบาทในโครงการ / สัดส่วนการทำวิจัย (%)` with dotted leaders | `block` rule → `document_people` (role + `share_pct` + `unit`) |
 | External budget | `งวดที่ N (ร้อยละ P) จำนวนเงิน X บาท (…)` + condition text | Still typed manually (decision), but regular enough to auto-fill later; added `percent` column |
 | Internal budget | Table grouped by `หมวด…` with numbered items | Manual (decision) |
+
+### Findings from the 2568 round-1 contracts (13 PDFs, 17–34 pages, 2026-11-02, confidential)
+
+All internal (`จากงบประมาณรายได้คณะวิศวกรรมศาสตร์`), scanned at office quality. Measured by replaying saved OCR
+through the rules (`spikes/` style, nothing stored). After tuning: contract no., title, fiscal year, period
+and funding type right in **13/13**, signing date 12/13, installments 13/13, team block 11/13.
+
+| Topic | What the scans show | Rule |
+|---|---|---|
+| Stamp noise | Lines like `a i i a a 37` between `เมื่อวันที่20` and `มกราคม 2568` | A body line without a word of 4+ letters is dropped (`thai.is_noise`) |
+| Contract no. | `R256BE001`, single pages `E002` for `E012` | Repair B/S/O/I inside digit groups; a footer value is a *conflict* only on 2+ pages and not one character off the winner |
+| Title | Printed in the contract (`โครงการ :`), the budget sheet and the proposal form; one budget sheet carried **another project's title** | Pick the title the other sources agree with (fuzzy support), not the highest single confidence; stop wrapping at `สัญญานี้ทำขึ้น` |
+| Grantee | `… ฝ่ายหนึ่ง กับ <rank> ดร.<name> ซึ่งต่อไปในสัญญานี้เรียกว่า “ผู้รับทุน”` | Sentence rule; `ตร.`/`คร.`/`os.` → `ดร.`, spelled-out ranks → `ผศ.`/`รศ.` |
+| Team block | `ชื่อ- สกุล` OCRs as `ชื่อ- ana`; surnames on dotted lines may read as Latin junk | Anchor on `หน่วยงาน` + `บทบาทในโครงการ`; a cut-off name merges with the grantee's full name |
+| English names | CV part: `(ภาษาอังกฤษ) Mr. / Miss / Mrs: <name>` under the Thai name | `names_en` rule → `people.name_en` |
+| Installments | `งวดที่ N จำนวน X บาท` / `(ร้อยละ P) <condition>`; deadline in `หมายเหตุ: ไม่เกินวันที่ …`; in some PDFs the amount sits in its own column | `installments` rule → **suggested** `budget_lines` (user confirms); missing amount = percent × total |
+| Checkboxes | `ประยุกต์`, `มนุษยศาสตร์และสังคมศาสตร์` and 12 NRCT disciplines on the form but not in the seed | Seeded; an unmatched tick in a known group is offered as a new option of that group |
+
+### Closing papers (ปิดโครงการ, 13 PDFs)
+
+A closing memo (`บันทึกข้อความ`, `เรื่อง ขอปิดโครงการวิจัย…`) states the memo no. (`ที่ อว 0000.00/123`), date, project title,
+amount, PI and sometimes the contract no.; a faculty-meeting resolution gives `ครั้งที่ 9/2568 เมื่อวันที่ …` and the
+agenda item. The approval itself is handwritten. `dbresearch.autofill.closure` reads these as suggestions for the closing
+form, and the document page warns when a closing paper's title doesn't match the contract (wrong file attached).
 
 ### Seed data (ADMIN can edit)
 
@@ -612,9 +647,11 @@ Documents  POST /documents (multipart upload) · GET /documents (search: q, kind
            group is counted without its own filter) · GET /documents/{id} · DELETE /documents/{id} (trash)
            GET /documents/zip?id=…&id=… (≤ 100, current versions as one zip, streamed; deleted ones left out)
            GET /documents/trash (my bin) · POST /documents/trash {ids} · POST /documents/trash/restore {ids}
-           POST /documents/{id}/versions · GET /documents/{id}/file?version=&inline=
+           POST /documents/{id}/versions · GET /documents/{id}/file?version=&closure=&inline=
+           POST /documents/{id}/closure-files (closing paper) · POST /documents/{id}/close {closed_on,
+           closure_ref, closure_note} · POST /documents/{id}/reopen · GET /documents?project=open|closed
            GET /documents/{id}/autofill · PUT /documents/{id}/metadata · POST /documents/{id}/reprocess
-Pickers    GET /categories · GET /people?q=
+Pickers    GET /categories · POST /categories {group_id, name_th} (any user) · GET /people?q=
 Reports    GET /reports/overview · /reports/charts · /reports/missing-numbers (every user; system
            figures such as users, storage, all links and the whole trash only for admins)
 Shares     POST /documents/{id}/shares · GET /shares · GET /shares/{id}/log
@@ -656,6 +693,8 @@ Mocks of the agreed direction: `docs/ui/` (palette, layout + upload, search filt
 | Select mode | "เลือก" on the results toolbar. Rows toggle instead of opening, a tick sits on the file tile, picks survive new searches (max 100). Action bar: count, select shown, download (one file = PDF, more = zip built by the server), move to trash (only the ones you may delete; confirm lists them; the toast offers undo). PC: floating bar at the bottom; phone: it takes the bottom nav's place. Esc leaves. |
 | Upload | One window (dialog on PC, bottom sheet on phone) or drop files anywhere. Several PDFs, 2 in parallel, per-file result (uploaded / duplicate → link / rejected). Closing keeps uploading (header pill). Then *review now* or *review later* (documents wait in รอตรวจสอบ, searchable meanwhile). |
 | Search | PC: filter column + removable chips + sort; filters live in the URL. Phone: quick chips + filter bottom sheet with a live "แสดง N รายการ" count. Zero-count options are disabled. |
+| Close / archive | Document page card "การปิดโครงการ": attach closing papers, close with date + memo/resolution no. (pre-filled from what the system read), reopen. The list shows active projects; the "โครงการ" switch (ดำเนินการอยู่ · ปิดแล้ว · ทั้งหมด) opens the archive, and a search says how many matches sit in the archive. |
+| People / budget rows | Laid out by the card's own width (container queries): one table row under a shared header when wide, a stacked mini-card when narrow, so the PDF can sit beside the form. Budget is split into งวดเงิน and รายการค่าใช้จ่าย with a running total checked against งบประมาณรวม. |
 | Review | Pre-filled from auto-fill on the first review; afterwards the saved values, with the system's readings as clickable hints. Warnings never block. PDF beside the form on wide screens. Dates typed as `วว/ดด/ปปปป` in พ.ศ., stored Gregorian. |
 | Guest page | `/s/{token}`: one card, full-width download button, password form when needed. No login. |
 | Motion | Only transform/opacity, 150 ms (hover/press) and 220 ms (windows, sheets, tabs), one ease-out curve; skeleton rows, no layout shift, no backdrop blur; `prefers-reduced-motion` turns it off. |

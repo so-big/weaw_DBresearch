@@ -18,7 +18,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from dbresearch import search_text
-from dbresearch.autofill import thai
+from dbresearch.autofill import closure, thai
 from dbresearch.autofill.categories import CategoryIndex, Match
 from dbresearch.autofill.page import Page, analyse_pdf, strip_label, word_dicts
 from dbresearch.autofill.rules import Candidate, extract
@@ -33,14 +33,24 @@ from dbresearch.models import (
     DocumentVersion,
     ExtractionTemplate,
     OcrStatus,
+    VersionPurpose,
 )
 
 log = logging.getLogger("dbresearch.autofill")
 
 # Contract no. R + B.E. year + series letter + running no. (department convention)
+# The series letter is the faculty that issued the number (E = engineering), *not* the
+# funding type: an engineering contract can be internal or external.
 CONTRACT_NO = re.compile(r"^R(\d{4})([A-Z])(\d+)$")
-FUNDING_LETTERS = {"E": "internal", "A": "external"}
-INTERNAL_HINT = re.compile(r"งบประมาณรายได้")
+# Funding type from the contract's title block (above 'โครงการ :'): a contract *between* an
+# outside agency and the university ('… ระหว่าง <agency> กับมหาวิทยาลัยนเรศวร') is external;
+# one paid 'จากงบประมาณ…' of a single unit (e.g. รายได้คณะ) is internal. The parties clause
+# below the title also says 'ระหว่างคณะ… กับ <researcher>', so only the title block counts.
+EXTERNAL_HINT = re.compile(r"ระหว่าง.{2,120}?กับ")
+INTERNAL_HINT = re.compile(r"จากง\S?บ\S?ประมาณ|งบประมาณรายได้")
+TITLE_BLOCK_END = re.compile(r"^(?:โครงการ\s*[:：]|สัญญานี้|สัญญาฉบับนี้)")
+CONSENSUS_FIELDS = ("title", "title_en", "owner")
+LIST_FIELDS = ("team", "team_en", "budget_lines")
 PROGRAMME = re.compile(r"\[([^\]]{2,60})\]")
 REQUIRED = ("title", "reference_no")
 PRINTED_PAGE = re.compile(r"หน้า\s*(\d{1,3})")
@@ -76,6 +86,10 @@ def _json(value: Any) -> Any:
         return str(value)
     if isinstance(value, uuid.UUID):
         return str(value)
+    if isinstance(value, list):
+        return [_json(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _json(v) for k, v in value.items()}
     return value
 
 
@@ -99,12 +113,27 @@ def collect_candidates(
     return candidates
 
 
+def _support(candidate: Candidate, others: list[Candidate]) -> float:
+    """How much the other sources agree with this value (titles repeat across sections)."""
+    text = re.sub(r"\s+", "", str(candidate.value))
+    return sum(
+        fuzz.ratio(text, re.sub(r"\s+", "", str(o.value))) / 100
+        for o in others
+        if o is not candidate and o.page != candidate.page
+    )
+
+
 def best_values(candidates: list[Candidate]) -> dict[str, dict[str, Any]]:
     fields: dict[str, dict[str, Any]] = {}
-    for name in {c.field for c in candidates if c.field != "team"}:
-        ranked = sorted(
-            (c for c in candidates if c.field == name), key=lambda c: c.confidence, reverse=True
-        )
+    for name in {c.field for c in candidates if c.field not in LIST_FIELDS}:
+        mine = [c for c in candidates if c.field == name]
+        if name in CONSENSUS_FIELDS and len(mine) > 2:
+            # The same title is printed in the contract, the budget sheet and the proposal
+            # form. A misread label elsewhere (a table line read as 'โครงการ …') has no support.
+            support = {id(c): round(_support(c, mine), 1) for c in mine}
+            ranked = sorted(mine, key=lambda c: (support[id(c)], c.confidence), reverse=True)
+        else:
+            ranked = sorted(mine, key=lambda c: c.confidence, reverse=True)
         best = ranked[0]
         alternatives = []
         for c in ranked[1:]:
@@ -124,8 +153,33 @@ def best_values(candidates: list[Candidate]) -> dict[str, dict[str, Any]]:
 SAME_NAME_MIN = 85  # one misread character must not split a person in two
 
 
-def same_person(a: str, b: str) -> bool:
-    return fuzz.ratio(re.sub(r"\s+", "", a), re.sub(r"\s+", "", b)) >= SAME_NAME_MIN
+def _best_list(candidates: list[Candidate], name: str) -> list:
+    found = sorted((c for c in candidates if c.field == name), key=lambda c: -c.confidence)
+    return found[0].value if found else []
+
+
+def installments(candidates: list[Candidate], fields: dict[str, dict]) -> list[dict]:
+    """Installment suggestions; an amount printed in another column is computed from the
+    percentage and the total (and marked so the review screen can say so)."""
+    lines = [dict(line) for line in _best_list(candidates, "budget_lines")]
+    total = fields.get("budget_total", {}).get("value")
+    for line in lines:
+        if line["amount"] is None and line["percent"] is not None and total is not None:
+            line["amount"] = (Decimal(str(total)) * Decimal(str(line["percent"])) / 100).quantize(
+                Decimal("0.01")
+            )
+            line["computed"] = True
+    return [line for line in lines if line["amount"] is not None]
+
+
+def same_person(a: str, b: str, minimum: float = SAME_NAME_MIN) -> bool:
+    """Same name despite OCR slips. A surname on a dotted line often fails to read at all
+    ('สมชาย' vs 'สมชายใจดี'), so a 4+ letter start of the other name also counts."""
+    a, b = _bare(a, b)
+    short, long = sorted((a, b), key=len)
+    if len(short) >= 4 and long.startswith(short):
+        return True
+    return fuzz.ratio(a, b) >= minimum
 
 
 def team_people(candidates: list[Candidate], fields: dict[str, dict]) -> list[dict]:
@@ -134,10 +188,21 @@ def team_people(candidates: list[Candidate], fields: dict[str, dict]) -> list[di
     for c in sorted((c for c in candidates if c.field == "team"), key=lambda c: c.page):
         if not any(same_person(c.value["name"], p["name"]) for p in people):
             people.append({**c.value, "page": c.page, "confidence": c.confidence})
+    for c in (c for c in candidates if c.field == "team_en"):
+        name_th, name_en = c.value["name_th"], c.value["name_en"]
+        target = next(
+            (p for p in people if name_th and fuzz.ratio(*_bare(p["name"], name_th)) >= 70),
+            people[0] if len(people) == 1 else None,
+        )
+        if target is not None and not target.get("name_en"):
+            target["name_en"] = name_en
     owner = fields.get("owner", {}).get("value")
     owner_name = thai.split_person(owner)[1] if owner else None
     _infer_roles(people, owner_name)
-    if owner_name and not any(same_person(owner_name, p["name"]) for p in people):
+    match = next((p for p in people if owner_name and same_person(owner_name, p["name"], 75)), None)
+    if match is not None and len(_bare(owner_name, "")[0]) > len(_bare(match["name"], "")[0]):
+        match["name"] = owner_name  # the contract spells the grantee's name out in full
+    if owner_name and match is None:
         people.insert(
             0,
             {
@@ -154,6 +219,10 @@ def team_people(candidates: list[Candidate], fields: dict[str, dict]) -> list[di
     return people
 
 
+def _bare(a: str, b: str) -> tuple[str, str]:
+    return re.sub(r"\s+", "", a), re.sub(r"\s+", "", b)
+
+
 def _infer_roles(people: list[dict], owner_name: str | None) -> None:
     """Roles OCR badly (dotted lines). The footer owner, else the first person listed, is the
     project head; everyone else without a readable role is a co-researcher."""
@@ -167,6 +236,13 @@ def _infer_roles(people: list[dict], owner_name: str | None) -> None:
         person["role"] = "owner" if is_owner and not has_owner else "co_investigator"
         person["role_source"] = "inferred"
         has_owner = has_owner or person["role"] == "owner"
+    # Someone heads every project: the contract's grantee, else a researcher working alone.
+    if people and not has_owner:
+        head = next((p for p in people if owner_name and same_person(p["name"], owner_name)), None)
+        if head is None and len(people) == 1:
+            head = people[0]
+        if head is not None:
+            head["role"], head["role_source"] = "owner", "inferred"
 
 
 def checkbox_suggestions(
@@ -185,6 +261,8 @@ def checkbox_suggestions(
                 group = index.match_group(box.heading)
                 match: Match | None = None
                 label = box.row_label
+                if group is None and thai.is_noise(label):
+                    continue  # a ticked table cell ('2', '[] 10'), not a form option
                 if group is not None:
                     match = index.match_option(group, label)
                     if match is None and page.image is not None:
@@ -221,22 +299,17 @@ def infer(
     warnings: list[dict] = []
     body = next((s for s in sections if s.template and s.template.attachment_no is None), None)
     header = " ".join(ln.text for ln in body.pages[0].body[:8]) if body else ""
+    title_block = _title_block(body.pages[0]) if body else ""
 
     kinds = {s.template.kind for s in sections if s.template and s.template.kind}
     if len(kinds) == 1:
         inferred["kind"] = kinds.pop()
 
     ref = fields.get("reference_no", {}).get("value")
-    letter_funding = None
     ref_year = None
     if ref and (m := CONTRACT_NO.match(ref)):
-        ref_year, letter_funding = int(m[1]), FUNDING_LETTERS.get(m[2])
-    text_funding = "internal" if INTERNAL_HINT.search(re.sub(r"\s+", "", header)) else None
-    inferred["funding_type"] = letter_funding or text_funding
-    if letter_funding and text_funding and letter_funding != text_funding:
-        warnings.append(
-            {"code": "funding_mismatch", "contract_no": letter_funding, "header": text_funding}
-        )
+        ref_year = int(m[1])
+    inferred["funding_type"] = funding_from_title(title_block)
 
     fiscal = fields.get("fiscal_year", {}).get("value")
     if fiscal is None and fields.get("document_date", {}).get("value"):
@@ -279,6 +352,25 @@ def infer(
     return inferred, hints, warnings
 
 
+def _title_block(page: Page) -> str:
+    """The contract's title lines: from the top down to 'โครงการ :' / 'สัญญานี้ทำขึ้น'."""
+    out = []
+    for line in page.body[:10]:
+        if TITLE_BLOCK_END.match(line.text.strip()):
+            break
+        out.append(line.text)
+    return " ".join(out)
+
+
+def funding_from_title(title_block: str) -> str | None:
+    text = re.sub(r"\s+", "", title_block)
+    if EXTERNAL_HINT.search(text):
+        return "external"
+    if INTERNAL_HINT.search(text):
+        return "internal"
+    return None
+
+
 def field_warnings(
     fields: dict[str, dict], candidates: list[Candidate], people: list[dict]
 ) -> list[dict]:
@@ -287,9 +379,16 @@ def field_warnings(
     words, number = budget.get("words_amount"), budget.get("value")
     if words is not None and number is not None and Decimal(str(words)) != Decimal(number):
         warnings.append({"code": "amount_words_mismatch", "digits": number, "words": words})
-    refs = {c.value for c in candidates if c.field == "reference_no"}
-    if len(refs) > 1:
-        warnings.append({"code": "multiple_contract_numbers", "values": sorted(refs)})
+    conflict = next(
+        (
+            c.extra["conflict"]
+            for c in candidates
+            if c.field == "reference_no" and "conflict" in c.extra
+        ),
+        None,
+    )
+    if conflict:
+        warnings.append({"code": "multiple_contract_numbers", "values": sorted(conflict)})
     for name in REQUIRED:
         if name not in fields:
             warnings.append({"code": "missing_field", "field": name})
@@ -303,6 +402,12 @@ def field_warnings(
 def analyse(path: Path, db: Session) -> tuple[list[Page], list[Section], dict[str, Any]]:
     """Pure analysis (no writes): returns pages, sections and the review payload."""
     pages = analyse_pdf(path)
+    sections, payload = analyse_pages(pages, db)
+    return pages, sections, payload
+
+
+def analyse_pages(pages: list[Page], db: Session) -> tuple[list[Section], dict[str, Any]]:
+    """Everything after OCR (also used to replay saved OCR while tuning rules)."""
     templates = load_templates(db)
     sections = split_sections(pages, templates)
     index = CategoryIndex.load(db)
@@ -317,6 +422,7 @@ def analyse(path: Path, db: Session) -> tuple[list[Page], list[Section], dict[st
         "people": people,
         "checks": checks,
         "hints": hints,
+        "budget_lines": _json(installments(candidates, fields)),
         "warnings": field_warnings(fields, candidates, people) + check_warnings + infer_warnings,
         "sections": [
             {
@@ -327,7 +433,7 @@ def analyse(path: Path, db: Session) -> tuple[list[Page], list[Section], dict[st
             for s in sections
         ],
     }
-    return pages, sections, payload
+    return sections, payload
 
 
 def process_version(db: Session, version_id: uuid.UUID) -> None:
@@ -336,6 +442,7 @@ def process_version(db: Session, version_id: uuid.UUID) -> None:
         log.warning("version %s no longer exists; skipping", version_id)
         return
     document = db.get(Document, version.document_id)
+    closing = version.purpose == VersionPurpose.CLOSURE
     version.ocr_status = OcrStatus.RUNNING
     db.commit()
 
@@ -347,7 +454,11 @@ def process_version(db: Session, version_id: uuid.UUID) -> None:
         with os.fdopen(fd, "wb") as handle:
             for chunk in read_version(version):
                 handle.write(chunk)
-        pages, sections, payload = analyse(path, db)
+        if closing:
+            pages, sections = analyse_pdf(path), []
+            payload = closure.extract(pages)
+        else:
+            pages, sections, payload = analyse(path, db)
     finally:
         path.unlink(missing_ok=True)  # plaintext never outlives the run
 
@@ -395,8 +506,8 @@ def process_version(db: Session, version_id: uuid.UUID) -> None:
     version.extracted_fields = payload
     version.ocr_status = OcrStatus.DONE
     db.flush()
-    if document.current_version_id == version.id:
-        if document.status == DocStatus.PROCESSING:
+    if document.current_version_id == version.id or closing:
+        if document.status == DocStatus.PROCESSING and not closing:
             document.status = DocStatus.NEEDS_REVIEW
         document.search_text = search_text.build(db, document)
     db.commit()

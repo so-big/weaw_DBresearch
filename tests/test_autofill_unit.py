@@ -154,9 +154,17 @@ def test_footer_rows_are_read_left_to_right_and_majority_wins():
     ]  # one misread page
     found = extract(FOOTER_RULES, [], pages)
     refs = [c for c in found if c.field == "reference_no"]
-    assert refs[0].value == "R2568A001" and refs[0].confidence == pytest.approx(2 / 3, 0.01)
-    assert refs[0].extra["conflict"] == ["R2568A001", "R2568A007"]
+    assert refs[0].value == "R2568A001" and refs[0].confidence == pytest.approx(5 / 6, 0.01)
+    # One page one character off is an OCR slip, not a second contract in the PDF.
+    assert "conflict" not in refs[0].extra
     assert [c.value for c in found if c.field == "owner"] == ["สมหญิง รักงาน"]
+
+
+def test_footer_conflict_needs_several_pages_with_another_number():
+    pages = [footer_page(n, "R2568A001", "สมหญิง รักงาน") for n in (1, 2, 3)]
+    pages += [footer_page(n, "R2568E012", "สมชาย ใจดี") for n in (4, 5)]
+    refs = [c for c in extract(FOOTER_RULES, [], pages) if c.field == "reference_no"]
+    assert refs[0].extra["conflict"] == ["R2568A001", "R2568E012"]
 
 
 # ───────────── sentences ─────────────

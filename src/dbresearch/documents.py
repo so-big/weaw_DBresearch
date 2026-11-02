@@ -4,7 +4,7 @@ import hashlib
 import uuid
 import zipfile
 from collections.abc import Iterable, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import PurePath
 from typing import BinaryIO
 from zoneinfo import ZoneInfo
@@ -26,6 +26,7 @@ from dbresearch.models import (
     OcrStatus,
     User,
     UserRole,
+    VersionPurpose,
 )
 
 PDF_MAGIC = b"%PDF-"
@@ -96,9 +97,13 @@ def store_version(
     document: Document | None = None,
     kind: DocKind | None = None,
     funding_type: FundingType | None = None,
+    purpose: VersionPurpose = VersionPurpose.MAIN,
     ip: str | None = None,
 ) -> DocumentVersion:
     """Encrypt and store an upload as a new document (or a new version of `document`).
+
+    `purpose=CLOSURE` attaches a closing paper to `document`: it is OCR'd for search but
+    leaves the current version and the review status alone.
 
     The caller commits. Plaintext is only read from `file` (memory/tmpfs) and never written.
     """
@@ -143,17 +148,22 @@ def store_version(
             version_no = 1 + (
                 db.scalar(
                     select(func.max(DocumentVersion.version_no)).where(
-                        DocumentVersion.document_id == document.id
+                        DocumentVersion.document_id == document.id,
+                        DocumentVersion.purpose == purpose,
                     )
                 )
                 or 0
             )
-            document.status = DocStatus.PROCESSING
-            action = "document.new_version"
+            if purpose == VersionPurpose.MAIN:
+                document.status = DocStatus.PROCESSING
+                action = "document.new_version"
+            else:
+                action = "document.closure_file"
 
         version = DocumentVersion(
             id=version_id,
             document_id=document.id,
+            purpose=purpose,
             version_no=version_no,
             storage_key=key,
             original_filename=safe_name,
@@ -167,7 +177,8 @@ def store_version(
             uploaded_by=user.id,
         )
         db.add(version)
-        document.current_version_id = version_id
+        if purpose == VersionPurpose.MAIN:
+            document.current_version_id = version_id
         jobs.enqueue(db, "ocr", version_id=version_id)
         audit.record(
             db,
@@ -338,3 +349,53 @@ def delete_blobs(keys: list[str]) -> None:
     store = get_blobstore()
     for key in keys:
         store.delete(key)
+
+
+# ───────────── Close a project (ปิดโครงการ) ─────────────
+def close_project(
+    db: Session,
+    user: User,
+    document: Document,
+    *,
+    closed_on: date | None,
+    closure_ref: str | None,
+    closure_note: str | None,
+    ip: str | None,
+) -> None:
+    """Mark the project closed and archived (or edit the closing details). The caller commits.
+
+    Closing papers are uploaded separately as 'closure' versions; closing works without them
+    so a project closed on paper years ago can still be archived."""
+    first = document.closed_at is None
+    if first:
+        document.closed_at = datetime.now(UTC)
+        document.closed_by = user.id
+    document.closed_on = closed_on
+    document.closure_ref = (closure_ref or "").strip() or None
+    document.closure_note = (closure_note or "").strip() or None
+    audit.record(
+        db,
+        "document.close" if first else "document.close_update",
+        "document",
+        document.id,
+        actor_id=user.id,
+        ip=ip,
+        closed_on=closed_on.isoformat() if closed_on else None,
+        closure_ref=document.closure_ref,
+    )
+
+
+def reopen_project(db: Session, user: User, document: Document, ip: str | None) -> None:
+    """Undo a close: the project is active again. Closing papers stay attached."""
+    audit.record(
+        db,
+        "document.reopen",
+        "document",
+        document.id,
+        actor_id=user.id,
+        ip=ip,
+        closed_on=document.closed_on.isoformat() if document.closed_on else None,
+    )
+    document.closed_at = None
+    document.closed_by = None
+    document.closed_on = None

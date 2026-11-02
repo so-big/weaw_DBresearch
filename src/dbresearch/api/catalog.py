@@ -1,21 +1,25 @@
-"""Search and the read-only pickers the UI needs (categories, people)."""
+"""Search and the pickers the UI needs (categories, people); users may add category options."""
 
+import re
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query
-from sqlalchemy import select
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from sqlalchemy import func, select
 
-from dbresearch import search
-from dbresearch.auth import DB, CurrentUser
+from dbresearch import audit, search
+from dbresearch.auth import DB, CurrentUser, client_ip
 from dbresearch.models import Category, CategoryGroup, DocKind, DocStatus, FundingType
 from dbresearch.schemas import (
     CategoryGroupOut,
+    CategoryNew,
     CategoryOption,
     DocumentSummary,
     PersonBrief,
     SearchOut,
 )
+from dbresearch.search_text import compact
+from dbresearch.textnorm import normalize
 
 router = APIRouter(tags=["search"])
 
@@ -35,6 +39,7 @@ def list_documents(
     ref_year_be: int | None = None,
     ref_series: Annotated[str | None, Query(max_length=1)] = None,
     mine: bool = False,
+    project: Annotated[list[Literal["open", "closed"]], Query()] = [],  # noqa: B006
     sort: Annotated[str, Query(pattern="^(" + "|".join(search.SORTS) + ")$")] = "relevance",
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -52,6 +57,7 @@ def list_documents(
         ref_year_be=ref_year_be,
         ref_series=ref_series,
         uploaded_by=user.id if mine else None,
+        project=project,
     )
     documents, total = search.search(db, filters, sort, page, page_size)
     owners = search.owners(db, [d.id for d in documents])
@@ -92,6 +98,42 @@ def list_categories(db: DB, user: CurrentUser, include_inactive: bool = False):
         )
         for g in groups
     ]
+
+
+@router.post("/categories", response_model=CategoryOption)
+def add_category(
+    body: CategoryNew, request: Request, response: Response, db: DB, user: CurrentUser
+):
+    """Add an option to a category group while reviewing. Any user may (department decision
+    2026-11-02); admins tidy the list later. An option that already exists (same name,
+    spacing ignored, or one of its aliases) is returned instead of a duplicate."""
+    group = db.get(CategoryGroup, body.group_id)
+    if group is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Category group not found")
+    name = re.sub(r"\s+", " ", normalize(body.name_th)).strip()
+    if not name:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Name is empty")
+    for option in db.scalars(select(Category).where(Category.group_id == group.id)):
+        if compact(name) in {compact(n) for n in [option.name_th, *option.aliases]}:
+            return CategoryOption.model_validate(option, from_attributes=True)
+    sort = db.scalar(select(func.max(Category.sort)).where(Category.group_id == group.id))
+    category = Category(group_id=group.id, name_th=name, sort=(sort or 0) + 1)
+    db.add(category)
+    db.flush()
+    audit.record(
+        db,
+        "category.create",
+        "category",
+        category.id,
+        actor_id=user.id,
+        ip=client_ip(request),
+        group=group.key,
+        name=name,
+        from_review=True,
+    )
+    db.commit()
+    response.status_code = status.HTTP_201_CREATED
+    return CategoryOption.model_validate(category, from_attributes=True)
 
 
 @router.get("/people", response_model=list[PersonBrief])

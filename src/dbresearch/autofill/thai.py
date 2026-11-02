@@ -142,8 +142,66 @@ def split_person(text: str) -> tuple[str | None, str]:
                 text = text[len(candidate) :].lstrip(" .")
                 changed = True
                 break
+    for long, short in _RANK_SHORT:
+        prefix = prefix.replace(long, short)
     return (prefix or None), text.strip()
+
+
+_RANK_SHORT = (("ผู้ช่วยศาสตราจารย์", "ผศ."), ("รองศาสตราจารย์", "รศ."), ("ศาสตราจารย์", "ศ."))
 
 
 def is_thai(text: str) -> bool:
     return bool(re.search(r"[฀-๿]", text))
+
+
+# ───────────── OCR repair (measured on the 2568 round-1 contracts) ─────────────
+_CONTRACT = re.compile(r"R\s?([25BSO][0-9BSOIl]{3})\s?([A-Z])\s?([0-9BSOIl]{1,4})")
+_DIGIT_FIX = str.maketrans({"B": "8", "S": "5", "O": "0", "I": "1", "l": "1"})
+
+
+def contract_no(text: str) -> str | None:
+    """'R256BE001' → 'R2568E001'. Letters that look like digits are fixed inside the digit
+    groups only; the series letter (faculty, E = engineering) is kept as read."""
+    match = _CONTRACT.search(text.replace(" ", ""))
+    if match is None:
+        return None
+    year = match[1].translate(_DIGIT_FIX)
+    seq = match[3].translate(_DIGIT_FIX)
+    if not year.startswith("25") or not seq.isdigit():
+        return None
+    return f"R{year}{match[2]}{seq.zfill(3)}"
+
+
+# Prefix spellings as OCR returns them → the written form.
+def _spaced(word: str) -> str:
+    """Regex for `word` with OCR's stray spaces allowed between letters."""
+    return r"\s?".join(re.escape(c) for c in word)
+
+
+_PREFIX_FIXES = (
+    (re.compile(r"ผู(?:ผู้้|้)?\s*[ชข]่?\s*วย\s*" + _spaced("ศาสตราจารย์")), "ผู้ช่วยศาสตราจารย์"),
+    (re.compile(r"รอง\s*" + _spaced("ศาสตราจารย์")), "รองศาสตราจารย์"),
+    (re.compile(r"(?<![ก-๙])(?:[ตดค]ร|os|0s|05)\s*[.,]\s*"), "ดร."),
+    (re.compile(r"ผศ\s*[.,]\s*"), "ผศ."),
+    (re.compile(r"รศ\s*[.,]\s*"), "รศ."),
+)
+_JUNK_TAIL = re.compile(r"(?:[\dA-Za-z]{4,}|\d{3,}|[.…_,]{3,}).*$")
+
+
+def clean_person(text: str) -> str:
+    """Repair a person's name as read from a scan: prefixes, doubled glyphs, leader junk."""
+    text = strip_leaders(text)
+    for pattern, fixed in _PREFIX_FIXES:
+        text = pattern.sub(fixed, text)
+    text = _JUNK_TAIL.sub("", text)  # dotted leaders often OCR as digit runs
+    text = re.sub(r"[.\s]+[A-Za-z฀-๿]{0,2}$", "", text)  # 'ขันสัมฤทธิ์. เ'
+    return strip_leaders(text)
+
+
+_WORD = re.compile(r"[A-Za-z฀-๿]{4,}")
+
+
+def is_noise(text: str) -> bool:
+    """A line with no word of 4+ letters is OCR noise from stamps, seals or ink marks
+    ('a i i a a 37', 'ow a en! doy aw'). Real lines always carry a longer word."""
+    return _WORD.search(text) is None

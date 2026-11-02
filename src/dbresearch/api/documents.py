@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import JSONResponse, StreamingResponse
+from rapidfuzz import fuzz
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -19,7 +20,9 @@ from dbresearch.documents import (
     bundle_names,
     can_edit,
     can_restore,
+    close_project,
     read_version,
+    reopen_project,
     restore,
     soft_delete,
     store_version,
@@ -42,11 +45,14 @@ from dbresearch.models import (
     Person,
     Tag,
     User,
+    VersionPurpose,
 )
 from dbresearch.schemas import (
     AutofillOut,
     BudgetLineOut,
     CategoryOut,
+    CloseIn,
+    ClosureFileOut,
     DocumentDetail,
     DocumentIds,
     MetadataIn,
@@ -56,6 +62,7 @@ from dbresearch.schemas import (
     VersionOut,
 )
 from dbresearch.search import owners as document_owners
+from dbresearch.search_text import compact
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -77,14 +84,21 @@ def editable_document(db: Session, document_id: uuid.UUID, user: User) -> Docume
 def document_detail(db: Session, document: Document, user: User) -> DocumentDetail:
     out = DocumentDetail.model_validate(document)
     out.can_edit = can_edit(user, document)
+    versions = db.scalars(
+        select(DocumentVersion)
+        .where(DocumentVersion.document_id == document.id)
+        .order_by(DocumentVersion.version_no.desc())
+    ).all()
     out.versions = [
-        VersionOut.model_validate(v)
-        for v in db.scalars(
-            select(DocumentVersion)
-            .where(DocumentVersion.document_id == document.id)
-            .order_by(DocumentVersion.version_no.desc())
-        )
+        VersionOut.model_validate(v) for v in versions if v.purpose == VersionPurpose.MAIN
     ]
+    out.closure_files = [
+        closure_file(v, document) for v in versions if v.purpose == VersionPurpose.CLOSURE
+    ][::-1]
+    if document.closed_by:
+        out.closed_by_name = db.scalar(
+            select(User.display_name).where(User.id == document.closed_by)
+        )
     out.categories = [
         CategoryOut(id=c.id, name_th=c.name_th, group_key=key, source=source)
         for c, key, source in db.execute(
@@ -129,6 +143,18 @@ def document_detail(db: Session, document: Document, user: User) -> DocumentDeta
             .order_by(BudgetLine.sort)
         )
     ]
+    return out
+
+
+def closure_file(version: DocumentVersion, document: Document) -> ClosureFileOut:
+    out = ClosureFileOut.model_validate(version)
+    found = version.extracted_fields or {}
+    out.paper = found.get("kind")
+    out.readings = {k: v["value"] for k, v in (found.get("fields") or {}).items()}
+    if title := out.readings.get("title"):
+        # Low = these papers may belong to another project (wrong file attached).
+        names = [t for t in (document.title, document.title_en) if t]
+        out.title_match = max(round(fuzz.ratio(compact(title), compact(t)), 1) for t in names)
     return out
 
 
@@ -322,6 +348,65 @@ def new_version(
     return document_detail(db, document, user)
 
 
+@router.post(
+    "/{document_id}/closure-files",
+    status_code=status.HTTP_201_CREATED,
+    response_model=DocumentDetail,
+)
+def add_closure_file(
+    document_id: uuid.UUID,
+    request: Request,
+    db: DB,
+    user: CurrentUser,
+    file: Annotated[UploadFile, File()],
+):
+    """Attach a closing paper (approval memo, meeting resolution). Stored encrypted like any
+    version, OCR'd for search; its readings pre-fill the closing form."""
+    document = editable_document(db, document_id, user)
+    try:
+        store_version(
+            db,
+            user,
+            file.file,
+            file.filename or "",
+            document=document,
+            purpose=VersionPurpose.CLOSURE,
+            ip=client_ip(request),
+        )
+    except UploadError as exc:
+        db.rollback()
+        return _upload_errors(exc)
+    db.commit()
+    return document_detail(db, document, user)
+
+
+@router.post("/{document_id}/close", response_model=DocumentDetail)
+def close(document_id: uuid.UUID, body: CloseIn, request: Request, db: DB, user: CurrentUser):
+    """Close the project and move it to the archive (or edit the closing details)."""
+    document = editable_document(db, document_id, user)
+    close_project(
+        db,
+        user,
+        document,
+        closed_on=body.closed_on,
+        closure_ref=body.closure_ref,
+        closure_note=body.closure_note,
+        ip=client_ip(request),
+    )
+    db.commit()
+    return document_detail(db, document, user)
+
+
+@router.post("/{document_id}/reopen", response_model=DocumentDetail)
+def reopen(document_id: uuid.UUID, request: Request, db: DB, user: CurrentUser):
+    document = editable_document(db, document_id, user)
+    if document.closed_at is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The project is not closed")
+    reopen_project(db, user, document, client_ip(request))
+    db.commit()
+    return document_detail(db, document, user)
+
+
 @router.get("/{document_id}", response_model=DocumentDetail)
 def get_document(document_id: uuid.UUID, db: DB, user: CurrentUser):
     return document_detail(db, live_document(db, document_id), user)
@@ -417,15 +502,24 @@ def download(
     db: DB,
     user: CurrentUser,
     version: int | None = None,
+    closure: int | None = None,
     inline: bool = False,
 ):
-    """The current version, or `?version=N`. `inline=true` opens it in the browser viewer."""
+    """The current version, `?version=N`, or closing paper `?closure=N`. `inline=true` opens
+    it in the browser viewer."""
     document = live_document(db, document_id)
     query = select(DocumentVersion).where(DocumentVersion.document_id == document.id)
-    if version is None:
+    if closure is not None:
+        query = query.where(
+            DocumentVersion.purpose == VersionPurpose.CLOSURE,
+            DocumentVersion.version_no == closure,
+        )
+    elif version is None:
         query = query.where(DocumentVersion.id == document.current_version_id)
     else:
-        query = query.where(DocumentVersion.version_no == version)
+        query = query.where(
+            DocumentVersion.purpose == VersionPurpose.MAIN, DocumentVersion.version_no == version
+        )
     stored = db.scalar(query)
     if stored is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Version not found")
@@ -437,6 +531,7 @@ def download(
         actor_id=user.id,
         ip=client_ip(request),
         version=stored.version_no,
+        **({"closure_file": True} if closure is not None else {}),
     )
     db.commit()
     return stream_version(stored, inline)

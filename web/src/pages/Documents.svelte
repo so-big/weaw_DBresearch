@@ -28,7 +28,8 @@
   const LIST_KEYS = ['fiscal_year', 'funding_type', 'status', 'kind', 'category'];
 
   function readFilters(q) {
-    const f = { q: q.get('q') || '', person: q.get('person') || '', mine: q.get('mine') === 'true', sort: q.get('sort') || '' };
+    // project: '' = active projects (default), 'closed' = the archive, 'all' = both
+    const f = { q: q.get('q') || '', person: q.get('person') || '', mine: q.get('mine') === 'true', sort: q.get('sort') || '', project: q.get('project') || '' };
     for (const k of LIST_KEYS) f[k] = q.getAll(k);
     return f;
   }
@@ -55,6 +56,7 @@
       q: f.q || undefined,
       person: f.person || undefined,
       mine: f.mine || undefined,
+      project: f.project === 'all' ? undefined : f.project === 'closed' ? 'closed' : 'open',
       sort: f.sort || (f.q ? 'relevance' : 'newest'),
       ...Object.fromEntries(LIST_KEYS.map((k) => [k, f[k]])),
       ...extra,
@@ -143,7 +145,7 @@
     setQuery({ ...next, mine: next.mine ? 'true' : '' });
   }
   function clearAll() {
-    update({ q: filters.q, sort: filters.sort });
+    update({ q: filters.q, sort: filters.sort, project: '' });
   }
 
   let qTimer;
@@ -164,11 +166,13 @@
     for (const v of filters.category) out.push({ k: 'category', v, label: names.get(v) || 'หมวดหมู่' });
     if (filters.person) out.push({ k: 'person', label: `นักวิจัย: ${filters.person}` });
     if (filters.mine) out.push({ k: 'mine', label: 'ที่ฉันอัปโหลด' });
+    if (filters.project) out.push({ k: 'project', label: filters.project === 'closed' ? 'โครงการที่ปิดแล้ว' : 'รวมโครงการที่ปิดแล้ว' });
     return out;
   });
   function removeChip(c) {
     if (c.k === 'person') update({ ...filters, person: '' });
     else if (c.k === 'mine') update({ ...filters, mine: false });
+    else if (c.k === 'project') update({ ...filters, project: '' });
     else update({ ...filters, [c.k]: filters[c.k].filter((x) => x !== c.v) });
   }
 
@@ -180,9 +184,14 @@
       { k: 'funding_type', v: 'internal', label: 'ทุนภายใน' },
       { k: 'funding_type', v: 'external', label: 'ทุนภายนอก' },
       { k: 'status', v: 'needs_review', label: 'รอตรวจสอบ' },
+      { k: 'project', v: 'closed', label: 'ปิดโครงการแล้ว' },
     ];
   });
+  // Matches hidden in the archive (counted without the project filter).
+  const archived = $derived(filters.project ? 0 : (facets?.project || []).find((f) => f.value === 'closed')?.count || 0);
+  const quickOn = (c) => (c.k === 'project' ? filters.project === c.v : filters[c.k].includes(c.v));
   function toggleQuick(c) {
+    if (c.k === 'project') return update({ ...filters, project: filters.project === c.v ? '' : c.v });
     const on = filters[c.k].includes(c.v);
     update({ ...filters, [c.k]: on ? filters[c.k].filter((x) => x !== c.v) : [...filters[c.k], c.v] });
   }
@@ -345,7 +354,7 @@
     <div class="phone-head">
       <div class="quick">
         {#each quick as c (c.k + c.v)}
-          <button class="chip" aria-pressed={filters[c.k].includes(c.v)} onclick={() => toggleQuick(c)}>{c.label}</button>
+          <button class="chip" aria-pressed={quickOn(c)} onclick={() => toggleQuick(c)}>{c.label}</button>
         {/each}
       </div>
     </div>
@@ -394,7 +403,8 @@
       <div class="empty card">
         {#if hasFilters || filters.q}
           <Icon name="search" size={30} />
-          <p>ไม่พบเอกสารที่ตรงกับการค้นหา</p>
+          <p>ไม่พบเอกสารที่ตรงกับการค้นหา{archived ? ` ในโครงการที่ยังดำเนินการอยู่` : ''}</p>
+          {#if archived}<button class="btn" onclick={() => update({ ...filters, project: 'all' })}>ดูในโครงการที่ปิดแล้ว ({archived.toLocaleString('th-TH')})</button>{/if}
           {#if hasFilters}<button class="btn ghost" onclick={clearAll}>ล้างตัวกรองทั้งหมด</button>{/if}
         {:else}
           <Icon name="doc" size={30} />
@@ -434,7 +444,7 @@
               </div>
             </div>
             <div class="side-meta">
-              <span class="badge {d.status}">{STATUS[d.status]}</span>
+              {#if d.closed_at}<span class="badge closed">ปิดโครงการแล้ว</span>{:else}<span class="badge {d.status}">{STATUS[d.status]}</span>{/if}
               <span class="muted date">{thDate(d.updated_at)}</span>
               {#if !screen.wide && !selecting}
                 <a class="btn small dl" href={fileUrl(d.id)} aria-label="ดาวน์โหลด {d.title}"><Icon name="download" size={15} /></a>
@@ -453,6 +463,9 @@
       </div>
       {#if items.length < total}
         <button class="btn ghost more" onclick={() => load(filters, true)}>แสดงเพิ่ม ({(total - items.length).toLocaleString('th-TH')} รายการ)</button>
+      {/if}
+      {#if archived && items.length >= total}
+        <p class="archived muted">มีอีก {archived.toLocaleString('th-TH')} รายการในโครงการที่ปิดแล้ว <button class="link-btn" onclick={() => update({ ...filters, project: 'all' })}>แสดงด้วย</button></p>
       {/if}
     {/if}
     {#if selecting}<div class="bar-room" aria-hidden="true"></div>{/if}
@@ -528,7 +541,7 @@
       <FilterPanel value={draft} facets={draftFacets} {groups} onchange={changeDraft} idp="ph" />
     </div>
     <div class="sheet-foot">
-      <button class="btn ghost" onclick={() => changeDraft({ q: draft.q, sort: draft.sort, person: '', mine: false, ...Object.fromEntries(LIST_KEYS.map((k) => [k, []])) })}>ล้าง</button>
+      <button class="btn ghost" onclick={() => changeDraft({ q: draft.q, sort: draft.sort, person: '', mine: false, project: '', ...Object.fromEntries(LIST_KEYS.map((k) => [k, []])) })}>ล้าง</button>
       <button class="btn grow" onclick={applySheet}>แสดง {draftTotal === null ? '' : draftTotal.toLocaleString('th-TH')} รายการ</button>
     </div>
   </div>
@@ -545,6 +558,7 @@
   .sort { display: flex; align-items: center; gap: 6px; font-size: 13px; }
   .sort select, .sheet-head select { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 5px 8px; font-size: 14px; }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .archived { text-align: center; font-size: 14px; margin: 4px 0 0; }
   .chips .chip { padding-right: 5px; }
 
   .list { overflow: hidden; transition: opacity 120ms; }

@@ -117,12 +117,23 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] ถังขยะของฉัน: each user sees what they uploaded or deleted and can restore their own deletes; admins still purge
 - [ ] Collect tester feedback on the live site and fix what feels off
 
+## Phase 5 — Feedback round 1 (2026-11-02)
+
+- [x] Contract-number letter = **faculty** (E = engineering), not funding type. Funding type now comes from the title block: `ระหว่าง … กับ …` = external, `จากงบประมาณ…` of one unit = internal (DESIGN §1)
+- [x] Auto-fill tuned on 13 real contracts (ทุนวิจัย ปี 68 รอบ 1): noise lines, contract-no. repair, title by agreement, grantee from the parties clause, team block anchored on หน่วยงาน/บทบาท, English names, installments suggested (DESIGN §6). Data migration `c5e1f0a7d392` (+ form options)
+- [x] Review form: any user adds a category option inline (+ ticked-but-unknown options offered in their group)
+- [x] Review form: ผู้เกี่ยวข้อง and รายการงบประมาณ rows fit the card (container queries); budget split into งวดเงิน / รายการค่าใช้จ่าย with totals
+- [x] Close a project (ปิดโครงการ): closing papers attached to the contract (encrypted, OCR'd, readings pre-fill the form), archive filter, reopen (migration `a3d9c2e71b54`)
+- [ ] Deploy, run the server tests, reprocess the demo document, check the screens on PC + phone
+
 ## Demo environment
 
 - Demo admin: username `admin`, password in `~/dbresearch/secrets/demo-admin-password` on the server (mode 600).
 - Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
 ## Log
+
+- 2026-11-02 — Feedback round 1: faculty letter ≠ funding type, auto-fill tuned on 13 real contracts + 13 closing papers, inline category options, people/budget layout, close & archive projects.
 
 - 2026-10-29 — Share-link access log names the visitor when they are logged in (new `share_access_log.user_id`); guests stay IP-only.
 - 2026-10-28 — Select mode (zip download, bulk trash with undo), overview for every user, per-user bin with restore.

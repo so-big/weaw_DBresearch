@@ -76,6 +76,10 @@ class DocumentOut(BaseModel):
     uploaded_by: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    closed_on: date | None = None
+    closed_at: datetime | None = None
+    closure_ref: str | None = None
+    closure_note: str | None = None
     can_edit: bool = False
     versions: list[VersionOut] = []
 
@@ -161,11 +165,44 @@ class BudgetLineOut(BudgetLineIn):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ClosureFileOut(BaseModel):
+    """A closing paper (approval memo, meeting resolution) attached to a closed project."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    version_no: int
+    original_filename: str
+    size_bytes: int
+    page_count: int | None
+    ocr_status: OcrStatus
+    created_at: datetime
+    paper: str | None = None  # 'memo' | 'resolution' as read from the scan
+    readings: dict = {}  # suggestions: memo_date, meeting_date, memo_no, title, owner, …
+    title_match: float | None = None  # 0–100: does its title match the contract's?
+
+
 class DocumentDetail(DocumentOut):
     categories: list[CategoryOut] = []
     tags: list[TagOut] = []
     people: list[PersonOut] = []
     budget_lines: list[BudgetLineOut] = []
+    closed_by_name: str | None = None
+    closure_files: list[ClosureFileOut] = []
+
+
+class CloseIn(BaseModel):
+    """Close the project (ปิดโครงการ). The date is the approval date on the closing papers."""
+
+    closed_on: date | None = None
+    closure_ref: str | None = Field(None, max_length=200)
+    closure_note: str | None = Field(None, max_length=2000)
+
+
+class CategoryNew(BaseModel):
+    """A category option any user adds while reviewing (DESIGN §10: no admin approval)."""
+
+    group_id: uuid.UUID
+    name_th: str = Field(min_length=1, max_length=200)
 
 
 class AutofillOut(BaseModel):
@@ -189,6 +226,8 @@ class DocumentSummary(BaseModel):
     status: DocStatus
     uploaded_by: uuid.UUID
     updated_at: datetime
+    closed_on: date | None = None
+    closed_at: datetime | None = None
     owners: list[str] = []
     snippet: str | None = None  # match wrapped in [[ ]] for highlighting
 

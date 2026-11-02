@@ -107,6 +107,11 @@ class BudgetLineType(enum.StrEnum):
     INSTALLMENT = "installment"
 
 
+class VersionPurpose(enum.StrEnum):
+    MAIN = "main"  # the contract package itself (numbered ฉบับที่ 1, 2, …)
+    CLOSURE = "closure"  # closing papers: approval memo, faculty-meeting resolution
+
+
 class OcrStatus(enum.StrEnum):
     PENDING = "pending"
     RUNNING = "running"
@@ -323,6 +328,12 @@ class Document(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=NOW)
     deleted_at: Mapped[datetime | None]
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    # Project closed (ปิดโครงการ) and archived: closing papers are versions with purpose 'closure'.
+    closed_on: Mapped[date | None]  # approval date as written on the closing papers
+    closed_at: Mapped[datetime | None]  # when it was marked closed in the system
+    closed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    closure_ref: Mapped[str | None]  # memo / receipt no., e.g. อว 0000.00/123
+    closure_note: Mapped[str | None]
 
 
 class BudgetLine(Base):
@@ -345,10 +356,14 @@ class BudgetLine(Base):
 
 class DocumentVersion(Base):
     __tablename__ = "document_versions"
-    __table_args__ = (UniqueConstraint("document_id", "version_no"),)
+    # Main versions and closing papers are numbered separately.
+    __table_args__ = (UniqueConstraint("document_id", "purpose", "version_no"),)
 
     id: Mapped[uuid.UUID] = uuid_pk()
     document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    purpose: Mapped[VersionPurpose] = mapped_column(
+        pg_enum(VersionPurpose, "version_purpose"), server_default=VersionPurpose.MAIN.value
+    )
     version_no: Mapped[int]
     storage_key: Mapped[str] = mapped_column(unique=True)  # BlobStore key (random, no filename)
     original_filename: Mapped[str]

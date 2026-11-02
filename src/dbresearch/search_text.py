@@ -12,8 +12,10 @@ from dbresearch.models import (
     DocumentPage,
     DocumentPerson,
     DocumentTag,
+    DocumentVersion,
     Person,
     Tag,
+    VersionPurpose,
 )
 from dbresearch.textnorm import normalize
 
@@ -26,7 +28,7 @@ def compact(text: str) -> str:
 
 
 def build(db: Session, document: Document) -> str:
-    """Metadata + people + labels + OCR text of the current version."""
+    """Metadata + people + labels + OCR text of the current version and closing papers."""
     parts = [document.title, document.title_en or "", document.reference_no or ""]
     parts += db.scalars(
         select(Person.name_th).join(DocumentPerson).where(DocumentPerson.document_id == document.id)
@@ -42,10 +44,17 @@ def build(db: Session, document: Document) -> str:
     parts += db.scalars(
         select(Tag.name).join(DocumentTag).where(DocumentTag.document_id == document.id)
     ).all()
-    if document.current_version_id is not None:
-        parts += db.scalars(
-            select(DocumentPage.text)
-            .where(DocumentPage.version_id == document.current_version_id)
-            .order_by(DocumentPage.page_no)
-        ).all()
+    # OCR text of the current version, then of the closing papers (ปิดโครงการ).
+    closing = select(DocumentVersion.id).where(
+        DocumentVersion.document_id == document.id,
+        DocumentVersion.purpose == VersionPurpose.CLOSURE,
+    )
+    parts += db.scalars(
+        select(DocumentPage.text)
+        .where(
+            (DocumentPage.version_id == document.current_version_id)
+            | DocumentPage.version_id.in_(closing)
+        )
+        .order_by(DocumentPage.version_id != document.current_version_id, DocumentPage.page_no)
+    ).all()
     return compact(" ".join(p for p in parts if p))

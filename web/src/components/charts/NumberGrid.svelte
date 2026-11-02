@@ -1,11 +1,13 @@
 <script>
+  import { FACULTY } from '../../lib/format.js';
   // Contract-number coverage: one small tile per running number (R{year}{series}{001…}).
   // Filled = a file is stored; outlined = missing. A row per year + series.
   let { rows = [] } = $props(); // [{ year_be, series, highest, stored, missing: ['R2568E004', …] }]
   const FIRST = 12;
   let open = $state({}); // row key → show every missing number
 
-  const SERIES = { E: { label: 'ภายใน', color: 'var(--c-internal)' }, A: { label: 'ภายนอก', color: 'var(--c-external)' } };
+  // The series letter is the faculty that issued the number (E = engineering), not the funding type.
+  const SERIES = Object.fromEntries(Object.entries(FACULTY).map(([k, v]) => [k, { label: v, color: 'var(--c-internal)' }]));
   const tiles = (r) => {
     const missing = new Set(r.missing);
     return Array.from({ length: r.highest }, (_, i) => {
@@ -17,7 +19,7 @@
 
 <div class="rows">
   {#each rows as r (r.year_be + r.series)}
-    {@const s = SERIES[r.series] || { label: r.series, color: 'var(--c-unset)' }}
+    {@const s = SERIES[r.series] || { label: `คณะรหัส ${r.series}`, color: 'var(--c-unset)' }}
     <div class="series">
       <div class="head">
         <b class="num">{r.year_be}</b>

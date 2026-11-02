@@ -5,7 +5,7 @@
   import { get, put, post, errorText, fileUrl } from '../lib/api.js';
   import { navigate } from '../lib/router.svelte.js';
   import { toast, screen, bumpReviewCount, isAdmin } from '../lib/state.svelte.js';
-  import { categoryGroups } from '../lib/catalog.js';
+  import { categoryGroups, resetCatalog } from '../lib/catalog.js';
   import { KIND, FUNDING, ROLE, FIELD, BE, thDate, money, toThaiInput, parseThaiDate } from '../lib/format.js';
   import Icon from '../components/Icon.svelte';
 
@@ -71,14 +71,24 @@
     }
     const tags = d.tags.map((t) => ({ name: t.name, source: t.source }));
     const tagNames = new Set(tags.map((t) => t.name.toLowerCase()));
-    const suggestedTags = [...new Set([...(s.checks || []), ...(s.hints || [])].filter((c) => c.suggest === 'tag' && c.label).map((c) => c.label.trim()))].filter(
+    // A ticked box that matched no option: inside a known group it is offered as a new option
+    // of that group; without a group it stays a suggested free tag.
+    const unmatched = [...(s.checks || []), ...(s.hints || [])].filter((c) => c.suggest === 'tag' && c.label?.trim());
+    const suggestedOptions = {};
+    if (first) {
+      for (const c of unmatched.filter((c) => c.group_key)) {
+        const list = (suggestedOptions[c.group_key] ||= []);
+        if (!list.includes(c.label.trim())) list.push(c.label.trim());
+      }
+    }
+    const suggestedTags = [...new Set(unmatched.filter((c) => !c.group_key).map((c) => c.label.trim()))].filter(
       (l) => !tagNames.has(l.toLowerCase()),
     );
 
     const people = d.people.length
       ? d.people.map((p) => ({ prefix_th: p.prefix_th || '', name_th: p.name_th || '', name_en: p.name_en || '', role: p.role, share_pct: p.share_pct ?? '', unit: p.unit || '' }))
       : first
-        ? (s.people || []).map((p) => ({ prefix_th: p.prefix_th || '', name_th: p.name || '', name_en: '', role: p.role || 'co_investigator', share_pct: p.share_pct ?? '', unit: p.unit || '', auto: true }))
+        ? (s.people || []).map((p) => ({ prefix_th: p.prefix_th || '', name_th: p.name || '', name_en: p.name_en || '', role: p.role || 'co_investigator', share_pct: p.share_pct ?? '', unit: p.unit || '', auto: true }))
         : [];
 
     return {
@@ -96,6 +106,7 @@
       suggestedCats: [...suggestedCats],
       tags,
       suggestedTags,
+      suggestedOptions,
       people,
       budget_lines: d.budget_lines.map((b) => ({ ...b, amount: b.amount ?? '', percent: b.percent ?? '', due_date: toThaiInput(b.due_date) })),
     };
@@ -143,6 +154,45 @@
   const warnings = $derived(fresh ? (sug?.warnings || []) : []);
 
   // ───────── Categories and tags ─────────
+  // Any user may add an option to a group while reviewing (no admin approval).
+  let adding = $state(null); // group id whose "add option" box is open
+  let newOption = $state('');
+  let optionBusy = $state(false);
+  const squash = (t) => (t || '').replace(/\s+/g, '').toLowerCase();
+  const same = (a, b) => squash(a) === squash(b);
+  async function openAdd(g) {
+    adding = g.id;
+    newOption = '';
+    await tick();
+    document.getElementById(`f-opt-${g.key}`)?.focus();
+  }
+  function optionKey(e, g) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addOption(g, newOption);
+    } else if (e.key === 'Escape') adding = null;
+  }
+  async function addOption(g, name, source = 'manual') {
+    const label = name.trim();
+    if (!label || optionBusy) return;
+    optionBusy = true;
+    try {
+      const option = await post('/categories', { group_id: g.id, name_th: label });
+      if (!g.options.some((o) => o.id === option.id)) g.options.push(option);
+      resetCatalog();
+      if (!(option.id in form.categories)) {
+        if (!g.multi) for (const o of g.options) delete form.categories[o.id];
+        form.categories[option.id] = source;
+      }
+      if (source === 'auto') form.suggestedCats.push(option.id);
+      adding = null;
+      newOption = '';
+    } catch (err) {
+      toast(errorText(err), 'bad');
+    } finally {
+      optionBusy = false;
+    }
+  }
   function toggleCat(group, optionId) {
     const on = optionId in form.categories;
     if (!group.multi) for (const o of group.options) delete form.categories[o.id];
@@ -161,6 +211,45 @@
       addTag(tagInput);
       tagInput = '';
     }
+  }
+
+  // ───────── People and budget lines ─────────
+  function addPerson() {
+    form.people.push({ prefix_th: '', name_th: '', name_en: '', role: form.people.length ? 'co_investigator' : 'owner', share_pct: '', unit: '' });
+  }
+  const numOrNull = (v) => {
+    const n = Number(num(v));
+    return v === '' || v == null || isNaN(n) ? null : n;
+  };
+  const shareTotal = $derived.by(() => {
+    const vals = form?.people.map((p) => numOrNull(p.share_pct)).filter((v) => v !== null) || [];
+    return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) * 100) / 100 : null;
+  });
+  const budgetNum = $derived(form ? numOrNull(form.budget_total) : null);
+  function lineSum(type) {
+    const vals = form.budget_lines.filter((b) => b.line_type === type).map((b) => numOrNull(b.amount)).filter((v) => v !== null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+  }
+  function addLine(type) {
+    const n = form.budget_lines.filter((b) => b.line_type === type).length + 1;
+    form.budget_lines.push({ line_type: type, group_label: '', label: type === 'installment' ? `งวดที่ ${n}` : '', amount: '', percent: '', due_date: '', condition: '' });
+  }
+  // Installment %: fill it from the amount when the total is known and the box is still empty.
+  function fillPercent(b) {
+    const amount = numOrNull(b.amount);
+    if (b.percent === '' && amount !== null && budgetNum) b.percent = String(Math.round((amount / budgetNum) * 10000) / 100);
+  }
+  const budgetSugg = $derived(sug?.budget_lines || []);
+  function useBudgetSugg() {
+    form.budget_lines = budgetSugg.map((b) => ({
+      line_type: b.line_type,
+      group_label: b.group_label || '',
+      label: b.label,
+      amount: b.amount ?? '',
+      percent: b.percent ?? '',
+      due_date: toThaiInput(b.due_date),
+      condition: b.condition || '',
+    }));
   }
 
   // ───────── Save ─────────
@@ -345,7 +434,7 @@
           <div class="field" class:invalid={errors.funding_type}>
             <span>ประเภทเงินทุน *</span>
             <div class="seg">{#each Object.entries(FUNDING) as [v, l] (v)}<button type="button" aria-pressed={form.funding_type === v} onclick={() => (form.funding_type = v)}>{l}</button>{/each}</div>
-            {#if errors.funding_type}<small class="err">{errors.funding_type}</small>{:else}<small>ดูจากตัวอักษรในเลขสัญญา: E = ภายใน, A = ภายนอก</small>{/if}
+            {#if errors.funding_type}<small class="err">{errors.funding_type}</small>{:else}<small>ดูจากหัวสัญญา: “ระหว่าง …กับ…” = ทุนภายนอก, “จากงบประมาณ…” ของหน่วยงานเดียว = ทุนภายใน</small>{/if}
           </div>
         </div>
         <div class="two">
@@ -384,18 +473,35 @@
         <p class="hint">ช่องที่ติ๊กในแบบฟอร์มถูกเลือกให้แล้ว (มีจุดสีทอง) แก้ได้ตามต้องการ</p>
         {#each groups as g (g.id)}
           {@const opts = g.options.filter((o) => o.active || o.id in form.categories)}
-          {#if opts.length}
-            <div class="cat-group">
-              <span class="label">{g.name_th}{g.multi ? '' : ' (เลือกได้ 1 ข้อ)'}</span>
-              <div class="chips">
-                {#each opts as o (o.id)}
-                  <button type="button" class="chip" aria-pressed={o.id in form.categories} onclick={() => toggleCat(g, o.id)}>
-                    {#if form.suggestedCats.includes(o.id)}<span class="dot" title="ระบบแนะนำจากเอกสาร"></span>{/if}{o.name_th}
-                  </button>
-                {/each}
-              </div>
+          {@const sugg = (form.suggestedOptions[g.key] || []).filter((l) => !g.options.some((o) => same(o.name_th, l)))}
+          <div class="cat-group">
+            <span class="label">{g.name_th}{g.multi ? '' : ' (เลือกได้ 1 ข้อ)'}</span>
+            <div class="chips">
+              {#each opts as o (o.id)}
+                <button type="button" class="chip" aria-pressed={o.id in form.categories} onclick={() => toggleCat(g, o.id)}>
+                  {#if form.suggestedCats.includes(o.id)}<span class="dot" title="ระบบแนะนำจากเอกสาร"></span>{/if}{o.name_th}
+                </button>
+              {/each}
+              {#each sugg as label (label)}
+                <button type="button" class="chip new" onclick={() => addOption(g, label, 'auto')} disabled={optionBusy} title="ติ๊กไว้ในเอกสารแต่ยังไม่มีในรายการ กดเพื่อเพิ่มและเลือก">
+                  <span class="dot"></span>+ {label}
+                </button>
+              {/each}
+              {#if adding === g.id}
+                <input
+                  id="f-opt-{g.key}"
+                  class="input tag-in"
+                  bind:value={newOption}
+                  onkeydown={(e) => optionKey(e, g)}
+                  onblur={() => (newOption.trim() ? addOption(g, newOption) : (adding = null))}
+                  placeholder="ชื่อตัวเลือกใหม่ แล้วกด Enter"
+                  disabled={optionBusy}
+                />
+              {:else}
+                <button type="button" class="chip add" onclick={() => openAdd(g)}>+ เพิ่ม</button>
+              {/if}
             </div>
-          {/if}
+          </div>
         {/each}
         <div class="cat-group">
           <span class="label">แท็ก</span>
@@ -416,40 +522,75 @@
 
       <section class="card pad stack">
         <div class="row"><h3>ผู้เกี่ยวข้อง</h3><span class="spacer"></span>
-          <button type="button" class="btn small ghost" onclick={() => form.people.push({ prefix_th: '', name_th: '', name_en: '', role: form.people.length ? 'co_investigator' : 'owner', share_pct: '', unit: '' })}><Icon name="plus" size={15} />เพิ่มคน</button>
+          <button type="button" class="btn small ghost" onclick={addPerson}><Icon name="plus" size={15} />เพิ่มคน</button>
         </div>
-        {#each form.people as p, i (i)}
-          <div class="person">
-            <label class="field pfx"><span>คำนำหน้า</span><input id="p{i}-prefix" bind:value={p.prefix_th} placeholder="ผศ.ดร." /></label>
-            <label class="field nm"><span>ชื่อ-สกุล</span><input id="p{i}-name" bind:value={p.name_th} /></label>
-            <label class="field rl"><span>บทบาท</span>
-              <select id="p{i}-role" bind:value={p.role}>{#each Object.entries(ROLE) as [v, l] (v)}<option value={v}>{l}</option>{/each}</select>
-            </label>
-            <label class="field pc"><span>สัดส่วน %</span><input id="p{i}-share" bind:value={p.share_pct} inputmode="decimal" /></label>
-            <label class="field un"><span>หน่วยงาน</span><input id="p{i}-unit" bind:value={p.unit} /></label>
-            <button type="button" class="icon-btn rm" onclick={() => form.people.splice(i, 1)} aria-label="ลบ {p.name_th}"><Icon name="trash" size={17} /></button>
+        {#if form.people.length}
+          <div class="rows">
+            <div class="rhead person" aria-hidden="true"><span>คำนำหน้า</span><span>ชื่อ-สกุล</span><span>บทบาท</span><span>สัดส่วน %</span><span>หน่วยงาน</span><span></span></div>
+            {#each form.people as p, i (i)}
+              <div class="rline person">
+                <label class="field pfx"><span>คำนำหน้า</span><input id="p{i}-prefix" bind:value={p.prefix_th} placeholder="ผศ.ดร." /></label>
+                <label class="field nm"><span>ชื่อ-สกุล</span><input id="p{i}-name" bind:value={p.name_th} />{#if p.name_en}<small>{p.name_en}</small>{/if}</label>
+                <label class="field rl"><span>บทบาท</span>
+                  <select id="p{i}-role" bind:value={p.role}>{#each Object.entries(ROLE) as [v, l] (v)}<option value={v}>{l}</option>{/each}</select>
+                </label>
+                <label class="field pc"><span>สัดส่วน %</span><input id="p{i}-share" bind:value={p.share_pct} inputmode="decimal" /></label>
+                <label class="field un"><span>หน่วยงาน</span><input id="p{i}-unit" bind:value={p.unit} /></label>
+                <button type="button" class="icon-btn rm" onclick={() => form.people.splice(i, 1)} aria-label="ลบ {p.name_th || 'แถวนี้'}"><Icon name="trash" size={17} /></button>
+              </div>
+            {/each}
           </div>
+          {#if shareTotal !== null}
+            <small class="total" class:off={Math.abs(shareTotal - 100) > 0.5}>สัดส่วนรวม {shareTotal}%{Math.abs(shareTotal - 100) > 0.5 ? ' (ควรเป็น 100%)' : ''}</small>
+          {/if}
         {:else}
           <p class="muted">ยังไม่มีรายชื่อ</p>
-        {/each}
+        {/if}
       </section>
 
       <section class="card pad stack">
-        <div class="row"><h3>รายการงบประมาณและงวดเงิน</h3><span class="spacer"></span>
-          <button type="button" class="btn small ghost" onclick={() => form.budget_lines.push({ line_type: 'installment', group_label: '', label: `งวดที่ ${form.budget_lines.filter((b) => b.line_type === 'installment').length + 1}`, amount: '', percent: '', due_date: '', condition: '' })}><Icon name="plus" size={15} />เพิ่มรายการ</button>
-        </div>
-        <p class="hint">กรอกเอง (ระบบไม่อ่านส่วนนี้อัตโนมัติ)</p>
-        {#each form.budget_lines as b, i (i)}
-          <div class="bline" class:invalid={errors[`bl${i}`]}>
-            <label class="field"><span>ประเภท</span><select id="b{i}-type" bind:value={b.line_type}><option value="installment">งวดเงิน</option><option value="item">รายการค่าใช้จ่าย</option></select></label>
-            <label class="field lb"><span>รายการ</span><input id="b{i}-label" bind:value={b.label} /></label>
-            <label class="field"><span>จำนวนเงิน</span><input id="b{i}-amount" bind:value={b.amount} inputmode="decimal" /></label>
-            {#if b.line_type === 'installment'}
-              <label class="field"><span>%</span><input id="b{i}-pct" bind:value={b.percent} inputmode="decimal" /></label>
-              <label class="field"><span>กำหนดส่ง</span><input id="b{i}-due" bind:value={b.due_date} placeholder="วว/ดด/ปปปป" /></label>
+        <h3>รายการงบประมาณและงวดเงิน</h3>
+        {#if budgetSugg.length && !form.budget_lines.length}
+          <div class="notice info"><Icon name="info" size={18} /><span>ระบบอ่านงวดเงินได้ {budgetSugg.length} งวด{budgetSugg.some((b) => b.computed) ? ' (บางงวดคำนวณจำนวนเงินจากร้อยละ ตรวจกับไฟล์อีกครั้ง)' : ''} <button type="button" class="link-btn" onclick={useBudgetSugg}>ใช้ค่าที่ระบบอ่านได้</button></span></div>
+        {/if}
+        {#each [['installment', 'งวดเงิน', 'เพิ่มงวด'], ['item', 'รายการค่าใช้จ่าย', 'เพิ่มรายการ']] as [type, title, addLabel] (type)}
+          {@const lines = form.budget_lines.map((b, i) => [b, i]).filter(([b]) => b.line_type === type)}
+          {@const sum = lineSum(type)}
+          <div class="bgroup">
+            <div class="row"><span class="label">{title}</span><span class="spacer"></span>
+              <button type="button" class="btn small ghost" onclick={() => addLine(type)}><Icon name="plus" size={15} />{addLabel}</button>
+            </div>
+            {#if lines.length}
+              <div class="rows">
+                {#if type === 'installment'}
+                  <div class="rhead inst" aria-hidden="true"><span>งวด</span><span>จำนวนเงิน (บาท)</span><span>%</span><span>กำหนดส่ง</span><span>เงื่อนไข</span><span></span></div>
+                {:else}
+                  <div class="rhead item" aria-hidden="true"><span>หมวด</span><span>รายการ</span><span>จำนวนเงิน (บาท)</span><span></span></div>
+                {/if}
+                {#each lines as [b, i] (i)}
+                  <div class="rline {type === 'installment' ? 'inst' : 'item'}" class:invalid={errors[`bl${i}`]}>
+                    {#if type === 'installment'}
+                      <label class="field lb"><span>งวด</span><input id="b{i}-label" bind:value={b.label} /></label>
+                      <label class="field am"><span>จำนวนเงิน (บาท)</span><input id="b{i}-amount" bind:value={b.amount} inputmode="decimal" onblur={() => fillPercent(b)} /></label>
+                      <label class="field pc"><span>%</span><input id="b{i}-pct" bind:value={b.percent} inputmode="decimal" /></label>
+                      <label class="field due"><span>กำหนดส่ง</span><input id="b{i}-due" bind:value={b.due_date} placeholder="วว/ดด/ปปปป" /></label>
+                      <label class="field cond"><span>เงื่อนไข</span><input id="b{i}-cond" bind:value={b.condition} placeholder="เช่น เมื่อส่งรายงานความก้าวหน้า" /></label>
+                    {:else}
+                      <label class="field grp"><span>หมวด</span><input id="b{i}-group" bind:value={b.group_label} placeholder="เช่น หมวดค่าตอบแทน" /></label>
+                      <label class="field lb"><span>รายการ</span><input id="b{i}-label" bind:value={b.label} /></label>
+                      <label class="field am"><span>จำนวนเงิน (บาท)</span><input id="b{i}-amount" bind:value={b.amount} inputmode="decimal" /></label>
+                    {/if}
+                    <button type="button" class="icon-btn rm" onclick={() => form.budget_lines.splice(i, 1)} aria-label="ลบ {b.label || 'แถวนี้'}"><Icon name="trash" size={17} /></button>
+                    {#if errors[`bl${i}`]}<small class="err full">{errors[`bl${i}`]}</small>{/if}
+                  </div>
+                {/each}
+              </div>
+              {#if sum !== null}
+                <small class="total" class:off={budgetNum !== null && Math.abs(sum - budgetNum) > 0.005}>
+                  รวม {money(sum)}{#if budgetNum !== null}{Math.abs(sum - budgetNum) > 0.005 ? ` · ไม่ตรงกับงบประมาณรวม (${money(budgetNum)})` : ' · ตรงกับงบประมาณรวม'}{/if}
+                </small>
+              {/if}
             {/if}
-            <button type="button" class="icon-btn rm" onclick={() => form.budget_lines.splice(i, 1)} aria-label="ลบรายการ"><Icon name="trash" size={17} /></button>
-            {#if errors[`bl${i}`]}<small class="err full">{errors[`bl${i}`]}</small>{/if}
           </div>
         {/each}
       </section>
@@ -501,28 +642,48 @@
   .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .chips .chip { white-space: normal; text-align: left; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+  .chip.add { border-style: dashed; color: var(--muted); background: transparent; }
+  .chip.new { border-style: dashed; }
   .tag-in { width: 180px; min-height: 32px; padding: 3px 10px; font-size: 14px; }
   .sugg-tags { margin-top: 2px; }
-  .person, .bline { display: grid; gap: 8px 10px; align-items: end; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
-  .person { grid-template-columns: 110px minmax(160px, 1.6fr) 150px 90px minmax(120px, 1fr) 36px; }
-  .bline { grid-template-columns: 150px minmax(140px, 1.5fr) 130px 80px 130px 36px; }
-  .bline.invalid { border-color: var(--bad); }
-  .bline .full { grid-column: 1 / -1; }
+  /* People and budget rows lay out by the card's own width (the PDF may sit beside the form):
+     wide = one table row under a shared header; narrow = a small stacked card per row. */
+  .rows { container-type: inline-size; display: flex; flex-direction: column; gap: 8px; }
+  .rline, .rhead { display: grid; gap: 8px 10px; align-items: end; }
+  .rline { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+  .rline.invalid { border-color: var(--bad); }
+  .rline .full { grid-column: 1 / -1; }
+  .rline input, .rline select { width: 100%; min-width: 0; }
+  .rhead { display: none; padding: 0 11px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
   .rm { align-self: end; margin-bottom: 2px; }
+  .total { font-size: 12.5px; color: var(--muted); }
+  .total.off { color: var(--warn); }
+  .bgroup { display: flex; flex-direction: column; gap: 8px; }
+  .bgroup + .bgroup { padding-top: 12px; border-top: 1px solid var(--border); }
+
+  /* Narrow (default) */
+  .person { grid-template-columns: 96px minmax(0, 1fr) 36px; grid-template-areas: 'pfx nm rm' 'rl rl rl' 'pc un un'; }
+  .inst { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; grid-template-areas: 'lb lb rm' 'am pc pc' 'due due due' 'cond cond cond'; }
+  .item { grid-template-columns: minmax(0, 1fr) 36px; grid-template-areas: 'grp rm' 'lb lb' 'am am'; }
+  .pfx { grid-area: pfx; } .nm { grid-area: nm; } .rl { grid-area: rl; } .pc { grid-area: pc; } .un { grid-area: un; }
+  .lb { grid-area: lb; } .am { grid-area: am; } .due { grid-area: due; } .cond { grid-area: cond; } .grp { grid-area: grp; }
+  .rline .rm { grid-area: rm; }
+  @container (min-width: 460px) {
+    .person { grid-template-columns: 100px minmax(0, 1fr) 150px 36px; grid-template-areas: 'pfx nm rl rm' 'pc un un un'; }
+    .inst { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 80px 36px; grid-template-areas: 'lb am pc rm' 'due cond cond cond'; }
+    .item { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 36px; grid-template-areas: 'grp lb rm' 'am am .'; }
+  }
+  @container (min-width: 760px) {
+    .rhead { display: grid; }
+    .rline .field > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .rline { padding: 6px 10px; }
+    .person { grid-template-columns: 100px minmax(0, 1.6fr) 140px 80px minmax(0, 1fr) 36px; grid-template-areas: 'pfx nm rl pc un rm'; }
+    .inst { grid-template-columns: 110px 130px 70px 130px minmax(0, 1fr) 36px; grid-template-areas: 'lb am pc due cond rm'; }
+    .item { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) 140px 36px; grid-template-areas: 'grp lb am rm'; }
+  }
   .savebar { position: sticky; bottom: 0; z-index: 5; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 0; background: linear-gradient(to top, var(--bg) 70%, transparent); }
   .waiting { max-width: 520px; margin: 40px auto; padding: 32px 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
   .spin.big { width: 32px; height: 32px; border-width: 3px; }
-  @media (max-width: 900px) {
-    /* prefix | name | delete, then role, then share | unit */
-    .person { grid-template-columns: 96px minmax(0, 1fr) 36px; }
-    .person .rm { grid-row: 1; grid-column: 3; }
-    .person .rl { grid-column: 1 / -1; }
-    .person .pc { grid-column: 1 / 2; }
-    .person .un { grid-column: 2 / -1; }
-    .bline { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; }
-    .bline .lb { grid-column: 1 / -1; grid-row: 2; }
-    .bline .rm { grid-row: 1; grid-column: 3; }
-  }
   @media (max-width: 767px) {
     .savebar { bottom: calc(var(--bottom-h) + env(safe-area-inset-bottom)); }
     .savebar .btn { flex: 1; }

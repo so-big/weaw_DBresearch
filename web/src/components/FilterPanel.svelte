@@ -28,6 +28,13 @@
     return Object.entries(labels).map(([v, label]) => ({ v, label, n: counts.get(v) ?? 0 }));
   };
   const catCounts = $derived(countMap(facets?.categories));
+  // Closed projects live in an archive: hidden unless asked for.
+  const projectCounts = $derived(countMap(facets?.project));
+  const projects = $derived([
+    ['', 'ดำเนินการอยู่', projectCounts.get('open') ?? 0],
+    ['closed', 'ปิดแล้ว', projectCounts.get('closed') ?? 0],
+    ['all', 'ทั้งหมด', (projectCounts.get('open') ?? 0) + (projectCounts.get('closed') ?? 0)],
+  ]);
 
   const sections = $derived([
     { key: 'fiscal_year', label: 'ปีงบประมาณ', open: true, options: years },
@@ -61,6 +68,16 @@
 </script>
 
 <div class="panel">
+  <div class="proj" role="group" aria-label="โครงการ">
+    <span class="plabel">โครงการ</span>
+    <div class="seg">
+      {#each projects as [v, label, n] (v)}
+        <button type="button" id="{idp}-project-{v || 'open'}" aria-pressed={(value.project || '') === v} onclick={() => onchange({ ...value, project: v })}>
+          {label}<span class="c num">{n}</span>
+        </button>
+      {/each}
+    </div>
+  </div>
   {#each sections as s (s.id || s.key)}
     {#if s.options.length}
       <details open={s.open || selectedIn(s) > 0}>
@@ -109,7 +126,11 @@
 <style>
   .panel { display: flex; flex-direction: column; }
   details { border-top: 1px solid var(--border); }
-  details:first-child { border-top: 0; }
+  .proj { display: flex; flex-direction: column; gap: 6px; padding: 4px 6px 12px; }
+  .plabel { font-size: 14px; font-weight: 600; }
+  .proj .seg { display: flex; }
+  .proj .seg button { flex: 1; display: inline-flex; gap: 5px; justify-content: center; align-items: baseline; }
+  .proj .c { font-size: 11.5px; }
   summary { list-style: none; display: flex; align-items: center; gap: 6px; padding: 10px 6px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 6px; }
   summary::-webkit-details-marker { display: none; }
   summary::after { content: ''; margin-left: auto; width: 7px; height: 7px; border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted); transform: rotate(45deg) translateY(-2px); transition: transform var(--t-fast) var(--ease-out); }

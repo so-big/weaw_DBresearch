@@ -1,10 +1,10 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { get, uploadFile, errorText, fileUrl, thai } from '../lib/api.js';
+  import { get, post, uploadFile, errorText, fileUrl, thai } from '../lib/api.js';
   import { trashDocs } from '../lib/trash.js';
   import { navigate } from '../lib/router.svelte.js';
   import { toast, screen, bumpReviewCount } from '../lib/state.svelte.js';
-  import { STATUS, KIND, FUNDING, ROLE, thDate, thDateTime, money, bytes, personName } from '../lib/format.js';
+  import { STATUS, KIND, FUNDING, ROLE, thDate, thDateTime, money, bytes, personName, toThaiInput, parseThaiDate } from '../lib/format.js';
   import Icon from '../components/Icon.svelte';
   import Modal from '../components/Modal.svelte';
   import ShareDialog from '../components/ShareDialog.svelte';
@@ -23,8 +23,9 @@
     try {
       doc = await get(`/documents/${id}`);
       error = '';
-      // While the scan is being read, check back every few seconds.
-      if (doc.status === 'processing') timer = setTimeout(load, 4000);
+      // While the scan (or a closing paper) is being read, check back every few seconds.
+      const reading = doc.closure_files.some((f) => f.ocr_status === 'pending' || f.ocr_status === 'running');
+      if (doc.status === 'processing' || reading) timer = setTimeout(load, 4000);
     } catch (err) {
       error = errorText(err);
     }
@@ -65,6 +66,89 @@
     }
   }
 
+  // ───────── Close the project (ปิดโครงการ) ─────────
+  let closing = $state(null); // the close/edit form while open
+  let closeBusy = $state(false);
+  let closeError = $state('');
+  const PAPER = { memo: 'บันทึกขอปิดโครงการ', resolution: 'มติที่ประชุม' };
+  const reading = $derived.by(() => {
+    // The newest closing paper's readings: dates and reference to offer in the form.
+    const out = {};
+    for (const f of doc?.closure_files || []) {
+      const r = f.readings || {};
+      out.date ??= r.meeting_date || r.memo_date;
+      out.ref ??= r.memo_no || (r.meeting_no ? `มติที่ประชุม ครั้งที่ ${r.meeting_no}${r.agenda ? ` วาระที่ ${r.agenda}` : ''}` : undefined);
+    }
+    return out;
+  });
+  const papersReading = $derived((doc?.closure_files || []).some((f) => f.ocr_status === 'pending' || f.ocr_status === 'running'));
+  function openClose() {
+    closeError = '';
+    closing = {
+      files: [],
+      date: toThaiInput(doc.closed_on || reading.date || ''),
+      ref: doc.closure_ref || reading.ref || '',
+      note: doc.closure_note || '',
+    };
+  }
+  function pickPapers(e) {
+    const picked = [...(e.currentTarget.files || [])].filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+    closing.files.push(...picked);
+    e.currentTarget.value = '';
+  }
+  async function attachPapers(files) {
+    for (const file of files) {
+      const { status, data } = await uploadFile(`/documents/${id}/closure-files`, file);
+      if (status !== 201) throw new Error(status === 409 ? `“${file.name}” มีอยู่ในระบบแล้ว` : thai(data?.detail) || `อัปโหลด “${file.name}” ไม่สำเร็จ`);
+    }
+  }
+  async function saveClose() {
+    const closedOn = parseThaiDate(closing.date);
+    if (closedOn === null) return (closeError = 'รูปแบบวันที่ไม่ถูกต้อง ใช้ วว/ดด/ปปปป เช่น 7/8/2568');
+    closeBusy = true;
+    closeError = '';
+    try {
+      await attachPapers(closing.files);
+      closing.files = [];
+      const first = !doc.closed_at;
+      doc = await post(`/documents/${id}/close`, { closed_on: closedOn || null, closure_ref: closing.ref || null, closure_note: closing.note || null });
+      closing = null;
+      toast(first ? 'ปิดโครงการแล้ว ย้ายไปอยู่ในคลังโครงการที่ปิดแล้ว' : 'บันทึกข้อมูลการปิดโครงการแล้ว');
+      load();
+    } catch (err) {
+      closeError = err.message && !err.status ? err.message : errorText(err);
+      load();
+    } finally {
+      closeBusy = false;
+    }
+  }
+  async function addPaper(e) {
+    const files = [...(e.currentTarget.files || [])];
+    e.currentTarget.value = '';
+    if (!files.length) return;
+    busy = true;
+    try {
+      await attachPapers(files);
+      toast('แนบเอกสารปิดโครงการแล้ว ระบบกำลังอ่านเอกสาร');
+    } catch (err) {
+      toast(err.message, 'bad');
+    } finally {
+      busy = false;
+      load();
+    }
+  }
+  async function reopen() {
+    busy = true;
+    try {
+      doc = await post(`/documents/${id}/reopen`);
+      toast('เปิดโครงการอีกครั้งแล้ว');
+    } catch (err) {
+      toast(errorText(err), 'bad');
+    } finally {
+      busy = false;
+    }
+  }
+
   async function newVersion(e) {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = '';
@@ -97,7 +181,10 @@
         <small>ปีงบ</small>{doc.fiscal_year_be ? String(doc.fiscal_year_be).slice(2) : '–'}
       </span>
       <div class="titles">
-        <span class="badge {doc.status}">{STATUS[doc.status]}</span>
+        <div class="badges">
+          <span class="badge {doc.status}">{STATUS[doc.status]}</span>
+          {#if doc.closed_at}<span class="badge closed"><Icon name="check-only" size={13} stroke={2.4} />ปิดโครงการแล้ว</span>{/if}
+        </div>
         <h1>{doc.title}</h1>
         {#if doc.title_en}<p class="muted en">{doc.title_en}</p>{/if}
       </div>
@@ -179,6 +266,71 @@
         </section>
       {/if}
 
+      <section class="card pad wide closure" class:done={doc.closed_at}>
+        <div class="row">
+          <h3>การปิดโครงการ</h3>
+          <span class="spacer"></span>
+          {#if doc.can_edit}
+            {#if doc.closed_at}
+              <button class="btn small ghost" onclick={openClose}><Icon name="edit" size={15} />แก้ไข</button>
+              <button class="btn small ghost" onclick={reopen} disabled={busy}>เปิดโครงการอีกครั้ง</button>
+            {:else}
+              <label class="btn small ghost">
+                <Icon name="upload" size={15} />แนบเอกสารปิดโครงการ
+                <input class="sr-only" type="file" accept="application/pdf,.pdf" multiple onchange={addPaper} disabled={busy} />
+              </label>
+              <button class="btn small" onclick={openClose}>ปิดโครงการ</button>
+            {/if}
+          {/if}
+        </div>
+        {#if doc.closed_at}
+          <dl class="facts">
+            <dt>วันที่อนุมัติปิด</dt><dd class={doc.closed_on ? '' : 'muted'}>{doc.closed_on ? thDate(doc.closed_on) : 'ไม่ระบุ'}</dd>
+            <dt>เลขที่อ้างอิง</dt><dd class={doc.closure_ref ? '' : 'muted'}>{doc.closure_ref || '–'}</dd>
+            {#if doc.closure_note}<dt>หมายเหตุ</dt><dd>{doc.closure_note}</dd>{/if}
+            <dt>บันทึกในระบบ</dt><dd class="muted">{doc.closed_by_name || '–'} · {thDateTime(doc.closed_at)}</dd>
+          </dl>
+        {:else}
+          <p class="muted">โครงการยังดำเนินการอยู่ เมื่อได้รับอนุมัติปิดโครงการ ให้แนบบันทึกขอปิดโครงการหรือมติที่ประชุม แล้วกด “ปิดโครงการ” เอกสารจะย้ายไปอยู่ในคลังโครงการที่ปิดแล้ว</p>
+        {/if}
+        {#if doc.closure_files.length}
+          <ul class="papers">
+            {#each doc.closure_files as f (f.version_no)}
+              <li>
+                <div class="pinfo">
+                  <span class="fname">{f.original_filename}</span>
+                  <small class="muted">{PAPER[f.paper] || 'เอกสารปิดโครงการ'} · {f.page_count ? `${f.page_count} หน้า · ` : ''}{bytes(f.size_bytes)} · {thDateTime(f.created_at)}</small>
+                  {#if f.ocr_status === 'pending' || f.ocr_status === 'running'}
+                    <small class="muted"><span class="spin"></span> ระบบกำลังอ่านเอกสาร</small>
+                  {:else if Object.keys(f.readings).length}
+                    <small class="read">
+                      ระบบอ่านได้:
+                      {[
+                        f.readings.memo_no && `ที่ ${f.readings.memo_no}`,
+                        f.readings.meeting_no && `ครั้งที่ ${f.readings.meeting_no}${f.readings.agenda ? ` วาระ ${f.readings.agenda}` : ''}`,
+                        (f.readings.meeting_date || f.readings.memo_date) && `วันที่ ${thDate(f.readings.meeting_date || f.readings.memo_date)}`,
+                        f.readings.owner,
+                      ].filter(Boolean).join(' · ') || 'ไม่พบวันที่หรือเลขที่'}
+                    </small>
+                  {/if}
+                  {#if f.title_match !== null && f.title_match < 70}
+                    <small class="mismatch"><Icon name="warn" size={13} />ชื่อโครงการในเอกสารนี้ไม่ตรงกับสัญญา อาจแนบผิดไฟล์: “{f.readings.title}”</small>
+                  {/if}
+                </div>
+                <a class="link-btn" href={fileUrl(doc.id, { closure: f.version_no, inline: true })} target="_blank" rel="noopener">เปิดดู</a>
+                <a class="link-btn" href={fileUrl(doc.id, { closure: f.version_no })}>ดาวน์โหลด</a>
+              </li>
+            {/each}
+          </ul>
+          {#if doc.closed_at && doc.can_edit}
+            <label class="link-btn add-paper">
+              + แนบเอกสารเพิ่ม
+              <input class="sr-only" type="file" accept="application/pdf,.pdf" multiple onchange={addPaper} disabled={busy} />
+            </label>
+          {/if}
+        {/if}
+      </section>
+
       <section class="card pad wide">
         <div class="row">
           <h3>ไฟล์และฉบับแก้ไข</h3>
@@ -211,6 +363,49 @@
   </div>
 
   {#if sharing}<ShareDialog {doc} onclose={() => (sharing = false)} />{/if}
+  {#if closing}
+    <Modal title={doc.closed_at ? 'แก้ไขข้อมูลการปิดโครงการ' : 'ปิดโครงการ'} onclose={() => !closeBusy && (closing = null)} width={520}>
+      <div class="stack">
+        {#if !doc.closed_at}
+          <p class="muted">โครงการที่ปิดแล้วจะย้ายไปอยู่ใน “คลังโครงการที่ปิดแล้ว” ยังค้นหาและเปิดดูได้ตามปกติ และเปิดโครงการอีกครั้งได้ภายหลัง</p>
+        {/if}
+        <div class="field">
+          <span>เอกสารปิดโครงการ (PDF)</span>
+          <label class="drop">
+            <Icon name="upload" size={18} />
+            <span>เลือกไฟล์บันทึกขออนุมัติปิดโครงการ / มติที่ประชุม</span>
+            <input class="sr-only" type="file" accept="application/pdf,.pdf" multiple onchange={pickPapers} disabled={closeBusy} />
+          </label>
+          {#each closing.files as f, i (f.name + i)}
+            <div class="picked"><span class="fname">{f.name}</span><small class="muted">{bytes(f.size)}</small><button type="button" class="icon-btn" onclick={() => closing.files.splice(i, 1)} aria-label="เอา {f.name} ออก"><Icon name="x" size={15} /></button></div>
+          {/each}
+          {#if doc.closure_files.length}<small>แนบไว้แล้ว {doc.closure_files.length} ไฟล์</small>{/if}
+        </div>
+        <label class="field">
+          <span>วันที่อนุมัติปิดโครงการ</span>
+          <input id="c-date" bind:value={closing.date} placeholder="วว/ดด/ปปปป (พ.ศ.)" inputmode="numeric" />
+          {#if parseThaiDate(closing.date)}<small>{thDate(parseThaiDate(closing.date))}</small>{/if}
+          {#if reading.date && toThaiInput(reading.date) !== closing.date}
+            <button type="button" class="sugg" onclick={() => (closing.date = toThaiInput(reading.date))}>ระบบอ่านได้: {thDate(reading.date)}</button>
+          {/if}
+        </label>
+        <label class="field">
+          <span>เลขที่บันทึก / มติที่ประชุม</span>
+          <input id="c-ref" bind:value={closing.ref} placeholder="เช่น อว 0000.00/123 หรือ มติที่ประชุม ครั้งที่ 9/2568" />
+          {#if reading.ref && reading.ref !== closing.ref}
+            <button type="button" class="sugg" onclick={() => (closing.ref = reading.ref)}>ระบบอ่านได้: {reading.ref}</button>
+          {/if}
+        </label>
+        <label class="field"><span>หมายเหตุ</span><textarea id="c-note" rows="2" bind:value={closing.note}></textarea></label>
+        {#if papersReading}<small class="muted">ระบบกำลังอ่านเอกสารที่แนบไว้ ค่าที่อ่านได้จะขึ้นในหน้าเอกสารเมื่อเสร็จ</small>{/if}
+        {#if closeError}<div class="notice bad">{closeError}</div>{/if}
+      </div>
+      {#snippet footer()}
+        <button class="btn ghost" onclick={() => (closing = null)} disabled={closeBusy}>ยกเลิก</button>
+        <button class="btn" onclick={saveClose} disabled={closeBusy}>{closeBusy ? 'กำลังบันทึก…' : doc.closed_at ? 'บันทึก' : 'ปิดโครงการ'}</button>
+      {/snippet}
+    </Modal>
+  {/if}
   {#if confirmDelete}
     <Modal title="ย้ายเอกสารไปถังขยะ?" onclose={() => (confirmDelete = false)}>
       <p>“{doc.title}” จะหายไปจากการค้นหา และลิงก์แชร์ทั้งหมดของเอกสารนี้จะใช้ไม่ได้ทันที กู้คืนได้จาก “ถังขยะของฉัน” ในเมนูบัญชี</p>
@@ -248,6 +443,22 @@
   .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .r { text-align: right; }
   .danger { display: flex; justify-content: flex-end; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge.closed::before { display: none; }
+  .closure { display: flex; flex-direction: column; gap: 10px; }
+  .closure h3 { margin-bottom: 0; }
+  .closure > p { font-size: 14px; margin: 0; }
+  .papers { list-style: none; margin: 0; padding: 0; }
+  .papers li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--border); font-size: 14px; }
+  .pinfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .pinfo small { font-size: 12.5px; }
+  .read { color: var(--muted); overflow-wrap: anywhere; }
+  .mismatch { display: inline-flex; gap: 4px; align-items: flex-start; color: var(--warn); overflow-wrap: anywhere; }
+  .add-paper { align-self: flex-start; cursor: pointer; }
+  .drop { display: flex; gap: 8px; align-items: center; padding: 12px; border: 1px dashed var(--border-strong); border-radius: 10px; cursor: pointer; font-size: 14px; color: var(--muted); }
+  .drop:hover { background: var(--subtle); }
+  .picked { display: grid; grid-template-columns: minmax(0, 1fr) auto 32px; gap: 8px; align-items: center; font-size: 14px; }
+  .sugg { align-self: flex-start; border: 1px dashed var(--accent); background: var(--accent-soft); color: var(--accent-text); border-radius: 8px; padding: 1px 8px; font-size: 12.5px; text-align: left; }
   @media (max-width: 640px) {
     .head { flex-wrap: wrap; }
     .titles { flex: 1 1 0; }
@@ -257,5 +468,7 @@
     .actions > :not(:first-child) { flex: 1; }
     .versions li { grid-template-columns: 1fr auto; }
     .versions .fname, .versions small { grid-column: 1; }
+    .papers li { grid-template-columns: 1fr auto; }
+    .papers .pinfo { grid-column: 1 / -1; }
   }
 </style>

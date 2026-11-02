@@ -131,3 +131,31 @@ def test_ocr_that_keeps_failing_falls_back_to_manual_review(client, login):
     assert version.ocr_status == OcrStatus.FAILED
     assert document.status == DocStatus.NEEDS_REVIEW
     assert version.extracted_fields["warnings"][0]["code"] == "ocr_failed"
+
+
+@needs_tesseract
+def test_closing_paper_is_read_without_touching_the_review(client, login):
+    from dbresearch.worker.__main__ import run_once
+
+    login()
+    contract = scanned_pdf([(300, "Research grant contract")], footer="page 1")
+    doc_id = client.post(
+        "/documents", files={"file": ("c.pdf", contract, "application/pdf")}
+    ).json()["id"]
+    assert run_once() is True  # the contract itself → needs_review
+    paper = scanned_pdf([(300, "Closing memo zebracorn")], footer="R2567E101")
+    response = client.post(
+        f"/documents/{doc_id}/closure-files",
+        files={"file": ("close.pdf", paper, "application/pdf")},
+    )
+    assert response.status_code == 201, response.text
+    assert run_once() is True
+
+    detail = client.get(f"/documents/{doc_id}").json()
+    (closing,) = detail["closure_files"]
+    assert closing["ocr_status"] == "done"
+    assert closing["readings"].get("reference_no") == "R2567E101"
+    assert detail["status"] == "needs_review" and len(detail["versions"]) == 1
+    # The closing paper's text is searchable through the contract.
+    found = client.get("/documents", params={"q": "zebracorn"}).json()["items"]
+    assert [d["id"] for d in found] == [doc_id]

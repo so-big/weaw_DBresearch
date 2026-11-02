@@ -124,7 +124,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Review form: any user adds a category option inline (+ ticked-but-unknown options offered in their group)
 - [x] Review form: ผู้เกี่ยวข้อง and รายการงบประมาณ rows fit the card (container queries); budget split into งวดเงิน / รายการค่าใช้จ่าย with totals
 - [x] Close a project (ปิดโครงการ): closing papers attached to the contract (encrypted, OCR'd, readings pre-fill the form), archive filter, reopen (migration `a3d9c2e71b54`)
-- [ ] Deploy, run the server tests, reprocess the demo document, check the screens on PC + phone
+- [x] Deployed; 135 tests pass on the server; screens checked on PC, tablet and phone (no JS errors)
 
 ## Demo environment
 

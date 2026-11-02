@@ -67,7 +67,8 @@ def test_upload_then_worker_suggests_contract_number_and_funding(client, login):
     assert len(pages) == 1 and "Research grant contract" in pages[0].text
     suggestions = version.extracted_fields
     assert suggestions["fields"]["reference_no"]["value"].startswith("R2568A")
-    assert suggestions["inferred"]["funding_type"] == "external"  # series letter A
+    # The series letter is the faculty, not the funding type; this page has no Thai title block.
+    assert suggestions["inferred"]["funding_type"] is None
     assert "researchgrantcontract" in document.search_text
     # The decrypted copy was removed from the worker's scratch space.
     assert not list(get_settings().work_dir.glob("*.pdf"))

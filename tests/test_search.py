@@ -171,6 +171,6 @@ def test_pickers(client, login):
         tags=[],
     )
     groups = {g["key"]: g for g in client.get("/categories").json()}
-    assert len(groups["research_group"]["options"]) == 7 and not groups["research_type"]["multi"]
+    assert len(groups["research_group"]["options"]) == 8 and not groups["research_type"]["multi"]
     people = client.get("/people", params={"q": "สมใจทดลอง"}).json()
     assert [(p["prefix_th"], p["name_th"]) for p in people] == [("ดร.", "สมใจ ทดลอง")]

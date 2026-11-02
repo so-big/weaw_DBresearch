@@ -69,10 +69,10 @@ def test_seed_data(engine: Engine) -> None:
     assert groups == {
         "agency": 2,
         "grant_programme": 1,
-        "research_type": 5,
-        "research_group": 7,
+        "research_type": 6,  # + ประยุกต์ (round-1 form)
+        "research_group": 8,  # + มนุษยศาสตร์และสังคมศาสตร์
         "grant_type": 2,
-        "discipline": 2,
+        "discipline": 12,  # the 12 NRCT disciplines printed on the form
     }
     assert aliases == ["ประเภทวิจัย"]
     assert ttl == 168

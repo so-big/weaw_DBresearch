@@ -68,15 +68,15 @@
 </script>
 
 <div class="panel">
-  <div class="proj" role="group" aria-label="โครงการ">
+  <div class="proj" role="radiogroup" aria-label="โครงการ">
     <span class="plabel">โครงการ</span>
-    <div class="seg">
-      {#each projects as [v, label, n] (v)}
-        <button type="button" id="{idp}-project-{v || 'open'}" aria-pressed={(value.project || '') === v} onclick={() => onchange({ ...value, project: v })}>
-          {label}<span class="c num">{n}</span>
-        </button>
-      {/each}
-    </div>
+    {#each projects as [v, label, n] (v)}
+      <label class="opt">
+        <input id="{idp}-project-{v || 'open'}" type="radio" name="{idp}-project" checked={(value.project || '') === v} onchange={() => onchange({ ...value, project: v })} />
+        <span class="l">{label}</span>
+        <span class="c num">{n}</span>
+      </label>
+    {/each}
   </div>
   {#each sections as s (s.id || s.key)}
     {#if s.options.length}
@@ -126,11 +126,8 @@
 <style>
   .panel { display: flex; flex-direction: column; }
   details { border-top: 1px solid var(--border); }
-  .proj { display: flex; flex-direction: column; gap: 6px; padding: 4px 6px 12px; }
-  .plabel { font-size: 14px; font-weight: 600; }
-  .proj .seg { display: flex; }
-  .proj .seg button { flex: 1; display: inline-flex; gap: 5px; justify-content: center; align-items: baseline; }
-  .proj .c { font-size: 11.5px; }
+  .proj { display: flex; flex-direction: column; padding: 4px 2px 10px; }
+  .plabel { font-size: 14px; font-weight: 600; padding: 6px 4px; }
   summary { list-style: none; display: flex; align-items: center; gap: 6px; padding: 10px 6px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 6px; }
   summary::-webkit-details-marker { display: none; }
   summary::after { content: ''; margin-left: auto; width: 7px; height: 7px; border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted); transform: rotate(45deg) translateY(-2px); transition: transform var(--t-fast) var(--ease-out); }

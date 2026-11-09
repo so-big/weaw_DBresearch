@@ -154,6 +154,41 @@ def run(p, tag, viewport, mobile, scheme):
                      headers: {'X-Requested-With': 'dbresearch'}})""",
                 link["id"],
             )
+    # Proposal-development grants (DESIGN §11); the demo holds fake "[ตัวอย่าง]" grants only.
+    grants = page.evaluate(
+        "fetch('/api/documents?section=proposals&state=active&page_size=5').then(r => r.json())"
+    )
+    page.goto(f"{BASE}/proposals")
+    page.wait_for_load_state("networkidle")
+    shot(page, f"{tag}-20-proposals")
+    page.click(".mtop .up" if mobile else "header.top button.btn")
+    shot(page, f"{tag}-21-upload-from-proposals")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    page.goto(f"{BASE}/proposals?project=all")
+    page.wait_for_load_state("networkidle")
+    shot(page, f"{tag}-22-proposals-all")
+    page.goto(f"{BASE}/proposals?view=other")
+    page.wait_for_load_state("networkidle")
+    shot(page, f"{tag}-23-programme-papers")
+    if grants["items"]:
+        grant = grants["items"][-1]["id"]
+        page.goto(f"{BASE}/proposals/{grant}")
+        page.wait_for_load_state("networkidle")
+        shot(page, f"{tag}-24-proposal")
+        page.screenshot(path=str(OUT / f"{tag}-24b-proposal-full.png"), full_page=True)
+        page.get_by_role("button", name="ปิดทุน", exact=True).click()
+        shot(page, f"{tag}-25-close-form")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+        page.goto(f"{BASE}/proposals/{grant}/review")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(800)
+        page.screenshot(path=str(OUT / f"{tag}-26-proposal-review.png"), full_page=True)
+    page.goto(f"{BASE}/overview")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(600)
+    page.screenshot(path=str(OUT / f"{tag}-27-overview-full.png"), full_page=True)
     browser.close()
 
 

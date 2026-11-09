@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     university_allowed_types: str = "teacher"
     # First login of an allowed account creates it as role `user`. False = ADMIN must add
     # the person first (by the same email, or by their ID).
-    university_auto_create: bool = True
+    university_auto_create: bool = False
 
     # Sessions: hard limit, idle timeout, and how many devices one user may stay logged in on.
     session_cookie: str = "dbr_session"

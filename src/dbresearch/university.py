@@ -6,8 +6,9 @@ in, account linking, audit, rate limits, sessions) is final.
 
 Rules:
 - The password is sent to the API only, over HTTPS, and never stored or logged.
-- Only account types in `university_allowed_types` (default: teacher) may log in. Guests
-  still use share links and never need an account.
+- Only account types in `university_allowed_types` (default: staff) may log in: the
+  research office staff who manage the papers. Teachers don't log in: they get share links
+  (guests, no account). Students never get in.
 - Roles stay in our DB. A new account starts as `user`; ADMIN promotes.
 - A first login that matches nobody ADMIN added becomes a *pending* request (DESIGN §1, §9):
   no access until ADMIN approves it. Departments in `university_auto_approve_departments`
@@ -43,7 +44,7 @@ PROVIDER = "university"
 @dataclass(frozen=True)
 class UniversityAccount:
     subject: str  # the university ID (staff or student number)
-    account_type: str  # e.g. "teacher", "student", lower-cased
+    account_type: str  # e.g. "staff", "teacher", "student", lower-cased
     display_name: str | None = None
     email: str | None = None
     department: str | None = None  # if the API gives it (not known yet)
@@ -60,7 +61,7 @@ class HttpUniversityClient:
     """Calls the university login API. PLACEHOLDER request/response shape:
 
     POST <url>  {"username": ..., "password": ...}
-    200 -> {"ok": true, "id": "...", "type": "teacher", "name": "...", "email": "...",
+    200 -> {"ok": true, "id": "...", "type": "staff", "name": "...", "email": "...",
             "department": "..."}
     200 {"ok": false} or 401/403 -> wrong ID or password
     """

@@ -63,7 +63,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 - [?] **Backup target** (IT team): **assumed college NAS**; access method still unknown (`RESTIC_REPOSITORY` is configurable).
 - [?] **University login API spec** (IT team): URL, fields, account-type names, API key → fill in `HttpUniversityClient.verify`.
-- [?] **Does the university API return the teacher's department/faculty?** Ask IT with the spec. If yes: auto-approve our department's teachers, queue the rest.
+- [?] **Does the university API return the staff member's department/faculty?** Ask IT with the spec. If yes: auto-approve our department's staff, queue the rest.
 
 ## Phase 1 — Foundation ✅ done 2026-10-28
 
@@ -209,11 +209,12 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 - Research Hangout files and the faculty-meeting resolution: a **separate part** for now
   ("เอกสารอื่น ๆ" per fiscal year); ask the research office later what they are (maybe a summary of all funding).
 - **The research office enters** proposal-development papers (teachers just sign). Research office staff
-  are teachers or employees with a university ID → plain **`user`** accounts. **ADMIN = IT only.**
+  are employees with a university ID → plain **`user`** accounts. **ADMIN = IT only.**
   No section-level upload restriction: any user may upload (as for contracts); edit/delete stays
   uploader-or-ADMIN; every user reads everything.
-- University login must also admit **staff/employee** accounts, not only teachers
-  (`UNIVERSITY_ALLOWED_TYPES`, exact type names from the API spec). Admin approval still applies.
+- ~~University login must also admit staff/employee accounts, not only teachers~~ → **corrected 2026-11-11:
+  only staff/employees log in; teachers get no account** (they get share links to view and print their papers).
+  `UNIVERSITY_ALLOWED_TYPES` defaults to `staff`; exact type names from the API spec. Admin approval still applies.
 - **Outcome tracking** (proposed, optional at closing): proposal submitted → won / not won, funder name,
   link to the research contract in this system when won. Report: how many seed grants became outside grants.
 
@@ -233,6 +234,8 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 - Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
 ## Log
+
+- 2026-11-11 — Corrected who uses the system: research-office staff (`user`) and IT (`admin`) only. Teachers get no account; staff share links to them so they can view and print. University login now admits staff types only (`UNIVERSITY_ALLOWED_TYPES=staff` placeholder).
 
 - 2026-11-11 — FF (Fundamental Fund) now counts as **internal** funding (was external); migration `d5a7c3e9f1b2` switches existing FF documents. New front-end design added as Phase 8, on hold until the remaining tasks are almost done.
 

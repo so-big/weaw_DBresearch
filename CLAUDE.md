@@ -28,7 +28,7 @@ The agreed design, schema, and open questions live in @docs/DESIGN.md. Read it b
 - Soft-deleting a document revokes its share links in the same transaction. Only ADMIN purges (deletes the object + wrapped DEK).
 - Edit/delete/new version is allowed only for `uploaded_by` or ADMIN. Every USER can read every document.
 - Every download, share create/revoke, admin action, and purge writes an `audit_events` row.
-- Auth goes through the `AuthProvider` interface. Real users log in with the university login API (`dbresearch/university.py`, **teachers and staff, never students**; the password is never stored or logged). A first login nobody added is a *pending* request until ADMIN approves it; pending users get no session. Keep local login minimal (dev/demo, bootstrap admins). Don't build password reset, MFA, or self-registration.
+- Auth goes through the `AuthProvider` interface. Only research-office staff (USER) and the IT team (ADMIN) have accounts; they log in with the university login API (`dbresearch/university.py`, **staff account types only**; the password is never stored or logged). **Teachers don't get accounts**: staff send them share links to view and print their papers. Students never get in. A first login nobody added is a *pending* request until ADMIN approves it; pending users get no session. Keep local login minimal (dev/demo, bootstrap admins). Don't build password reset, MFA, or self-registration.
 - `audit_events` is append-only (DB trigger). Never update or delete audit rows.
 - Data must never be lost: backups are kept forever (never `restic forget`). The KEK and the restic password are never stored in git, the DB, or the data backups. Losing the KEK makes every file unreadable.
 

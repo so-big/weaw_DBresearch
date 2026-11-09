@@ -179,8 +179,9 @@ class FakeUniversity:
 
     def __init__(self):
         self.accounts = {
-            "t1001": ("teach-pass", "teacher"),
-            "t1002": ("teach-pass", "teacher"),
+            "t1001": ("teach-pass", "staff"),
+            "t1002": ("teach-pass", "staff"),
+            "p2001": ("prof-pass", "teacher"),
             "s6501": ("study-pass", "student"),
         }
         self.calls = 0
@@ -210,7 +211,7 @@ def university(client) -> Iterator[dict]:
     options = {"departments": set(), "fake": fake}
 
     def provider():
-        uni = UniversityApiProvider(fake, {"teacher"}, options["departments"])
+        uni = UniversityApiProvider(fake, {"staff"}, options["departments"])
         return ChainProvider([LocalPasswordProvider(), uni])
 
     app.dependency_overrides[get_provider] = provider
@@ -246,7 +247,7 @@ def test_first_login_waits_for_admin_approval(client, university, login):
 
     login(UserRole.ADMIN)
     (req,) = client.get("/admin/users/requests").json()
-    assert (req["university_id"], req["account_type"]) == ("T1001", "teacher")
+    assert (req["university_id"], req["account_type"]) == ("T1001", "staff")
     assert req["id"] not in [u["id"] for u in client.get("/admin/users").json()]
     assert client.patch(f"/admin/users/{req['id']}", json={"status": "active"}).status_code == 409
     assert client.post(f"/admin/users/{req['id']}/approve").status_code == 204
@@ -277,11 +278,14 @@ def test_own_department_is_approved_automatically(client, university):
     assert created.details["auto_approved"] is True
 
 
-def test_students_and_wrong_passwords_are_refused(client, university):
+def test_teachers_students_and_wrong_passwords_are_refused(client, university):
+    # Teachers get share links instead of accounts; students never get in.
+    assert sign_in(client, "p2001", "prof-pass").status_code == 401
     assert sign_in(client, "s6501", "study-pass").status_code == 401
     assert sign_in(client, "t1001", "nope").status_code == 401
     reasons = sorted(r.details["reason"] for r in audit_rows("auth.login_failed"))
-    assert reasons == ["type_not_allowed:student", "wrong_password"]
+    assert reasons == ["type_not_allowed:student", "type_not_allowed:teacher", "wrong_password"]
+    assert audit_rows("user.request") == []
     with new_session() as db:
         assert db.scalar(select(User).where(User.email == "s6501@uni.example")) is None
         assert db.scalar(select(User).where(User.email == "t1001@uni.example")) is None

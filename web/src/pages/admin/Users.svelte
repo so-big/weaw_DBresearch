@@ -110,7 +110,7 @@
   {#if requests.length}
     <section class="card requests" aria-labelledby="req-h">
       <h2 id="req-h">คำขอเข้าใช้งาน <span class="badge needs_review">{requests.length}</span></h2>
-      <p class="hint">บัญชีมหาวิทยาลัยที่เข้าระบบครั้งแรก ยังเข้าใช้งานไม่ได้จนกว่าจะอนุมัติ ผู้ใช้ที่อนุมัติแล้วอ่านเอกสารได้ทุกฉบับ</p>
+      <p class="hint">บัญชีเจ้าหน้าที่ที่เข้าระบบครั้งแรก ยังเข้าใช้งานไม่ได้จนกว่าจะอนุมัติ ผู้ใช้ที่อนุมัติแล้วอ่านเอกสารได้ทุกฉบับ</p>
       <ul>
         {#each requests as r (r.id)}
           <li>
@@ -166,7 +166,7 @@
       </tbody>
     </table>
   </div>
-  <p class="hint">อาจารย์และบุคลากรเข้าสู่ระบบด้วยรหัสและรหัสผ่านของมหาวิทยาลัย (นักศึกษาเข้าไม่ได้) ครั้งแรกต้องรอผู้ดูแลระบบอนุมัติ ยกเว้นผู้ที่เพิ่มไว้ก่อนในหน้านี้ ชื่อผู้ใช้และรหัสผ่านในหน้านี้ใช้สำหรับระบบทดลองและผู้ดูแลระบบเท่านั้น ผู้ใช้จะออกจากระบบอัตโนมัติเมื่อไม่ได้ใช้งาน 1 ชั่วโมง</p>
+  <p class="hint">เจ้าหน้าที่เข้าสู่ระบบด้วยรหัสและรหัสผ่านของมหาวิทยาลัย ครั้งแรกต้องรอผู้ดูแลระบบอนุมัติ ยกเว้นผู้ที่เพิ่มไว้ก่อนในหน้านี้ อาจารย์ไม่ต้องมีบัญชี ส่งลิงก์แชร์ให้เปิดดูและพิมพ์เอกสารได้ ชื่อผู้ใช้และรหัสผ่านในหน้านี้ใช้สำหรับระบบทดลองและผู้ดูแลระบบเท่านั้น ผู้ใช้จะออกจากระบบอัตโนมัติเมื่อไม่ได้ใช้งาน 1 ชั่วโมง</p>
 </div>
 
 {#if creating}
@@ -176,7 +176,7 @@
     <div class="field"><span>บทบาท</span>
       <div class="seg"><button aria-pressed={creating.role === 'user'} onclick={() => (creating.role = 'user')}>ผู้ใช้</button><button aria-pressed={creating.role === 'admin'} onclick={() => (creating.role = 'admin')}>ผู้ดูแลระบบ</button></div>
     </div>
-    <label class="field"><span>รหัสอาจารย์ของมหาวิทยาลัย (ไม่บังคับ)</span><input id="u-uni" bind:value={creating.university_id} autocapitalize="off" /><small>ใส่ถ้าต้องการเพิ่มไว้ก่อนเข้าระบบครั้งแรก</small></label>
+    <label class="field"><span>รหัสบุคลากรของมหาวิทยาลัย (ไม่บังคับ)</span><input id="u-uni" bind:value={creating.university_id} autocapitalize="off" /><small>ใส่ถ้าต้องการเพิ่มไว้ก่อนเข้าระบบครั้งแรก</small></label>
     <label class="field"><span>ชื่อผู้ใช้ของระบบ (ไม่บังคับ)</span><input id="u-username" bind:value={creating.username} autocapitalize="off" /><small>สำหรับระบบทดลองหรือผู้ดูแลระบบ เว้นว่างถ้าใช้บัญชีมหาวิทยาลัย</small></label>
     {#if creating.username.trim()}
       <label class="field"><span>รหัสผ่าน (อย่างน้อย 10 ตัวอักษร)</span><input id="u-password" type="password" bind:value={creating.password} autocomplete="new-password" /></label>

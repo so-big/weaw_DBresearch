@@ -24,8 +24,10 @@ class Settings(BaseSettings):
     university_api_url: str | None = None
     university_api_key: str | None = None
     university_api_timeout_seconds: float = 5.0
-    # Account types allowed in, as the API names them (comma list). Students never are.
-    university_allowed_types: str = "teacher"
+    # Account types allowed in, as the API names them (comma list). Only staff/employees
+    # (research office) log in; teachers get share links instead, students never get in.
+    # "staff" is a placeholder until the API spec gives the exact type names.
+    university_allowed_types: str = "staff"
     # A first login nobody added yet becomes a *pending* request that ADMIN approves on the
     # Users page. Departments listed here (comma list, as the API names them) skip the queue;
     # it only works once the API returns the department.

@@ -195,7 +195,7 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 - [x] 4. Bulk importer `dbresearch.importer plan|apply` (DESIGN §11). Plan on the real folder: 72 projects
       (28 closed, 7 cancelled), 9 programme papers, 4 duplicates, 4 flagged; spreadsheet rows 16, 24, 27, 34, 61
       say closed but no closing paper is in the folder (ask the research office). 2026-11-10
-- [ ] 4b. Run `apply` on real data: **where?** (the public demo holds no real scans so far)
+- [ ] 4b. Run `apply` on real data **after step 5** (decided 2026-11-10); where real data may live is still open (the public demo holds no real scans so far)
 - [ ] 5. Web: new section (list, filters by year / status / department / area, project page with timeline,
       "add closing / cancel / change" actions, overview: per-year count, closed vs cancelled, budget,
       overdue KPI)

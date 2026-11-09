@@ -64,6 +64,8 @@ def _raw_text(page: Page) -> str:
 
 # ───────────── Paper type ─────────────
 _SUBJECT = re.compile(rf"{_TOPIC}(.{{10,160}}?)เรียน")
+# Only in the subject: request bodies name the programme too ('…โครงการสนับสนุนพัฒนาข้อเสนอ…').
+_PROGRAMME_SUBJECT = re.compile(r"โครงการสนับสนุนพัฒนาข้อเสนอ|ResearchHangout")
 _TYPE_RULES = (
     (
         "programme",
@@ -78,7 +80,11 @@ _TYPE_RULES = (
     ("title_change", re.compile(r"เปลี่ยน\S{0,6}?(?:หัวข้อ|ช[ื]?[่]?อ(?:เรื่อง)?|เรื่อง)")),
     (
         "close",
-        re.compile(r"ปิด(?:โครงการ|ทุน)|ขอ(?:นำ)?ส่งข้อเสนอ|ข้อเสนอโครงการวิจัยเรียบร้อยแล้ว"),
+        # 'ปิด' is read as 'ปิต' at times; 'ส่งผลงานตามตัวชี้วัด' is the closing's other phrase.
+        re.compile(
+            r"ปิ[ดต]\S?(?:โครงการ|ทุน)|ขอ(?:นำ)?ส่งข้อเสนอ|ข้อเสนอโครงการวิจัยเรียบร้อยแล้ว"
+            r"|ส่งผลงานตาม"
+        ),
     ),
     ("request", re.compile(r"ขออนุมัติ\S{0,6}ทุนพัฒนา|ขอรับทุน\S{0,4}พัฒนา|พัฒนาข้อเสนอ")),
 )
@@ -87,6 +93,11 @@ _TYPE_RULES = (
 def paper_type(first_page: str) -> str | None:
     """Subject line first, then the opening of the memo body (space-free text)."""
     subject = _SUBJECT.search(first_page[:900])
+    if subject and _PROGRAMME_SUBJECT.search(subject[1]):
+        # The programme by name, unless the subject is about one project (cancel, change, close).
+        project_level = [p for name, p in _TYPE_RULES if name not in ("programme", "request")]
+        if not any(p.search(subject[1]) for p in project_level):
+            return "programme"
     for source in ((subject[1] if subject else ""), first_page[:1500]):
         for name, pattern in _TYPE_RULES:
             if source and pattern.search(source):
@@ -98,7 +109,8 @@ def paper_type(first_page: str) -> str | None:
 _MEMO_NO = re.compile(r"อว\.?(\d{4}\.\d{2}(?:\.\d{1,2})?(?:\(\d\))?/\d{1,5})")
 _MEMO_DATE = re.compile(rf"วันท\S{{0,2}}({_DATE})")
 _FISCAL = re.compile(r"ปีงบ\S{0,4}ประมาณ(?:พ\.?ศ\.?)?(25\d\d)")
-_OWNER = re.compile(r"(?:ด้วย|ตามที\S?)ข้าพเจ้า(.{4,70}?)(?:ตำแหน่ง|อาจารย์ประจำ|สังกัด)")
+_FISCAL_LOOSE = re.compile(r"ปีงบ\S{0,8}?(25\d\d)")  # 'ปีงบประเ1"ศ2567': garbled พ.ศ.
+_OWNER = re.compile(r"(?:ด้วย|ตามที\S?)ข้าพเจ้า(.{4,70}?)(?:ตำแหน่ง|อาจารย์ประ|สังกัด)")
 # The signature: '(ผู้ช่วยศาสตราจารย์ ดร.… …) ผู้ขอทุนสนับสนุน / ผู้รับทุน / หัวหน้าโครงการ'.
 _SIGNER = re.compile(r"\(([^()]{6,70}?)\)(?:ผู้ขอทุน|ผู้รับทุน|หัวหน้าโครงการ)")
 _DEPARTMENT = re.compile(r"สังกัด(ภาควิชา.{3,45}?)(?:คณะ|ได้|มี|ขอ|โทร|$)")
@@ -107,6 +119,8 @@ _TITLE_QUOTED = re.compile(rf"{_TOPIC}(?!ขอ)\S{{0,20}}?[“\"](?!ขอ)(.{{
 _TITLE = re.compile(
     rf"{_TOPIC}(?!ขอ)(.{{8,300}}?)(?:พร้อม|เป็นจำนวนเงิน|เป็นเงิน|ในวงเงิน|โดย|ภายใต้|ซึ่ง|นั้น)"
 )
+# `เรื่อง` itself unreadable ('Gas“…”'): curly quotes only, a stray '"' is OCR noise.
+_ANY_QUOTED = re.compile(r"“(?!ขอ)(.{8,300}?)”")
 _NEW_TITLE = re.compile(r"[”\"]\S{0,3}เป็น(?:เรื่อง)?[“\"](.{8,300}?)[”\"]")
 _CLOSE_TOO = re.compile(r"ปิด(?:โครงการ|ทุน)")
 _AMOUNT = re.compile(r"(?:เป็นเงิน|วงเงิน|จำนวนเงิน|เป็นจำนวน)([\d,]{4,10}(?:\.\d\d)?)บาท")
@@ -167,13 +181,13 @@ def extract(pages: list[Page]) -> dict[str, Any]:
         put("memo_ref", f"อว {m[1]}")
     if m := raw_first.search(_MEMO_DATE):
         put("document_date", _date(m[1]))
-    if m := memo.search(_FISCAL):
+    if m := memo.search(_FISCAL) or memo.search(_FISCAL_LOOSE):
         put("fiscal_year", thai.be_to_gregorian(int(m[1])))
     if m := memo.search(_OWNER) or memo.search(_SIGNER):
         put("owner", _person(memo.group(m, join_thai=False)))
     if m := memo.search(_DEPARTMENT):
         put("department", m[1])
-    if m := memo.search(_TITLE_QUOTED) or memo.search(_TITLE):
+    if m := memo.search(_TITLE_QUOTED) or memo.search(_TITLE) or memo.search(_ANY_QUOTED):
         put("title", memo.group(m))
     if kind == "title_change":
         if m := memo.search(_NEW_TITLE):

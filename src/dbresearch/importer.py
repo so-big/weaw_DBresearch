@@ -111,8 +111,9 @@ def _match(paper: Paper, projects: list[Project]) -> Project | None:
     scored.sort(key=lambda s: s[0], reverse=True)
     if scored and scored[0][0] >= TITLE_MATCH:
         return scored[0][1]
-    if paper.first_name:
-        # Title unreadable or different: the researcher's one project of that fiscal year.
+    if not paper.title and paper.first_name:
+        # Title unreadable: the researcher's one project of that fiscal year. A readable but
+        # different title is a different project (its request may be missing from the folder).
         year = paper.fields.get("fiscal_year")
         same = [
             p

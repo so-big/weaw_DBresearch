@@ -1,10 +1,12 @@
 """Proposal-development grants in the API (DESIGN §11): their own section, review fields,
 timeline papers, cancel / close / reopen, filters and the yearly report. Invented values."""
 
+from datetime import date
+
 from sqlalchemy import update
 
 from dbresearch.db import new_session
-from dbresearch.models import Document
+from dbresearch.models import Document, ProposalProject
 from tests.conftest import make_pdf, needs_db
 from tests.test_documents import upload
 
@@ -39,7 +41,7 @@ def review(**overrides) -> dict:
             "request_ref": "อว 0000.00/1",
             "research_area": "เทคโนโลยีสมมติ",
             "kpi_target": "ข้อเสนอโครงการสำหรับทุนภายนอก",
-            "kpi_due": "2026-09-01",
+            "kpi_due": "2099-09-01",  # not overdue
         },
     }
     return body | overrides
@@ -138,11 +140,15 @@ def test_filters_facets_and_report(client, login):
     late, fresh = new_grant(client), new_grant(client)
     client.put(f"/documents/{late}/metadata", json=review())
     later = review(title="อีกโครงการหนึ่ง", funding_source="nu_income")
-    later["proposal"]["kpi_due"] = "2099-09-01"
     later["people"][0]["unit"] = "ภาควิชาอื่น"
     client.put(f"/documents/{fresh}/metadata", json=later)
-    with new_session() as db:  # make the first one overdue
+    with new_session() as db:  # the first one: an older grant, past its KPI due date
         db.execute(update(Document).where(Document.id == late).values(fiscal_year=2025))
+        db.execute(
+            update(ProposalProject)
+            .where(ProposalProject.document_id == late)
+            .values(kpi_due=date(2025, 9, 1))
+        )
         db.commit()
 
     assert ids(client, section="proposals", state=["overdue"]) == {late}

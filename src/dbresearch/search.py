@@ -76,6 +76,7 @@ def _kpi_due():
     return (
         select(ProposalProject.kpi_due)
         .where(ProposalProject.document_id == Document.id)
+        .correlate(Document)  # stays valid inside queries that join proposal_projects
         .scalar_subquery()
     )
 
@@ -94,6 +95,7 @@ def _owner_unit():
     return (
         select(DocumentPerson.unit)
         .where(DocumentPerson.document_id == Document.id, DocumentPerson.role == PersonRole.OWNER)
+        .correlate(Document)
         .limit(1)
         .scalar_subquery()
     )

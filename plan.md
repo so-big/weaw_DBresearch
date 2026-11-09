@@ -138,6 +138,72 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [ ] Fill in the real university API once the spec arrives; test it on the university's server
 - [ ] **Approval queue** (decided 2026-11-09): a teacher's first login creates a *pending* request, not an account. They see "waiting for admin approval"; ADMIN approves/rejects on the Users page (audited). Replaces auto-create as the default, so teachers from other departments can't get in directly. If the API gives the department, auto-approve our own department.
 
+## Phase 7 — ทุนพัฒนาข้อเสนอโครงการวิจัย (proposal-development grants) — PLAN, not started
+
+Source: USB folder `ขออนุมัติทุนพัฒนาข้อเสนอโครงการวิจัย 2566-ปัจจุบัน` (confidential, never in git) +
+`ข้อมูลทุนพัฒนาข้อเสนอโครงการวิจัย งปม.2566-2569.xlsx` (74 rows: researcher, title, fiscal year, remark
+ปิดทุนแล้ว / ยกเลิก / ชื่อเดิม / เปลี่ยนแปลงชื่อเรื่อง). The 2569 rows in the sheet are incomplete (3 rows, 33 files).
+
+### What the papers are (checked 2026-11-09 on samples; all scans, no text layer)
+- 119 PDFs in `งปม.2566–2569`, 1–98 pages. By file name: ~74 requests, ~30 closings, 7 cancellations,
+  3 changes (title / budget category), 5 programme papers. Plus 5 loose files at the top
+  (Research Hangout 2567, a faculty-meeting resolution) that are a different programme.
+- Every paper is a faculty memo (`บันทึกข้อความ`): `ที่ อว 0603.09…/NNN`, date, `เรื่อง …`, researcher
+  + department (`สังกัดภาควิชา…`), project title, amount (≤ 20,000 บาท), period, signatures.
+  The file-name prefix (e.g. `10221`) is the faculty's received no. stamped top-left.
+- **Request** `ขออนุมัติทุนพัฒนาข้อเสนอโครงการวิจัย ประจำปีงบประมาณ พ.ศ. …`: title, amount, period
+  (e.g. 15 ธ.ค. 2568 – 30 ก.ย. 2569), **KPI**: deliver a research proposal for an outside grant +
+  Impact Pathway by a due date. Funding line: `งบประมาณเงินรายได้คณะวิศวกรรมศาสตร์ … กองทุนวิจัย`.
+  Attachments: research-area page (`กรอบงานวิจัย`, e.g. เทคโนโลยีพลังงาน), budget lines.
+- **Closing** `ขออนุมัติปิดโครงการ ทุนพัฒนาข้อเสนอโครงการวิจัย`: the KPI result (e.g. "ข้อเสนอสำหรับ
+  การขอทุนวิจัยภายนอก พร้อมสัญญาทุนวิจัย"), planned vs actual spending and remainder, and the
+  developed proposal itself (most of the pages) + a copy of the original approval.
+- **Cancellation** `ขออนุมัติยกเลิกทุนพัฒนาข้อเสนอโครงการวิจัย`: reason in free text.
+- **Changes** `ขออนุมัติเปลี่ยนแปลงหัวข้อ…` (new title, sometimes closes in the same memo) and
+  `ขออนุมัติเปลี่ยนแปลงหมวดค่าใช้จ่าย…` (budget categories moved).
+- **Programme papers** (per fiscal year, not per project): call for proposals (`เวียนแจ้งเปิดรับ…`)
+  and the faculty's yearly approval of the whole programme (e.g. 1,000,000 บาท for 2567).
+- Data quirks: duplicates (`268 … 2567.pdf` / `…2567..pdf`, `10483` ×2, `5035` + `(แก้ไข)`),
+  closings filed in a later year's folder, typos in names (ปิดทึน). Grouping must use content, not folders.
+
+### Proposed design (to confirm)
+- **Same engine, separate section.** Reuse documents, encrypted versions, OCR, search, share links,
+  trash and audit. Add `kind = proposal_dev` beside `contract` / `grant`. The web app gets its own
+  top-level section "ทุนพัฒนาข้อเสนอ" (own list, filters, detail page, overview) separate from
+  "สัญญาทุนวิจัย".
+- **One record per project, a timeline of papers.** The request is the main file. Closing, cancelling
+  and change memos attach to the same project as events (`project_events`: type, memo no., date,
+  details, the paper). Status: กำลังดำเนินการ → ปิดทุนแล้ว (success) / ยกเลิก; overdue when past the
+  KPI due date and not closed. A title change keeps the old title (searchable).
+- **New fields**: researcher + department, amount, period, research area (กรอบงานวิจัย),
+  KPI target + due date, KPI result, actual spent / remainder, the outside funder the proposal went
+  to, and an optional link to the real research contract it led to (already in this system).
+- **Funding source** as one field shared by every section: `FF` (Fundamental Fund), `รายได้ ม.นเรศวร`,
+  `รายได้คณะ`, `แหล่งทุนภายนอก` (+ funder name). Internal/external is derived from it.
+  All papers in this folder are `รายได้คณะ`.
+- **Programme papers** stored per fiscal year as "เอกสารประกอบโครงการ" (not projects).
+
+### Steps
+- [ ] 0. Confirm the open questions below
+- [ ] 1. Copy the folder to the server (`scp` → `~/dbresearch/samples/proposal_dev/`), OCR everything there,
+      classify each file by its `เรื่อง` line, compare with the spreadsheet (titles, years, statuses)
+- [ ] 2. Schema + migration: `kind proposal_dev`, funding source, project fields, `project_events`
+- [ ] 3. Auto-fill templates for the 5 memo types (data migration), tuned on 2569 then checked on 2566–2568;
+      redacted text fixtures for tests
+- [ ] 4. Bulk import (admin, server-side): read a folder, classify, group papers into projects
+      (researcher + title fuzzy match + amounts), skip duplicates by hash, everything lands in
+      review; a report of what matched the spreadsheet and what didn't
+- [ ] 5. Web: new section (list, filters by year / status / department / area, project page with timeline,
+      "add closing / cancel / change" actions, overview: per-year count, closed vs cancelled, budget,
+      overdue KPI)
+- [ ] 6. Import the real data on the demo, review together, then feedback round
+
+### Open questions
+- [?] Is **FF** counted as internal or external funding (or its own group) in faculty reports?
+- [?] Should the Research Hangout files and the faculty-meeting resolution (top of the folder) go in too? They look like another programme.
+- [?] Who enters new proposal-development papers later: the research office only, or each teacher?
+- [?] Is "the proposal got an outside grant" something to track (link to the contract), or is submitting the proposal enough for the KPI?
+
 ## Demo environment
 
 - Demo admin: username `admin`, password in `~/dbresearch/secrets/demo-admin-password` on the server (mode 600).

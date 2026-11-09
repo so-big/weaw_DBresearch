@@ -603,6 +603,30 @@ amount, PI and sometimes the contract no.; a faculty-meeting resolution gives `�
 agenda item. The approval itself is handwritten. `dbresearch.autofill.closure` reads these as suggestions for the closing
 form, and the document page warns when a closing paper's title doesn't match the contract (wrong file attached).
 
+### Proposal-development grants (ทุนพัฒนาข้อเสนอ, Phase 7 step 1, 2026-11-09)
+
+124 scanned PDFs (1,206 pages, 2566–2569) + the research office's spreadsheet (74 rows). OCR of the first
+4 pages per file on the server (`spikes/proposal_dev_ocr.py`, ~30 min with 3 workers), analysis from that
+cache (`spikes/proposal_dev_report.py`, counts only unless `--detail`). Results:
+
+- **Paper type from the text** agrees with the office's file name in **116/124**. The `เรื่อง` line is
+  garbled in about half the scans, so the memo body decides too (`ขออนุมัติยกเลิก…`, `…ขอส่งข้อเสนอ…
+  เรียบร้อยแล้ว`, `หมวดค่าใช้จ่าย`, `เปลี่ยนแปลงหัวข้อ/ชื่อ`). Misses: 2 cancellations and 1 change read as
+  requests, 1 title-change+closing memo, and the programme papers (Research Hangout, meeting resolutions).
+- **Requests (73)**: researcher 70, department 70, title 70, fiscal year 68, KPI target 67, period 64,
+  amount 64, funding source 73 (all `รายได้คณะ`). **Closings (30)**: title 29, researcher 28; amount 20,
+  period 17. The KPI *result* of a closing isn't read yet (wording varies; next step).
+- OCR quirks to handle: `เรื่อง` read as `เรือง`/`เร่ือง`; the memo-no. line (`อว 0603.09.02/674`) has no
+  long word, so the noise filter drops it (read memo no. from unfiltered lines; still only ~15 % found,
+  digits after `/` are often handwritten).
+- **Matching to the spreadsheet**: 107/114 project papers match a row with title similarity ≥ 90;
+  69/74 rows have at least one paper. Title wins over name: one researcher often has a grant every year.
+- **Spreadsheet vs folder**: some rows say ปิดทุนแล้ว / ยกเลิก but no such paper matched (4 of 31) —
+  either the paper is missing from the folder or it is filed under another year (cancellations of a 2566
+  grant filed in 2567). 4 byte-identical duplicate files; closings sometimes sit in a later year's folder.
+  → Import must group by content (title + researcher + year), skip duplicates by hash, and leave every
+  grouping for a person to confirm.
+
 ### Seed data (ADMIN can edit)
 
 Category options differ between grant programmes, so each group holds the union. The `multi` column comes from the form instructions.

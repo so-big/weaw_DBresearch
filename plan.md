@@ -185,8 +185,9 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 
 ### Steps
 - [x] 0. Confirm the open questions (2026-11-09)
-- [ ] 1. Copy the folder to the server (`scp` → `~/dbresearch/samples/proposal_dev/`), OCR everything there,
-      classify each file by its `เรื่อง` line, compare with the spreadsheet (titles, years, statuses)
+- [x] 1. Copied to the server (`samples/proposal_dev/`), OCR'd (first 4 pages, 1,206 pages total), classified
+      and compared with the spreadsheet: type 116/124, request fields ~90 %, 107/114 papers match a sheet
+      row (DESIGN §6 "Proposal-development grants"). 2026-11-09
 - [ ] 2. Schema + migration: `kind proposal_dev`, funding source, project fields, `project_events`
 - [ ] 3. Auto-fill templates for the 5 memo types (data migration), tuned on 2569 then checked on 2566–2568;
       redacted text fixtures for tests
@@ -222,6 +223,7 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 
 ## Log
 
+- 2026-11-09 — Phase 7 step 1: 124 proposal-development PDFs OCR'd on the server; paper type from text 116/124, 107/114 papers matched to the office spreadsheet.
 - 2026-11-09 — Decided: new university logins need ADMIN approval (pending queue); auto-approve by department if the API returns it.
 - 2026-11-09 — Login security: idle timeout, session cap, log out everywhere, richer login audit + admin summary, append-only audit log, HSTS/no-store, university login provider (teachers only, API spec pending).
 

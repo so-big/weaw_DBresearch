@@ -192,9 +192,10 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 - [x] 3. Memo reader `autofill/proposal.py` (code, not DB templates: prose memos, see DESIGN §6), wired into
       the worker for `proposal_dev` / `other` documents. Tuned on 2569, checked on 2566–2568: type 117/124,
       title 94/100 and researcher 94/100 vs the spreadsheet. Synthetic test memos in `tests/test_proposal_reader.py`. 2026-11-10
-- [ ] 4. Bulk import (admin, server-side): read a folder, classify, group papers into projects
-      (researcher + title fuzzy match + amounts), skip duplicates by hash, everything lands in
-      review; a report of what matched the spreadsheet and what didn't
+- [x] 4. Bulk importer `dbresearch.importer plan|apply` (DESIGN §11). Plan on the real folder: 72 projects
+      (28 closed, 7 cancelled), 9 programme papers, 4 duplicates, 4 flagged; spreadsheet rows 16, 24, 27, 34, 61
+      say closed but no closing paper is in the folder (ask the research office). 2026-11-10
+- [ ] 4b. Run `apply` on real data: **where?** (the public demo holds no real scans so far)
 - [ ] 5. Web: new section (list, filters by year / status / department / area, project page with timeline,
       "add closing / cancel / change" actions, overview: per-year count, closed vs cancelled, budget,
       overdue KPI)
@@ -224,6 +225,7 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 
 ## Log
 
+- 2026-11-10 — Phase 7 step 4: bulk importer (plan / apply); real folder → 72 projects, 9 programme papers, 4 duplicates.
 - 2026-11-10 — Phase 7 step 3: proposal-memo reader; type 117/124, title and researcher 94/100 against the office spreadsheet.
 - 2026-11-09 — Phase 7 step 1: 124 proposal-development PDFs OCR'd on the server; paper type from text 116/124, 107/114 papers matched to the office spreadsheet.
 - 2026-11-09 — Decided: new university logins need ADMIN approval (pending queue); auto-approve by department if the API returns it.

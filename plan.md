@@ -188,7 +188,7 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 - [x] 1. Copied to the server (`samples/proposal_dev/`), OCR'd (first 4 pages, 1,206 pages total), classified
       and compared with the spreadsheet: type 116/124, request fields ~90 %, 107/114 papers match a sheet
       row (DESIGN §6 "Proposal-development grants"). 2026-11-09
-- [ ] 2. Schema + migration: `kind proposal_dev`, funding source, project fields, `project_events`
+- [x] 2. Schema + migration `f2c8d4a1b7e3`: `kind proposal_dev` / `other`, `funding_source` (+ check vs funding_type), `cancelled_*`, `proposal_projects`, `project_events`, `budget_lines.actual_amount`, version purpose `paper` (DESIGN §3, §11). 2026-11-10
 - [ ] 3. Auto-fill templates for the 5 memo types (data migration), tuned on 2569 then checked on 2566–2568;
       redacted text fixtures for tests
 - [ ] 4. Bulk import (admin, server-side): read a folder, classify, group papers into projects

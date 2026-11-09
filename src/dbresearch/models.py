@@ -93,6 +93,44 @@ class FundingType(enum.StrEnum):
 class DocKind(enum.StrEnum):
     CONTRACT = "contract"
     GRANT = "grant"
+    PROPOSAL_DEV = "proposal_dev"  # ทุนพัฒนาข้อเสนอโครงการวิจัย (own web section, DESIGN §11)
+    OTHER = "other"  # programme papers, e.g. calls for proposals (no funding type needed)
+
+
+class FundingSource(enum.StrEnum):
+    """Where the money comes from (the web app's funding filter)."""
+
+    FF = "ff"  # งบประมาณ FF (Fundamental Fund)
+    NU_INCOME = "nu_income"  # รายได้ ม.นเรศวร
+    FACULTY_INCOME = "faculty_income"  # รายได้คณะ
+    EXTERNAL = "external"  # แหล่งทุนภายนอก (+ documents.funder_name)
+
+
+# internal / external follows from the source; FF counts as external (decided 2026-11-09).
+FUNDING_TYPE_OF = {
+    FundingSource.FF: "external",
+    FundingSource.NU_INCOME: "internal",
+    FundingSource.FACULTY_INCOME: "internal",
+    FundingSource.EXTERNAL: "external",
+}
+
+
+class ProjectEventType(enum.StrEnum):
+    APPROVED = "approved"
+    TITLE_CHANGE = "title_change"
+    BUDGET_CHANGE = "budget_change"
+    CLOSE = "close"  # ปิดทุน: done, KPI delivered
+    CANCEL = "cancel"  # ยกเลิก
+    REOPEN = "reopen"
+    OTHER = "other"
+
+
+class ProposalOutcome(enum.StrEnum):
+    """What became of the developed proposal (optional, filled at or after closing)."""
+
+    SUBMITTED = "submitted"
+    WON = "won"
+    NOT_WON = "not_won"
 
 
 class DocStatus(enum.StrEnum):
@@ -110,6 +148,7 @@ class BudgetLineType(enum.StrEnum):
 class VersionPurpose(enum.StrEnum):
     MAIN = "main"  # the contract package itself (numbered ฉบับที่ 1, 2, …)
     CLOSURE = "closure"  # closing papers: approval memo, faculty-meeting resolution
+    PAPER = "paper"  # other project papers (cancellation, change memos), see project_events
 
 
 class OcrStatus(enum.StrEnum):
@@ -241,10 +280,19 @@ class Document(Base):
             name="effective_range",
         ),
         # kind / funding_type are found by auto-fill, so they may be empty until review.
+        # Programme papers ('other') need no funding type.
         CheckConstraint(
-            "status <> 'ready' OR (kind IS NOT NULL AND funding_type IS NOT NULL)",
+            "status <> 'ready' OR "
+            "(kind IS NOT NULL AND (funding_type IS NOT NULL OR kind = 'other'))",
             name="ready_is_complete",
         ),
+        # funding_type follows funding_source (FUNDING_TYPE_OF).
+        CheckConstraint(
+            "funding_source IS NULL OR (funding_type IS NOT NULL AND "
+            "(funding_source IN ('nu_income', 'faculty_income')) = (funding_type = 'internal'))",
+            name="funding_type_matches_source",
+        ),
+        CheckConstraint("closed_at IS NULL OR cancelled_at IS NULL", name="closed_or_cancelled"),
         Index(
             "documents_live_idx",
             "kind",
@@ -289,6 +337,10 @@ class Document(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     kind: Mapped[DocKind | None] = mapped_column(pg_enum(DocKind, "doc_kind"))
     funding_type: Mapped[FundingType | None] = mapped_column(pg_enum(FundingType, "funding_type"))
+    funding_source: Mapped[FundingSource | None] = mapped_column(
+        pg_enum(FundingSource, "funding_source")
+    )
+    funder_name: Mapped[str | None]  # the outside agency, for funding_source 'external'
     title: Mapped[str]  # main title as written (Thai, or English when that's all there is)
     title_en: Mapped[str | None]
     # Contract no., normalised (uppercase, no spaces): R + B.E. year + series + running no.
@@ -337,13 +389,76 @@ class Document(Base):
     closed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     closure_ref: Mapped[str | None]  # memo / receipt no., e.g. อว 0000.00/123
     closure_note: Mapped[str | None]
+    # Project cancelled (ยกเลิก): ended without result. Never both closed and cancelled.
+    cancelled_on: Mapped[date | None]
+    cancelled_at: Mapped[datetime | None]
+    cancelled_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    cancel_ref: Mapped[str | None]
+    cancel_reason: Mapped[str | None]
+
+
+class ProposalProject(Base):
+    """Fields only a proposal-development grant has (1:1 with a `proposal_dev` document).
+
+    Researcher and department: `document_people` (role owner, `unit`). Amount, period and
+    fiscal year: `documents.budget_total`, `effective_from/to`, `fiscal_year`.
+    Closing / cancelling: `documents.closed_*` / `cancelled_*`.
+    """
+
+    __tablename__ = "proposal_projects"
+    __table_args__ = (CheckConstraint("spent_total >= 0", name="spent_non_negative"),)
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True
+    )
+    request_ref: Mapped[str | None]  # request memo no., e.g. อว 0603.09.02/674
+    research_area: Mapped[str | None]  # กรอบงานวิจัย, e.g. เทคโนโลยีพลังงาน
+    kpi_target: Mapped[str | None]  # e.g. proposal for an outside grant + Impact Pathway
+    kpi_due: Mapped[date | None]
+    kpi_result: Mapped[str | None]  # what the closing memo says was delivered
+    spent_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    outcome: Mapped[ProposalOutcome | None] = mapped_column(
+        pg_enum(ProposalOutcome, "proposal_outcome")
+    )
+    outcome_funder: Mapped[str | None]
+    # The research contract the proposal won, when it is in this system.
+    outcome_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL")
+    )
+
+
+class ProjectEvent(Base):
+    """A project's timeline: approval, changes, closing, cancellation, each with its memo."""
+
+    __tablename__ = "project_events"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    event_type: Mapped[ProjectEventType] = mapped_column(
+        pg_enum(ProjectEventType, "project_event_type")
+    )
+    event_on: Mapped[date | None]  # date on the memo
+    memo_ref: Mapped[str | None]
+    # The paper itself (purpose 'paper', 'closure', or the main request).
+    version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("document_versions.id", ondelete="SET NULL")
+    )
+    details: Mapped[dict[str, Any]] = mapped_column(server_default=EMPTY_JSON)  # old/new title…
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = created_at()
+
+
+Index("project_events_doc_idx", ProjectEvent.document_id, ProjectEvent.event_on)
 
 
 class BudgetLine(Base):
     """Budget breakdown, typed manually (items for internal, installments for external)."""
 
     __tablename__ = "budget_lines"
-    __table_args__ = (CheckConstraint("amount >= 0", name="amount_non_negative"),)
+    __table_args__ = (
+        CheckConstraint("amount >= 0", name="amount_non_negative"),
+        CheckConstraint("actual_amount >= 0", name="actual_non_negative"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
@@ -351,6 +466,7 @@ class BudgetLine(Base):
     group_label: Mapped[str | None]
     label: Mapped[str]
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    actual_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))  # spent (closing report)
     percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     due_date: Mapped[date | None]
     condition: Mapped[str | None]

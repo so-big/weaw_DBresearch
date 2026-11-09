@@ -159,13 +159,17 @@ CREATE TABLE people (
 
 -- ───────────── Documents (one PDF = one package) ─────────────
 CREATE TYPE funding_type AS ENUM ('external', 'internal');
-CREATE TYPE doc_kind     AS ENUM ('contract', 'grant');
+CREATE TYPE doc_kind     AS ENUM ('contract', 'grant', 'proposal_dev', 'other');  -- proposal_dev: §11; other: programme papers
+-- Funding filter (all sections). internal/external follows: FF and external → external (FF decided 2026-11-09).
+CREATE TYPE funding_source AS ENUM ('ff', 'nu_income', 'faculty_income', 'external');
 CREATE TYPE doc_status   AS ENUM ('processing', 'needs_review', 'ready', 'failed');
 
 CREATE TABLE documents (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  kind               doc_kind     NOT NULL,
-  funding_type       funding_type NOT NULL,
+  kind               doc_kind,            -- may be empty until review
+  funding_type       funding_type,        -- ready needs it, except kind 'other'
+  funding_source     funding_source,      -- CHECK: funding_type matches it
+  funder_name        text,                -- the outside agency when funding_source = 'external'
   title              text NOT NULL,       -- main title as written (Thai, or English when that's all there is)
   title_en           text,
   reference_no       text,                -- contract no., normalised: uppercase, no spaces (e.g. R2568A001)
@@ -196,7 +200,45 @@ CREATE TABLE documents (
   closed_by          uuid REFERENCES users(id),
   closure_ref        text,                -- memo / resolution no., e.g. อว 0000.00/123
   closure_note       text,
+  -- ยกเลิก: ended without result. CHECK: never both closed and cancelled.
+  cancelled_on       date,
+  cancelled_at       timestamptz,
+  cancelled_by       uuid REFERENCES users(id),
+  cancel_ref         text,
+  cancel_reason      text,
   CHECK (effective_to IS NULL OR effective_from IS NULL OR effective_to >= effective_from)
+);
+
+-- Proposal-development grants (§11): fields only they have, 1:1 with a proposal_dev document.
+-- Researcher + department live in document_people (role owner, unit); amount / period / fiscal year
+-- in documents.budget_total / effective_from–to / fiscal_year.
+CREATE TYPE proposal_outcome AS ENUM ('submitted', 'won', 'not_won');
+CREATE TABLE proposal_projects (
+  document_id         uuid PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+  request_ref         text,               -- request memo no., e.g. อว 0603.09.02/674
+  research_area       text,               -- กรอบงานวิจัย
+  kpi_target          text,               -- e.g. proposal for an outside grant + Impact Pathway
+  kpi_due             date,
+  kpi_result          text,               -- what the closing memo says was delivered
+  spent_total         numeric(14,2) CHECK (spent_total >= 0),
+  outcome             proposal_outcome,   -- optional: did the proposal win the outside grant?
+  outcome_funder      text,
+  outcome_document_id uuid REFERENCES documents(id) ON DELETE SET NULL  -- the contract it won
+);
+
+-- A project's timeline; each event points at its memo (a document_versions row).
+CREATE TYPE project_event_type AS ENUM
+  ('approved', 'title_change', 'budget_change', 'close', 'cancel', 'reopen', 'other');
+CREATE TABLE project_events (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  event_type  project_event_type NOT NULL,
+  event_on    date,                       -- date on the memo
+  memo_ref    text,
+  version_id  uuid REFERENCES document_versions(id) ON DELETE SET NULL,
+  details     jsonb NOT NULL DEFAULT '{}',  -- e.g. {"old_title": …, "new_title": …}
+  created_by  uuid REFERENCES users(id),
+  created_at  timestamptz NOT NULL DEFAULT now()
 );
 
 -- Budget breakdown, typed manually by the user (too varied to auto-parse).
@@ -210,6 +252,7 @@ CREATE TABLE budget_lines (
   group_label text,                       -- 'หมวด 1' for items; NULL for installments
   label       text NOT NULL,              -- 'ค่าตอบแทน…' or 'งวดที่ 1'
   amount      numeric(14,2) NOT NULL CHECK (amount >= 0),
+  actual_amount numeric(14,2) CHECK (actual_amount >= 0),  -- spent, from a closing report
   percent     numeric(5,2),               -- installments: ร้อยละ 70
   due_date    date,                       -- installments only
   condition   text,                       -- installment condition, e.g. 'เมื่อส่งรายงานความก้าวหน้า'
@@ -219,7 +262,7 @@ CREATE TABLE budget_lines (
 
 CREATE TYPE ocr_status AS ENUM ('pending', 'running', 'done', 'failed', 'skipped');
 
-CREATE TYPE version_purpose AS ENUM ('main', 'closure');
+CREATE TYPE version_purpose AS ENUM ('main', 'closure', 'paper');  -- paper: cancellation / change memos
 
 CREATE TABLE document_versions (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -726,3 +769,20 @@ Mocks of the agreed direction: `docs/ui/` (palette, layout + upload, search filt
 | Guest page | `/s/{token}`: one card, full-width download button, password form when needed. No login. |
 | Motion | Only transform/opacity, 150 ms (hover/press) and 220 ms (windows, sheets, tabs), one ease-out curve; skeleton rows, no layout shift, no backdrop blur; `prefers-reduced-motion` turns it off. |
 | Dev | `cd web && npm run dev` proxies `/api` to `localhost:8120` (SSH tunnel). |
+
+---
+
+## 11. Proposal-development grants (ทุนพัฒนาข้อเสนอโครงการวิจัย, Phase 7)
+
+Small faculty-income grants (≤ 20,000 บาท) that pay a teacher to write a proposal for an outside grant.
+Papers and findings: §6 "Proposal-development grants"; plan: `plan.md` Phase 7.
+
+| Topic | Decision |
+|---|---|
+| Storage | Same engine as contracts: a `documents` row with `kind = 'proposal_dev'` (encrypted versions, OCR, search, shares, trash, audit) + `proposal_projects` for its own fields. Its own web section, separate from สัญญาทุนวิจัย. |
+| One project, many papers | The request memo is the main file. Closing papers are `closure` versions; cancellation and change memos are `paper` versions. Each is a `project_events` row (type, memo date, memo no., details such as old/new title). |
+| Status | Derived: cancelled (`cancelled_at`) / closed = success (`closed_at`) / active; **overdue** = active and past `kpi_due`. A title change keeps the old title in its event (searchable). |
+| Funding | `funding_source` (filter: งบประมาณ FF, รายได้ ม.นเรศวร, รายได้คณะ, แหล่งทุนภายนอก) on every document; `funding_type` follows it (FF = external). All papers so far: รายได้คณะ. |
+| KPI and outcome | `kpi_target` + `kpi_due` from the request; `kpi_result` + spending from the closing. Optional outcome: submitted / won / not won, funder, link to the contract it won. |
+| Who enters | Research office staff (plain `user` accounts). Any user may upload; edit/delete stays uploader or ADMIN. |
+| Programme papers | Calls for proposals, the yearly programme approval, Research Hangout, meeting resolutions: `kind = 'other'` per fiscal year, a separate part, no funding type needed. |

@@ -202,3 +202,102 @@ def test_space_insensitive_thai_search_uses_trigram_index(conn) -> None:
         .all()
     )
     assert any("documents_text_trgm" in line for line in plan)
+
+
+# ───────────── Proposal-development grants (Phase 7) ─────────────
+def _rejects(conn, sql: str, params: dict, constraint: str) -> None:
+    with pytest.raises(IntegrityError, match=constraint), conn.begin_nested():
+        conn.execute(text(sql), params)
+
+
+def test_funding_type_follows_funding_source(conn) -> None:
+    user = _user(conn)
+    insert = (
+        "INSERT INTO documents (kind, funding_type, funding_source, title, uploaded_by) "
+        "VALUES ('proposal_dev', :type, :source, 't', :u)"
+    )
+    for source, ok, wrong in (
+        ("faculty_income", "internal", "external"),
+        ("nu_income", "internal", "external"),
+        ("ff", "external", "internal"),  # FF counts as external
+        ("external", "external", "internal"),
+    ):
+        with conn.begin_nested():
+            conn.execute(text(insert), {"type": ok, "source": source, "u": user})
+        _rejects(conn, insert, {"type": wrong, "source": source, "u": user}, "funding_type_matches")
+    _rejects(conn, insert, {"type": None, "source": "ff", "u": user}, "funding_type_matches")
+
+
+def test_python_funding_map_matches_the_check() -> None:
+    from dbresearch.models import FUNDING_TYPE_OF, FundingSource
+
+    assert set(FUNDING_TYPE_OF) == set(FundingSource)
+    internal = {s for s, t in FUNDING_TYPE_OF.items() if t == "internal"}
+    assert internal == {FundingSource.NU_INCOME, FundingSource.FACULTY_INCOME}
+
+
+def test_programme_papers_are_ready_without_a_funding_type(conn) -> None:
+    user = _user(conn)
+    sql = (
+        "INSERT INTO documents (kind, title, status, uploaded_by) "
+        "VALUES (CAST(:kind AS doc_kind), 't', 'ready', :u)"
+    )
+    with conn.begin_nested():
+        conn.execute(text(sql), {"kind": "other", "u": user})
+    _rejects(conn, sql, {"kind": "proposal_dev", "u": user}, "ready_is_complete")
+
+
+def test_a_project_is_closed_or_cancelled_not_both(conn) -> None:
+    doc = _document(conn, _user(conn))
+    conn.execute(text("UPDATE documents SET cancelled_at = now() WHERE id = :d"), {"d": doc})
+    _rejects(
+        conn,
+        "UPDATE documents SET closed_at = now() WHERE id = :d",
+        {"d": doc},
+        "closed_or_cancelled",
+    )
+
+
+def test_proposal_project_and_timeline(conn) -> None:
+    user = _user(conn)
+    contract = _document(conn, user, reference_no="R2569E001")
+    doc = conn.execute(
+        text(
+            "INSERT INTO documents (kind, funding_type, funding_source, title, uploaded_by) "
+            "VALUES ('proposal_dev', 'internal', 'faculty_income', 't', :u) RETURNING id"
+        ),
+        {"u": user},
+    ).scalar_one()
+    conn.execute(
+        text(
+            "INSERT INTO proposal_projects (document_id, kpi_due, outcome, outcome_document_id) "
+            "VALUES (:d, '2026-09-01', 'won', :c)"
+        ),
+        {"d": doc, "c": contract},
+    )
+    for kind in ("approved", "title_change", "close"):
+        conn.execute(
+            text(
+                "INSERT INTO project_events (document_id, event_type, details) "
+                'VALUES (:d, CAST(:k AS project_event_type), \'{"old_title": "a"}\')'
+            ),
+            {"d": doc, "k": kind},
+        )
+    _rejects(
+        conn,
+        "INSERT INTO proposal_projects (document_id, spent_total) VALUES (:d, -1)",
+        {"d": contract},
+        "spent_non_negative",
+    )
+    # The won contract going away only clears the link.
+    conn.execute(text("DELETE FROM documents WHERE id = :c"), {"c": contract})
+    assert (
+        conn.scalar(
+            text("SELECT outcome_document_id FROM proposal_projects WHERE document_id = :d"),
+            {"d": doc},
+        )
+        is None
+    )
+    # Deleting the project row removes its fields and timeline.
+    conn.execute(text("DELETE FROM documents WHERE id = :d"), {"d": doc})
+    assert conn.scalar(text("SELECT count(*) FROM project_events")) == 0

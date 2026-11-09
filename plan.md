@@ -63,7 +63,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 - [?] **Backup target** (IT team): **assumed college NAS**; access method still unknown (`RESTIC_REPOSITORY` is configurable).
 - [?] **University login API spec** (IT team): URL, fields, account-type names, API key → fill in `HttpUniversityClient.verify`.
-- [?] Teachers from other faculties: allowed (auto-create) or ADMIN adds each one (`UNIVERSITY_AUTO_CREATE=false`)?
+- [?] **Does the university API return the teacher's department/faculty?** Ask IT with the spec. If yes: auto-approve our department's teachers, queue the rest.
 
 ## Phase 1 — Foundation ✅ done 2026-10-28
 
@@ -136,6 +136,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] `audit_events` append-only by trigger (migration `e4b7a1c9d025`)
 - [x] University login provider (teachers only, auto-create or pre-add by email/ID), with a placeholder HTTP client
 - [ ] Fill in the real university API once the spec arrives; test it on the university's server
+- [ ] **Approval queue** (decided 2026-11-09): a teacher's first login creates a *pending* request, not an account. They see "waiting for admin approval"; ADMIN approves/rejects on the Users page (audited). Replaces auto-create as the default, so teachers from other departments can't get in directly. If the API gives the department, auto-approve our own department.
 
 ## Demo environment
 
@@ -144,6 +145,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 ## Log
 
+- 2026-11-09 — Decided: new university logins need ADMIN approval (pending queue); auto-approve by department if the API returns it.
 - 2026-11-09 — Login security: idle timeout, session cap, log out everywhere, richer login audit + admin summary, append-only audit log, HSTS/no-store, university login provider (teachers only, API spec pending).
 
 - 2026-11-02 — Feedback round 1: faculty letter ≠ funding type, auto-fill tuned on 13 real contracts + 13 closing papers, inline category options, people/budget layout, close & archive projects.

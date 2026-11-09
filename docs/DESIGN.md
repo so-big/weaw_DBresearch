@@ -679,7 +679,7 @@ Admin      /admin/users (+ PATCH, /password, /sessions, POST /sessions/revoke) ย
 
 - **For the IT team**: confirm the college NAS as backup target (assumed) and how to reach it (SFTP / SMB / S3); who holds the KEK copies.
 - **For the IT team**: the university login API spec (URL, request/response fields, how the account type is named, API key or not). Decided already: teachers only, auto-created as `user` on first login (ยง1).
-- **Teachers outside the department**: the API admits every teacher of the university, and every user can read every document. If only this department should get in, set `UNIVERSITY_AUTO_CREATE=false` and have ADMIN add people, or filter by faculty if the API returns it.
+- **Teachers outside the department** *(decided 2026-11-09, not built yet)*: the API admits every teacher of the university, and every user can read every document, so a first login must **not** open access directly. It creates a *pending* request; ADMIN approves or rejects it (audited) and only then can the teacher log in. If the API returns the teacher's department/faculty, teachers of our own department are approved automatically and others still go to the queue. **Ask IT whether the API returns the department.** Until the queue is built, `UNIVERSITY_AUTO_CREATE=false` (ADMIN adds each teacher first) is the safe setting.
 
 ---
 

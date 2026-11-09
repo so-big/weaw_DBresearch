@@ -184,7 +184,7 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 - **Programme papers** stored per fiscal year as "เอกสารประกอบโครงการ" (not projects).
 
 ### Steps
-- [ ] 0. Confirm the open questions below
+- [x] 0. Confirm the open questions (2026-11-09)
 - [ ] 1. Copy the folder to the server (`scp` → `~/dbresearch/samples/proposal_dev/`), OCR everything there,
       classify each file by its `เรื่อง` line, compare with the spreadsheet (titles, years, statuses)
 - [ ] 2. Schema + migration: `kind proposal_dev`, funding source, project fields, `project_events`
@@ -198,11 +198,20 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
       overdue KPI)
 - [ ] 6. Import the real data on the demo, review together, then feedback round
 
+### Decided (2026-11-09)
+- **Funding source filter** with exactly: `งบประมาณ FF`, `รายได้ ม.นเรศวร`, `รายได้คณะ`, `แหล่งทุนภายนอก`
+  (all sections). **FF counts as external** when internal/external is derived.
+- Research Hangout files and the faculty-meeting resolution: a **separate part** for now
+  ("เอกสารอื่น ๆ" per fiscal year); ask the research office later what they are (maybe a summary of all funding).
+- **Only the research office enters** proposal-development papers (teachers just sign). Proposed: only
+  ADMIN (research office staff) can upload / edit in this section; every user can still read.
+- **Outcome tracking** (proposed, optional at closing): proposal submitted → won / not won, funder name,
+  link to the research contract in this system when won. Report: how many seed grants became outside grants.
+
 ### Open questions
-- [?] Is **FF** counted as internal or external funding (or its own group) in faculty reports?
-- [?] Should the Research Hangout files and the faculty-meeting resolution (top of the folder) go in too? They look like another programme.
-- [?] Who enters new proposal-development papers later: the research office only, or each teacher?
-- [?] Is "the proposal got an outside grant" something to track (link to the contract), or is submitting the proposal enough for the KPI?
+- [?] What are the Research Hangout files and the faculty-meeting resolution? (ask the research office)
+- [?] Do research office staff need ADMIN rights for everything, or should we add a narrower
+      "research office" permission later?
 
 ## Demo environment
 

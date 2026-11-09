@@ -670,6 +670,23 @@ cache (`spikes/proposal_dev_report.py`, counts only unless `--detail`). Results:
   → Import must group by content (title + researcher + year), skip duplicates by hash, and leave every
   grouping for a person to confirm.
 
+**Reader (step 3, 2026-11-10): `dbresearch.autofill.proposal`.** Code, like the closing-paper reader, not
+DB templates: the memos are prose, the paper type needs ordered rules with a body fallback, and every
+pattern runs on space-free text (values are cut from the original so English titles keep their spaces;
+names keep the space between first and last name). The worker sends every version of a `proposal_dev` or
+`other` document to it. Scores on all 124 samples (`spikes/proposal_dev_report.py`):
+
+- Paper type = file name: 2566 21/21, 2567 53/54, 2568 9/11, 2569 33/33; misses are programme papers
+  (Research Hangout read as requests) and one title-change memo that also closes (read as `title_change`
+  with `also_close`, which is right: one memo, two events).
+- Requests (73): date 72, owner 71, title 70, department 70, fiscal year 68, KPI + due date 67,
+  amount 64, period 64, funding source 73. Closings (30): owner 29, title 29, KPI result 21.
+  Cancellations: reason 6/7. Memo no. stays low (~15 %): the digits are often handwritten.
+- Against the spreadsheet (100 papers matched by title): whole title 94, researcher 94; the rest are
+  mostly spelling differences between the sheet and the memo (ณัฎ/ณัฏ, OCR น้้า).
+- Not read: actual spending (the "spent" column is usually handwritten or blank) and the research area
+  of older requests (the form only has that page since about 2568). Both are typed by hand.
+
 ### Seed data (ADMIN can edit)
 
 Category options differ between grant programmes, so each group holds the union. The `multi` column comes from the form instructions.
@@ -785,4 +802,5 @@ Papers and findings: §6 "Proposal-development grants"; plan: `plan.md` Phase 7.
 | Funding | `funding_source` (filter: งบประมาณ FF, รายได้ ม.นเรศวร, รายได้คณะ, แหล่งทุนภายนอก) on every document; `funding_type` follows it (FF = external). All papers so far: รายได้คณะ. |
 | KPI and outcome | `kpi_target` + `kpi_due` from the request; `kpi_result` + spending from the closing. Optional outcome: submitted / won / not won, funder, link to the contract it won. |
 | Who enters | Research office staff (plain `user` accounts). Any user may upload; edit/delete stays uploader or ADMIN. |
+| Auto-fill | `autofill/proposal.py` reads each memo: paper type (request / close / cancel / title_change / budget_change / programme), memo no. and date, researcher + department, title (+ new title), amount, period, fiscal year, KPI target + due date, KPI result, cancel reason, funding source, research area. Suggestions only (§6 scores). |
 | Programme papers | Calls for proposals, the yearly programme approval, Research Hangout, meeting resolutions: `kind = 'other'` per fiscal year, a separate part, no funding type needed. |

@@ -159,3 +159,27 @@ def test_closing_paper_is_read_without_touching_the_review(client, login):
     # The closing paper's text is searchable through the contract.
     found = client.get("/documents", params={"q": "zebracorn"}).json()["items"]
     assert [d["id"] for d in found] == [doc_id]
+
+
+@needs_tesseract
+def test_proposal_grant_papers_go_to_the_memo_reader(client, login):
+    """kind proposal_dev → `autofill.proposal` (memo reader), not the contract templates."""
+    from dbresearch.models import DocKind
+    from dbresearch.worker.__main__ import run_once
+
+    login()
+    paper = scanned_pdf([(300, "Memo zebracorn")], footer="1")
+    doc_id = client.post("/documents", files={"file": ("p.pdf", paper, "application/pdf")}).json()[
+        "id"
+    ]
+    with new_session() as db:
+        db.execute(update(Document).where(Document.id == doc_id).values(kind=DocKind.PROPOSAL_DEV))
+        db.commit()
+    assert run_once() is True
+    with new_session() as db:
+        version = db.scalar(select(DocumentVersion).where(DocumentVersion.document_id == doc_id))
+        document = db.get(Document, uuid.UUID(doc_id))
+    payload = version.extracted_fields
+    assert "sections" not in payload  # not the contract pipeline
+    assert payload["kind"] is None and payload["warnings"] == [{"code": "unknown_paper_type"}]
+    assert document.status == DocStatus.NEEDS_REVIEW

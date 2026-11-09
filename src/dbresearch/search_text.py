@@ -14,6 +14,7 @@ from dbresearch.models import (
     DocumentTag,
     DocumentVersion,
     Person,
+    ProjectEvent,
     Tag,
     VersionPurpose,
 )
@@ -44,10 +45,16 @@ def build(db: Session, document: Document) -> str:
     parts += db.scalars(
         select(Tag.name).join(DocumentTag).where(DocumentTag.document_id == document.id)
     ).all()
-    # OCR text of the current version, then of the closing papers (ปิดโครงการ).
+    # Earlier titles of a project (title changes keep the old one findable).
+    parts += db.scalars(
+        select(ProjectEvent.details["old_title"].astext).where(
+            ProjectEvent.document_id == document.id, ProjectEvent.details.has_key("old_title")
+        )
+    ).all()
+    # OCR text of the current version, then of the other papers (closing, cancel, change).
     closing = select(DocumentVersion.id).where(
         DocumentVersion.document_id == document.id,
-        DocumentVersion.purpose == VersionPurpose.CLOSURE,
+        DocumentVersion.purpose.in_((VersionPurpose.CLOSURE, VersionPurpose.PAPER)),
     )
     parts += db.scalars(
         select(DocumentPage.text)

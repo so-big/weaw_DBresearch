@@ -18,7 +18,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from dbresearch import search_text
-from dbresearch.autofill import closure, thai
+from dbresearch.autofill import closure, proposal, thai
 from dbresearch.autofill.categories import CategoryIndex, Match
 from dbresearch.autofill.page import Page, analyse_pdf, strip_label, word_dicts
 from dbresearch.autofill.rules import Candidate, extract
@@ -26,6 +26,7 @@ from dbresearch.autofill.sections import Section, TemplateSpec, split_sections
 from dbresearch.config import get_settings
 from dbresearch.documents import read_version
 from dbresearch.models import (
+    DocKind,
     DocStatus,
     Document,
     DocumentPage,
@@ -442,7 +443,9 @@ def process_version(db: Session, version_id: uuid.UUID) -> None:
         log.warning("version %s no longer exists; skipping", version_id)
         return
     document = db.get(Document, version.document_id)
-    closing = version.purpose == VersionPurpose.CLOSURE
+    side_paper = version.purpose != VersionPurpose.MAIN  # closing / cancel / change memo
+    # Proposal-development grants and programme papers are prose memos (DESIGN §11).
+    memo = document.kind in (DocKind.PROPOSAL_DEV, DocKind.OTHER)
     version.ocr_status = OcrStatus.RUNNING
     db.commit()
 
@@ -454,7 +457,10 @@ def process_version(db: Session, version_id: uuid.UUID) -> None:
         with os.fdopen(fd, "wb") as handle:
             for chunk in read_version(version):
                 handle.write(chunk)
-        if closing:
+        if memo:
+            pages, sections = analyse_pdf(path), []
+            payload = proposal.extract(pages)
+        elif side_paper:
             pages, sections = analyse_pdf(path), []
             payload = closure.extract(pages)
         else:
@@ -506,8 +512,8 @@ def process_version(db: Session, version_id: uuid.UUID) -> None:
     version.extracted_fields = payload
     version.ocr_status = OcrStatus.DONE
     db.flush()
-    if document.current_version_id == version.id or closing:
-        if document.status == DocStatus.PROCESSING and not closing:
+    if document.current_version_id == version.id or side_paper:
+        if document.status == DocStatus.PROCESSING and not side_paper:
             document.status = DocStatus.NEEDS_REVIEW
         document.search_text = search_text.build(db, document)
     db.commit()

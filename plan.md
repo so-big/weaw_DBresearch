@@ -189,8 +189,9 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
       and compared with the spreadsheet: type 116/124, request fields ~90 %, 107/114 papers match a sheet
       row (DESIGN §6 "Proposal-development grants"). 2026-11-09
 - [x] 2. Schema + migration `f2c8d4a1b7e3`: `kind proposal_dev` / `other`, `funding_source` (+ check vs funding_type), `cancelled_*`, `proposal_projects`, `project_events`, `budget_lines.actual_amount`, version purpose `paper` (DESIGN §3, §11). 2026-11-10
-- [ ] 3. Auto-fill templates for the 5 memo types (data migration), tuned on 2569 then checked on 2566–2568;
-      redacted text fixtures for tests
+- [x] 3. Memo reader `autofill/proposal.py` (code, not DB templates: prose memos, see DESIGN §6), wired into
+      the worker for `proposal_dev` / `other` documents. Tuned on 2569, checked on 2566–2568: type 117/124,
+      title 94/100 and researcher 94/100 vs the spreadsheet. Synthetic test memos in `tests/test_proposal_reader.py`. 2026-11-10
 - [ ] 4. Bulk import (admin, server-side): read a folder, classify, group papers into projects
       (researcher + title fuzzy match + amounts), skip duplicates by hash, everything lands in
       review; a report of what matched the spreadsheet and what didn't
@@ -223,6 +224,7 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 
 ## Log
 
+- 2026-11-10 — Phase 7 step 3: proposal-memo reader; type 117/124, title and researcher 94/100 against the office spreadsheet.
 - 2026-11-09 — Phase 7 step 1: 124 proposal-development PDFs OCR'd on the server; paper type from text 116/124, 107/114 papers matched to the office spreadsheet.
 - 2026-11-09 — Decided: new university logins need ADMIN approval (pending queue); auto-approve by department if the API returns it.
 - 2026-11-09 — Login security: idle timeout, session cap, log out everywhere, richer login audit + admin summary, append-only audit log, HSTS/no-store, university login provider (teachers only, API spec pending).

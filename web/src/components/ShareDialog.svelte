@@ -17,7 +17,6 @@
   ];
   let access = $state('public');
   let ttl = $state(24);
-  let allowDownload = $state(true);
   let limit = $state('');
   let note = $state('');
   let busy = $state(false);
@@ -33,7 +32,6 @@
       created = await post(`/documents/${doc.id}/shares`, {
         access,
         ttl_hours: ttl,
-        allow_download: allowDownload,
         max_downloads: limit ? Number(limit) : null,
         note: note.trim() || null,
       });
@@ -71,13 +69,11 @@
         {#each TTL as [h, l] (h)}<button aria-pressed={ttl === h} onclick={() => (ttl = h)}>{l}</button>{/each}
       </div>
     </div>
-    <label class="check"><input id="share-dl" type="checkbox" bind:checked={allowDownload} />อนุญาตให้ดาวน์โหลด (ไม่เลือก = เปิดดูได้อย่างเดียว)</label>
-    {#if allowDownload}
-      <label class="field">
-        <span>จำกัดจำนวนครั้งที่ดาวน์โหลด</span>
-        <input id="share-limit" type="number" min="1" max="1000" inputmode="numeric" bind:value={limit} placeholder="ไม่จำกัด" />
-      </label>
-    {/if}
+    <label class="field">
+      <span>จำกัดจำนวนครั้งที่เปิดไฟล์</span>
+      <input id="share-limit" type="number" min="1" max="1000" inputmode="numeric" bind:value={limit} placeholder="ไม่จำกัด" />
+      <small>เปิดดูหรือดาวน์โหลดนับเป็น 1 ครั้ง ผู้รับเปิดดู บันทึก และพิมพ์เอกสารได้</small>
+    </label>
     <label class="field">
       <span>บันทึกถึงตัวเอง</span>
       <input id="share-note" bind:value={note} maxlength="300" placeholder="เช่น ส่งให้ฝ่ายการเงิน" />
@@ -101,7 +97,7 @@
         </div>
       </div>
     {/if}
-    <p class="muted small">หมดอายุ {thDateTime(created.expires_at)}{created.max_downloads ? ` · ดาวน์โหลดได้ ${created.max_downloads} ครั้ง` : ''}{created.allow_download ? '' : ' · เปิดดูอย่างเดียว'}</p>
+    <p class="muted small">หมดอายุ {thDateTime(created.expires_at)}{created.max_downloads ? ` · เปิดไฟล์ได้ ${created.max_downloads} ครั้ง` : ''}</p>
   {/if}
 
   {#snippet footer()}

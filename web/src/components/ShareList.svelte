@@ -68,7 +68,7 @@
         </div>
         <div class="meta">
           <span class="acc">{#if l.access === 'password'}<Icon name="lock" size={13} />ต้องใช้รหัสผ่าน{:else}ทุกคนที่มีลิงก์{/if}</span>
-          <span>{l.allow_download ? `ดาวน์โหลดแล้ว ${l.download_count}${l.max_downloads ? `/${l.max_downloads}` : ''} ครั้ง` : 'เปิดดูอย่างเดียว'}</span>
+          <span>เปิดไฟล์แล้ว {l.download_count}{l.max_downloads ? `/${l.max_downloads}` : ''} ครั้ง</span>
           <span title={thDateTime(l.expires_at)}>{l.state === 'active' ? `หมดอายุ${timeLeft(l.expires_at)}` : `หมดอายุ ${thDateTime(l.expires_at)}`}</span>
           <span>สร้าง {thDateTime(l.created_at)}</span>
           {#if l.note}<span class="note">“{l.note}”</span>{/if}

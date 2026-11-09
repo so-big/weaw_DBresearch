@@ -237,7 +237,9 @@ def guest_file(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Password required")
     if download and not link.allow_download:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This link is view-only")
-    if download and not shares.take_download(db, link):
+    # Every open counts, viewing too: the browser viewer gets the whole PDF and can save or
+    # print it, so a view is a download in all but name (decided 2026-11-11).
+    if not shares.take_download(db, link):
         shares.log(db, link, ShareEvent.DENIED, ip, agent, reason="exhausted", user=viewer)
         db.commit()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This link is invalid or has expired")

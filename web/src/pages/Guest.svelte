@@ -38,7 +38,7 @@
     }
   }
 
-  // Downloads count down on the server; refresh the remaining count shortly after.
+  // Every open (view or download) counts down on the server; refresh the count shortly after.
   function downloaded() {
     setTimeout(load, 1500);
   }
@@ -55,7 +55,7 @@
       <div class="card box enter center">
         <Icon name="clock" size={36} />
         <h1>ลิงก์นี้ใช้ไม่ได้</h1>
-        <p class="muted">ลิงก์อาจหมดอายุ ถูกยกเลิก หรือดาวน์โหลดครบจำนวนแล้ว กรุณาขอลิงก์ใหม่จากผู้ส่ง</p>
+        <p class="muted">ลิงก์อาจหมดอายุ ถูกยกเลิก หรือเปิดไฟล์ครบจำนวนแล้ว กรุณาขอลิงก์ใหม่จากผู้ส่ง</p>
       </div>
     {:else if !info}
       <div class="card box"><div class="skel" style="width:40%"></div><div class="skel" style="width:90%;height:18px"></div><div class="skel" style="width:70%"></div></div>
@@ -82,10 +82,9 @@
         {#if info.allow_download}
           <a class="btn big" href="{base}/file?download=true" onclick={downloaded}><Icon name="download" />ดาวน์โหลด PDF</a>
         {/if}
-        <a class="btn big ghost" href="{base}/file" target="_blank" rel="noopener"><Icon name="eye" />เปิดดูในเบราว์เซอร์</a>
+        <a class="btn big ghost" href="{base}/file" target="_blank" rel="noopener" onclick={downloaded}><Icon name="eye" />เปิดดูในเบราว์เซอร์</a>
         <p class="note muted">
-          {#if !info.allow_download}ลิงก์นี้ให้เปิดดูได้อย่างเดียว
-          {:else if info.downloads_left !== null}ดาวน์โหลดได้อีก {info.downloads_left} ครั้ง
+          {#if info.downloads_left !== null}เปิดไฟล์ได้อีก {info.downloads_left} ครั้ง (เปิดดูหรือดาวน์โหลดนับเป็น 1 ครั้ง)
           {/if}
         </p>
       </div>

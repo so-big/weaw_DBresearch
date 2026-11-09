@@ -399,9 +399,9 @@ CREATE TABLE share_links (
   token_hash      bytea NOT NULL UNIQUE,  -- sha256 of 32-byte random URL token (token shown once)
   access          share_access NOT NULL,
   password_hash   text,                   -- argon2id of auto-generated code (shown once)
-  allow_download  boolean NOT NULL DEFAULT true,   -- false = view-only
-  max_downloads   int CHECK (max_downloads IS NULL OR max_downloads > 0),
-  download_count  int NOT NULL DEFAULT 0,
+  allow_download  boolean NOT NULL DEFAULT true,   -- false = no download button (legacy; the viewer can still save)
+  max_downloads   int CHECK (max_downloads IS NULL OR max_downloads > 0),  -- file opens: view OR download
+  download_count  int NOT NULL DEFAULT 0,            -- every open counts (decided 2026-11-11)
   failed_attempts int NOT NULL DEFAULT 0, -- lock link after N wrong passwords
   expires_at      timestamptz NOT NULL,
   created_by      uuid NOT NULL REFERENCES users(id),

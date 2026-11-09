@@ -364,8 +364,10 @@ class PersonBrief(BaseModel):
 class ShareCreate(BaseModel):
     access: ShareAccess = ShareAccess.PUBLIC
     ttl_hours: int | None = Field(None, ge=1, le=24 * 365)  # default from settings (24 h)
-    allow_download: bool = True  # False = view-only (best effort)
-    max_downloads: int | None = Field(None, ge=1, le=1000)
+    # False only hides the guest's download button: the viewer can still save and print.
+    # The web app no longer offers it (2026-11-11); kept for older links and API callers.
+    allow_download: bool = True
+    max_downloads: int | None = Field(None, ge=1, le=1000)  # file opens, view or download
     version_no: int | None = None  # pin a version; default = always the latest
     note: str | None = Field(None, max_length=300)
 

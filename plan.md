@@ -231,8 +231,10 @@ dependencies (npm audit + pip-audit: 0 known vulnerabilities).
 - [x] **Share tokens in the access log** (`docker compose logs api` showed full `/s/<token>` URLs). Fixed: redacted.
 - [x] Containers get only `kek.json` (not the restic or demo passwords); all Linux capabilities dropped, no-new-privileges
 - [x] Guest unlock cookie: `Secure` in production; a new link password ends open unlocks at once
-- [?] **View-only links still hand over the whole PDF** (the browser viewer can save/print it), and views don't count
-      toward the download limit. Teachers need to print, so: count every open toward the limit, or rename the option?
+- [x] **View-only links still handed over the whole PDF** (the viewer can save/print). Decided 2026-11-11: ease of
+      use wins (teachers print their own papers). Every open, view or download, now counts toward the link's limit;
+      the "view only" checkbox is gone from the share window (old view-only links still hide the button).
+      Later, if needed: stamp a light watermark ("สำเนาสำหรับ … วันที่ …") on shared PDFs for traceability.
 - [?] Hide `/api/docs` and the `/health` details from the public internet in production (low risk)
 - [ ] Biggest remaining risks are availability, not attackers: KEK custody and backups (Phase 2 items above)
 
@@ -249,6 +251,8 @@ dependencies (npm audit + pip-audit: 0 known vulnerabilities).
 - Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
 ## Log
+
+- 2026-11-11 — Share links: every file open (view or download) counts toward the limit; "view only" option removed from the share window.
 
 - 2026-11-11 — Security review: fixed OCR page images on disk (worker TMPDIR), share tokens in access logs, secrets mounted into containers, container privileges, guest-cookie flags.
 

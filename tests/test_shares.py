@@ -128,6 +128,17 @@ def test_view_only_and_download_limit(client, login):
     assert {s["id"]: s["state"] for s in client.get("/shares").json()}[limited["id"]] == "exhausted"
 
 
+def test_viewing_counts_toward_the_limit(client, login):
+    login()
+    doc_id, pdf = setup_doc(client)
+    link = share(client, doc_id, max_downloads=2)
+    with guest() as g:
+        assert g.get(f"{link['path']}/file").content == pdf  # view
+        assert g.get(f"{link['path']}").json()["downloads_left"] == 1
+        assert g.get(f"{link['path']}/file?download=true").status_code == 200
+        assert g.get(f"{link['path']}/file").status_code == 404  # used up
+
+
 def test_revoked_expired_and_unknown_links_look_the_same(client, login):
     login()
     doc_id, _ = setup_doc(client)

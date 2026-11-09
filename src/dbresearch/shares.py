@@ -181,7 +181,8 @@ def check_password(db: Session, link: ShareLink, password: str) -> bool:
 
 
 def take_download(db: Session, link: ShareLink) -> bool:
-    """Count one download atomically; False if the limit was already reached (race-safe)."""
+    """Count one file open (view or download) atomically; False if the limit was already
+    reached (race-safe). `max_downloads` / `download_count` count opens of either kind."""
     result = db.execute(
         update(ShareLink)
         .where(

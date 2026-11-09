@@ -483,7 +483,7 @@
   .titles h1 { font-size: 23px; line-height: 1.4; overflow-wrap: anywhere; }
   .badges { display: flex; gap: 6px; flex-wrap: wrap; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; }
   .grid .wide { grid-column: 1 / -1; }
   section h3 { margin-bottom: 10px; }
   .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }

@@ -196,9 +196,10 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
       (28 closed, 7 cancelled), 9 programme papers, 4 duplicates, 4 flagged; spreadsheet rows 16, 24, 27, 34, 61
       say closed but no closing paper is in the folder (ask the research office). 2026-11-10
 - [ ] 4b. Run `apply` on real data **after step 5** (decided 2026-11-10); where real data may live is still open (the public demo holds no real scans so far)
-- [ ] 5. Web: new section (list, filters by year / status / department / area, project page with timeline,
-      "add closing / cancel / change" actions, overview: per-year count, closed vs cancelled, budget,
-      overdue KPI)
+- [x] 5. Web section ทุนพัฒนาข้อเสนอ: list + filters, grant page with timeline and close / cancel / change
+      actions, review form, upload choice, overview chart; API sections, filters, timeline, cancel, report
+      (DESIGN §11). Demo has 4 fake "[ตัวอย่าง]" grants (`spikes/demo_proposals.py`); UI smoke on PC/phone,
+      light/dark: no JS errors. 2026-11-10
 - [ ] 6. Import the real data on the demo, review together, then feedback round
 
 ### Decided (2026-11-09)
@@ -225,6 +226,7 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 
 ## Log
 
+- 2026-11-10 — Phase 7 step 5: ทุนพัฒนาข้อเสนอ section in the web app (list, grant page + timeline, review, overview); 181 tests pass.
 - 2026-11-10 — Phase 7 step 4: bulk importer (plan / apply); real folder → 72 projects, 9 programme papers, 4 duplicates.
 - 2026-11-10 — Phase 7 step 3: proposal-memo reader; type 117/124, title and researcher 94/100 against the office spreadsheet.
 - 2026-11-09 — Phase 7 step 1: 124 proposal-development PDFs OCR'd on the server; paper type from text 116/124, 107/114 papers matched to the office spreadsheet.

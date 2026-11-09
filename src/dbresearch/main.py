@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
@@ -71,6 +72,22 @@ def unsafe_settings() -> list[str]:
         problems.append("SECRET_KEY is the default or shorter than 32 characters")
     return problems
 
+
+# Share-link tokens are bearer secrets inside URL paths (/s/<token>, /api/s/<token>/file).
+# Uvicorn's access log would keep them in `docker compose logs` for anyone with log access.
+_SHARE_TOKEN = re.compile(r"(/s/)[^/?\s\"]+")
+
+
+class RedactShareTokens(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                _SHARE_TOKEN.sub(r"\1…", a) if isinstance(a, str) else a for a in record.args
+            )
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(RedactShareTokens())
 
 for problem in unsafe_settings():
     logging.getLogger("dbresearch").warning("Unsafe setting: %s", problem)

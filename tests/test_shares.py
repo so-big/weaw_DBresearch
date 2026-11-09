@@ -171,3 +171,15 @@ def test_grant_cookie_is_bound_to_its_link(client, login):
     with guest() as g:
         g.cookies.set("dbr_grant", grant, path="/api" + b["path"])
         assert g.get(f"{b['path']}/file").status_code == 401
+
+
+def test_new_password_ends_open_grants(client, login):
+    login()
+    doc_id, _ = setup_doc(client)
+    link = share(client, doc_id, access="password")
+    with guest() as g:
+        unlock = g.post(f"{link['path']}/unlock", json={"password": link["password"]})
+        assert unlock.status_code == 204
+        assert g.get(f"{link['path']}/file").status_code == 200
+        assert client.post(f"/shares/{link['id']}/password").status_code == 200
+        assert g.get(f"{link['path']}/file").status_code == 401

@@ -5,6 +5,9 @@ x-app: &app
   build: .
   image: dbresearch-app:dev
   restart: unless-stopped
+  # The app needs no Linux privileges: drop them all, and never gain new ones (setuid).
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
   env_file: .env
   environment:
     DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
@@ -12,7 +15,8 @@ x-app: &app
   volumes:
     - blobs:/data/blobs
     # KEK (master key), created once with `dbresearch.cli kek-init`. Never in git/backups.
-    - ./secrets:/run/secrets:ro
+    # Only this file: the restic and demo passwords next to it stay out of the containers.
+    - ./secrets/kek.json:/run/secrets/kek.json:ro
   depends_on:
     db:
       condition: service_healthy
@@ -61,12 +65,18 @@ services:
   worker:
     <<: *app
     command: ["python", "-m", "dbresearch.worker"]
-    # Decrypted files may only exist in memory-backed storage (CLAUDE.md rule).
+    # Decrypted files may only exist in memory-backed storage (CLAUDE.md rule). TMPDIR
+    # matters too: Tesseract writes each rendered page image to the temp folder, and the
+    # container's plain /tmp is on disk.
+    environment:
+      DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
+      BLOB_DIR: /data/blobs
+      TMPDIR: /tmp/work
     tmpfs:
       - /tmp/work:size=1g,mode=0700,uid=10001,gid=10001
     volumes:
       - blobs:/data/blobs
-      - ./secrets:/run/secrets:ro
+      - ./secrets/kek.json:/run/secrets/kek.json:ro
       # Confidential samples for OCR experiments; gitignored, never baked into the image.
       - ./samples:/samples:ro
 

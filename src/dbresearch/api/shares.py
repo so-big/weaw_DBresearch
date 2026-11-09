@@ -9,6 +9,7 @@ from sqlalchemy import select
 from dbresearch import audit, shares
 from dbresearch.api.documents import live_document, stream_version
 from dbresearch.auth import DB, CurrentUser, MaybeUser, client_ip
+from dbresearch.config import get_settings
 from dbresearch.models import (
     Document,
     DocumentVersion,
@@ -215,6 +216,7 @@ def guest_unlock(
         shares.make_grant(link),
         max_age=shares.GRANT_MINUTES * 60,
         httponly=True,
+        secure=get_settings().cookie_secure,
         samesite="strict",
         path=f"/api/s/{token}",
     )

@@ -221,6 +221,21 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 ### Open questions
 - [?] What are the Research Hangout files and the faculty-meeting resolution? (ask the research office)
 
+## Security review (2026-11-11)
+
+Checked: login + sessions, share links, encryption, edit rights, uploads, XSS/CSP, SQL, Docker, logs,
+dependencies (npm audit + pip-audit: 0 known vulnerabilities).
+- [x] **OCR page images were written to disk**: Tesseract puts each rendered page in the temp folder, and the
+      worker's `/tmp` was disk, not tmpfs (breaks the "no plaintext on disk" rule). Fixed: worker `TMPDIR=/tmp/work`.
+      Pages OCR'd before the fix were deleted after use, but may linger in free disk blocks.
+- [x] **Share tokens in the access log** (`docker compose logs api` showed full `/s/<token>` URLs). Fixed: redacted.
+- [x] Containers get only `kek.json` (not the restic or demo passwords); all Linux capabilities dropped, no-new-privileges
+- [x] Guest unlock cookie: `Secure` in production; a new link password ends open unlocks at once
+- [?] **View-only links still hand over the whole PDF** (the browser viewer can save/print it), and views don't count
+      toward the download limit. Teachers need to print, so: count every open toward the limit, or rename the option?
+- [?] Hide `/api/docs` and the `/health` details from the public internet in production (low risk)
+- [ ] Biggest remaining risks are availability, not attackers: KEK custody and backups (Phase 2 items above)
+
 ## Phase 8 — New front-end design (on hold, added 2026-11-11)
 
 - [?] **Decide again when the remaining tasks are almost done**: whether to redesign the web app, and how far
@@ -234,6 +249,8 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 - Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
 ## Log
+
+- 2026-11-11 — Security review: fixed OCR page images on disk (worker TMPDIR), share tokens in access logs, secrets mounted into containers, container privileges, guest-cookie flags.
 
 - 2026-11-11 — Corrected who uses the system: research-office staff (`user`) and IT (`admin`) only. Teachers get no account; staff share links to them so they can view and print. University login now admits staff types only (`UNIVERSITY_ALLOWED_TYPES=staff` placeholder).
 

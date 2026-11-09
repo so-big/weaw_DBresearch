@@ -229,17 +229,22 @@ def _sign(payload: str) -> str:
     return base64.urlsafe_b64encode(mac).decode().rstrip("=")
 
 
+def _password_tag(link: ShareLink) -> str:
+    """Ties a grant to the current password: issuing a new one ends every open grant."""
+    return hashlib.sha256((link.password_hash or "").encode()).hexdigest()[:16]
+
+
 def make_grant(link: ShareLink) -> str:
     expires = min(datetime.now(UTC) + timedelta(minutes=GRANT_MINUTES), link.expires_at)
     payload = f"{link.id}.{int(expires.timestamp())}"
-    return f"{payload}.{_sign(payload)}"
+    return f"{payload}.{_sign(f'{payload}.{_password_tag(link)}')}"
 
 
 def grant_valid(link: ShareLink, grant: str | None) -> bool:
     if not grant or grant.count(".") != 2:
         return False
     link_id, expires, signature = grant.split(".")
-    payload = f"{link_id}.{expires}"
+    payload = f"{link_id}.{expires}.{_password_tag(link)}"
     return (
         hmac.compare_digest(signature, _sign(payload))
         and link_id == str(link.id)

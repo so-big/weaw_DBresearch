@@ -83,6 +83,7 @@ class UserRole(enum.StrEnum):
 class UserStatus(enum.StrEnum):
     ACTIVE = "active"
     DISABLED = "disabled"
+    PENDING = "pending"  # first university login, waiting for ADMIN approval
 
 
 class FundingType(enum.StrEnum):

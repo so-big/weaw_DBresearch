@@ -9,6 +9,9 @@ Rules:
 - Only account types in `university_allowed_types` (default: teacher) may log in. Guests
   still use share links and never need an account.
 - Roles stay in our DB. A new account starts as `user`; ADMIN promotes.
+- A first login that matches nobody ADMIN added becomes a *pending* request (DESIGN §1, §9):
+  no access until ADMIN approves it. Departments in `university_auto_approve_departments`
+  skip the queue (only once the API returns the department).
 """
 
 import json
@@ -24,13 +27,15 @@ from sqlalchemy.orm import Session
 from dbresearch import audit
 from dbresearch.auth import (
     Credentials,
+    LoginPending,
     LoginRejected,
     ProviderUnavailable,
     active_user,
     normalize_username,
 )
 from dbresearch.config import get_settings
-from dbresearch.models import AuthIdentity, User, UserRole
+from dbresearch.models import AuthIdentity, User, UserRole, UserStatus
+from dbresearch.search_text import compact
 
 PROVIDER = "university"
 
@@ -41,6 +46,7 @@ class UniversityAccount:
     account_type: str  # e.g. "teacher", "student", lower-cased
     display_name: str | None = None
     email: str | None = None
+    department: str | None = None  # if the API gives it (not known yet)
 
 
 class UniversityClient(Protocol):
@@ -54,7 +60,8 @@ class HttpUniversityClient:
     """Calls the university login API. PLACEHOLDER request/response shape:
 
     POST <url>  {"username": ..., "password": ...}
-    200 -> {"ok": true, "id": "...", "type": "teacher", "name": "...", "email": "..."}
+    200 -> {"ok": true, "id": "...", "type": "teacher", "name": "...", "email": "...",
+            "department": "..."}
     200 {"ok": false} or 401/403 -> wrong ID or password
     """
 
@@ -92,16 +99,22 @@ class HttpUniversityClient:
             account_type=str(data.get("type") or "").strip().lower(),
             display_name=(data.get("name") or None),
             email=(data.get("email") or None),
+            department=(str(data.get("department") or "").strip() or None),
         )
 
 
 class UniversityApiProvider:
     name = PROVIDER
 
-    def __init__(self, client: UniversityClient, allowed_types: set[str], auto_create: bool):
+    def __init__(
+        self,
+        client: UniversityClient,
+        allowed_types: set[str],
+        auto_approve_departments: set[str] = frozenset(),
+    ):
         self.client = client
         self.allowed_types = {t.strip().lower() for t in allowed_types if t.strip()}
-        self.auto_create = auto_create
+        self.auto_approve = {compact(d) for d in auto_approve_departments if d.strip()}
 
     @classmethod
     def from_settings(cls) -> "UniversityApiProvider":
@@ -116,7 +129,7 @@ class UniversityApiProvider:
         return cls(
             client,
             set(settings.university_allowed_types.split(",")),
-            settings.university_auto_create,
+            set(settings.university_auto_approve_departments.split(",")),
         )
 
     def authenticate(self, db: Session, credentials: Credentials) -> User:
@@ -135,36 +148,43 @@ class UniversityApiProvider:
         return self._link_or_create(db, account)
 
     def _link_or_create(self, db: Session, account: UniversityAccount) -> User:
-        """First login: attach to a user ADMIN added with the same email, or create one."""
+        """First login: attach to a user ADMIN added with the same email, or file a request."""
         user = db.scalar(select(User).where(User.email == account.email)) if account.email else None
-        if user is None:
-            if not self.auto_create:
-                raise LoginRejected("not_registered")
-            user = User(
-                email=account.email or f"{account.subject}@university.invalid",
-                display_name=account.display_name or account.subject,
-                role=UserRole.USER,
-            )
-            db.add(user)
+        if user is not None:
+            active_user(db, user.id)
+            db.add(AuthIdentity(user_id=user.id, provider=PROVIDER, subject=account.subject))
             db.flush()
-            audit.record(
-                db,
-                "user.create",
-                "user",
-                user.id,
-                actor_id=user.id,
-                via=PROVIDER,
-                account_type=account.account_type,
-                role=UserRole.USER.value,
-            )
-        active_user(db, user.id)
-        db.add(AuthIdentity(user_id=user.id, provider=PROVIDER, subject=account.subject))
+            return user
+        approved = bool(account.department) and compact(account.department) in self.auto_approve
+        user = User(
+            email=account.email or f"{account.subject}@university.invalid",
+            display_name=account.display_name or account.subject,
+            role=UserRole.USER,
+            status=UserStatus.ACTIVE if approved else UserStatus.PENDING,
+        )
+        db.add(user)
         db.flush()
+        db.add(AuthIdentity(user_id=user.id, provider=PROVIDER, subject=account.subject))
+        audit.record(
+            db,
+            "user.create" if approved else "user.request",
+            "user",
+            user.id,
+            actor_id=user.id,
+            via=PROVIDER,
+            account_type=account.account_type,
+            department=account.department,
+            role=UserRole.USER.value,
+            **({"auto_approved": True} if approved else {}),
+        )
+        db.flush()
+        if not approved:
+            raise LoginPending()
         return user
 
 
 def add_university_identity(db: Session, user: User, university_id: str) -> AuthIdentity:
-    """ADMIN pre-registers someone by their university ID (used when auto-create is off)."""
+    """ADMIN pre-registers someone by their university ID (skips the approval queue)."""
     identity = AuthIdentity(user_id=user.id, provider=PROVIDER, subject=university_id.strip())
     db.add(identity)
     return identity

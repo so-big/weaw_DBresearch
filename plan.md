@@ -103,7 +103,8 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] API moved under `/api` (docs at `/api/docs`); FastAPI serves the built web app for every other path (CSP, SPA fallback). Share links stay `/s/{token}` (web page).
 - [x] Screens: login, documents search + filters (PC column / phone sheet), multi-file upload window, document page (download, view, share, new version, trash), review form (auto-fill hints, warnings, PDF beside the form), review queue, my share links, guest page, phone account tab, admin (overview + missing numbers, users, all links, trash, categories, audit, settings)
 - [x] Deployed to the demo server; 92 tests pass. Headless click-through (`spikes/ui_smoke.py`) on PC + phone, light + dark: no JS errors. Found and fixed a Phase 2 bug: `/admin/audit` and share logs crashed on IP values.
-- [ ] Try it on a real phone (guest link, search, upload from the phone's files) and collect feedback
+- [~] Try it on a real phone (guest link, search, upload from the phone's files) and collect feedback
+  - [x] Share links work on phone and PC (checked by the user 2026-11-11)
 - [ ] Later: PDF preview inside the page on phones (pdf.js) if opening a new tab is not enough
 
 ## Phase 4 — Polish and public demo
@@ -136,7 +137,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] `audit_events` append-only by trigger (migration `e4b7a1c9d025`)
 - [x] University login provider (teachers only, auto-create or pre-add by email/ID), with a placeholder HTTP client
 - [ ] Fill in the real university API once the spec arrives; test it on the university's server
-- [ ] **Approval queue** (decided 2026-11-09): a teacher's first login creates a *pending* request, not an account. They see "waiting for admin approval"; ADMIN approves/rejects on the Users page (audited). Replaces auto-create as the default, so teachers from other departments can't get in directly. If the API gives the department, auto-approve our own department.
+- [x] **Approval queue** (decided 2026-11-09): a teacher's first login creates a *pending* request, not an account. They see "waiting for admin approval"; ADMIN approves/rejects on the Users page (audited). Replaces auto-create as the default, so teachers from other departments can't get in directly. If the API gives the department, auto-approve our own department (`UNIVERSITY_AUTO_APPROVE_DEPARTMENTS`). Built 2026-11-11: status `pending` (migration `b8e3f6a2c4d1`), `GET /api/admin/users/requests`, approve/reject (audited), count on the admin ผู้ใช้ menu, login page notice. `UNIVERSITY_AUTO_CREATE` removed.
 
 ## Phase 7 — ทุนพัฒนาข้อเสนอโครงการวิจัย (proposal-development grants) — PLAN, not started
 
@@ -225,6 +226,8 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 - Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
 ## Log
+
+- 2026-11-11 — Phase 6: approval queue for first university logins (pending → approve / reject on the Users page). Share links confirmed working on phone and PC.
 
 - 2026-11-10 — Phase 7 step 5: ทุนพัฒนาข้อเสนอ section in the web app (list, grant page + timeline, review, overview); 180 tests pass.
 - 2026-11-10 — Phase 7 step 4: bulk importer (plan / apply); real folder → 72 projects, 9 programme papers, 4 duplicates.

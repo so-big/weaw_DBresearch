@@ -1,6 +1,7 @@
 """Login hardening: idle timeout, session caps, log-out-everywhere, login audit detail,
 the append-only audit log, security headers, and the university login provider."""
 
+import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
@@ -179,9 +180,11 @@ class FakeUniversity:
     def __init__(self):
         self.accounts = {
             "t1001": ("teach-pass", "teacher"),
+            "t1002": ("teach-pass", "teacher"),
             "s6501": ("study-pass", "student"),
         }
         self.calls = 0
+        self.department: str | None = None
 
     def verify(self, username: str, password: str) -> UniversityAccount | None:
         self.calls += 1
@@ -195,6 +198,7 @@ class FakeUniversity:
             account_type=kind,
             display_name=f"อ.{username}",
             email=f"{username}@uni.example",
+            department=self.department,
         )
 
 
@@ -203,10 +207,10 @@ def university(client) -> Iterator[dict]:
     from dbresearch.main import app
 
     fake = FakeUniversity()
-    options = {"auto_create": True, "fake": fake}
+    options = {"departments": set(), "fake": fake}
 
     def provider():
-        uni = UniversityApiProvider(fake, {"teacher"}, options["auto_create"])
+        uni = UniversityApiProvider(fake, {"teacher"}, options["departments"])
         return ChainProvider([LocalPasswordProvider(), uni])
 
     app.dependency_overrides[get_provider] = provider
@@ -214,17 +218,63 @@ def university(client) -> Iterator[dict]:
     app.dependency_overrides.pop(get_provider, None)
 
 
-def test_teacher_logs_in_and_gets_a_user_account(client, university):
+def request_id(username: str) -> str:
+    with new_session() as db:
+        return str(
+            db.scalar(
+                select(AuthIdentity.user_id).where(
+                    AuthIdentity.provider == "university", AuthIdentity.subject == username.upper()
+                )
+            )
+        )
+
+
+def test_first_login_waits_for_admin_approval(client, university, login):
     response = sign_in(client, "t1001", "teach-pass")
-    assert response.status_code == 200, response.text
-    assert response.json()["role"] == "user"
-    assert sign_in(new_client(), "T1001 ", "teach-pass").status_code == 200  # same account
+    assert response.status_code == 403
+    assert response.json()["detail"] == "pending_approval"
+    assert client.get("/auth/me").status_code == 401  # no session
+    assert sign_in(new_client(), "T1001 ", "teach-pass").status_code == 403  # same request
     with new_session() as db:
         identities = db.scalars(select(AuthIdentity).where(AuthIdentity.provider == "university"))
         assert [i.subject for i in identities] == ["T1001"]
         assert db.scalar(select(AuthIdentity.password_hash)) is None
+    (asked,) = audit_rows("user.request")
+    assert asked.details["via"] == "university"
+    assert len(audit_rows("auth.login_pending")) == 2
+    assert audit_rows("auth.login_failed") == []
+
+    login(UserRole.ADMIN)
+    (req,) = client.get("/admin/users/requests").json()
+    assert (req["university_id"], req["account_type"]) == ("T1001", "teacher")
+    assert req["id"] not in [u["id"] for u in client.get("/admin/users").json()]
+    assert client.patch(f"/admin/users/{req['id']}", json={"status": "active"}).status_code == 409
+    assert client.post(f"/admin/users/{req['id']}/approve").status_code == 204
+    assert client.post(f"/admin/users/{req['id']}/approve").status_code == 409  # decided
+    assert client.get("/admin/users/requests").json() == []
+    assert audit_rows("user.approve")[0].entity_id == uuid.UUID(req["id"])
+
+    me = sign_in(new_client(), "t1001", "teach-pass")
+    assert me.status_code == 200 and me.json()["role"] == "user"
+
+
+def test_rejected_request_stays_out(client, university, login):
+    assert sign_in(client, "t1001", "teach-pass").status_code == 403
+    login(UserRole.ADMIN)
+    assert client.post(f"/admin/users/{request_id('t1001')}/reject").status_code == 204
+    assert sign_in(new_client(), "t1001", "teach-pass").status_code == 401
+    assert audit_rows("auth.login_failed")[0].details["reason"] == "disabled"
+    assert len(audit_rows("user.reject")) == 1
+
+
+def test_own_department_is_approved_automatically(client, university):
+    university["departments"] = {"ภาควิชาวิศวกรรมคอมพิวเตอร์"}
+    university["fake"].department = "ภาควิชาวิศวกรรมไฟฟ้า"
+    assert sign_in(client, "t1001", "teach-pass").status_code == 403  # other department
+    university["fake"].department = " ภาควิชาวิศวกรรม  คอมพิวเตอร์"  # spacing differs
+    assert sign_in(new_client(), "t1002", "teach-pass").status_code == 200
     (created,) = audit_rows("user.create")
-    assert created.details["via"] == "university"
+    assert created.details["auto_approved"] is True
 
 
 def test_students_and_wrong_passwords_are_refused(client, university):
@@ -234,6 +284,7 @@ def test_students_and_wrong_passwords_are_refused(client, university):
     assert reasons == ["type_not_allowed:student", "wrong_password"]
     with new_session() as db:
         assert db.scalar(select(User).where(User.email == "s6501@uni.example")) is None
+        assert db.scalar(select(User).where(User.email == "t1001@uni.example")) is None
 
 
 def test_local_accounts_never_reach_the_university_api(client, university, make_user):
@@ -250,11 +301,7 @@ def test_api_down_is_a_503_and_does_not_lock_accounts(client, university):
     assert audit_rows("auth.login_failed") == []
 
 
-def test_without_auto_create_admin_must_add_the_teacher(client, university, login):
-    university["auto_create"] = False
-    assert sign_in(client, "t1001", "teach-pass").status_code == 401
-    assert audit_rows("auth.login_failed")[0].details["reason"] == "not_registered"
-
+def test_teacher_admin_added_by_id_skips_the_queue(client, university, login):
     login(UserRole.ADMIN)
     response = client.post(
         "/admin/users",
@@ -262,6 +309,7 @@ def test_without_auto_create_admin_must_add_the_teacher(client, university, logi
     )
     assert response.status_code == 201
     assert sign_in(new_client(), "t1001", "teach-pass").status_code == 200
+    assert audit_rows("user.request") == []
 
 
 def test_first_login_links_to_a_user_admin_added_by_email(client, university, login):
@@ -271,8 +319,10 @@ def test_first_login_links_to_a_user_admin_added_by_email(client, university, lo
     assert me["display_name"] == "Pre"
 
 
-def test_disabled_teacher_cannot_log_in(client, university):
-    user_id = sign_in(client, "t1001", "teach-pass").json()["id"]
+def test_disabled_teacher_cannot_log_in(client, university, login):
+    login(UserRole.ADMIN)
+    client.post("/admin/users", json={"email": "t1001@uni.example", "display_name": "Pre"})
+    user_id = sign_in(new_client(), "t1001", "teach-pass").json()["id"]
     with new_session() as db:
         db.execute(update(User).where(User.id == user_id).values(status=UserStatus.DISABLED))
         db.commit()

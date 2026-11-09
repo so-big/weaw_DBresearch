@@ -1,6 +1,6 @@
 <script>
   // Admin area: the only place with a side menu (many sub-pages). Phones get scrollable chips.
-  import { isAdmin, screen } from '../../lib/state.svelte.js';
+  import { isAdmin, screen, access, refreshAccessRequests } from '../../lib/state.svelte.js';
   import Users from './Users.svelte';
   import AllShares from './AllShares.svelte';
   import Trash from './Trash.svelte';
@@ -17,6 +17,7 @@
     { key: 'audit', label: 'บันทึกการใช้งาน', C: Audit },
     { key: 'settings', label: 'ตั้งค่า', C: Settings },
   ];
+  refreshAccessRequests();
   const current = $derived(SECTIONS.find((s) => s.key === section) || SECTIONS[0]);
 </script>
 
@@ -26,7 +27,7 @@
   <div class="admin" class:wide={screen.wide}>
     <nav class="sub" aria-label="เมนูผู้ดูแลระบบ">
       {#each SECTIONS as s (s.key)}
-        <a href="/admin/{s.key}" class:on={current.key === s.key} aria-current={current.key === s.key ? 'page' : undefined}>{s.label}</a>
+        <a href="/admin/{s.key}" class:on={current.key === s.key} aria-current={current.key === s.key ? 'page' : undefined}>{s.label}{#if s.key === 'users' && access.requests}<span class="count" aria-label="{access.requests} คำขอรออนุมัติ">{access.requests}</span>{/if}</a>
       {/each}
     </nav>
     <div class="content">
@@ -49,4 +50,5 @@
   .wide .sub a:hover { background: var(--subtle); }
   .wide .sub a.on { background: var(--primary-soft); box-shadow: inset 3px 0 0 var(--primary); }
   .content { min-width: 0; }
+  .count { display: inline-block; margin-left: 6px; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-size: 12px; font-weight: 600; text-align: center; line-height: 20px; }
 </style>

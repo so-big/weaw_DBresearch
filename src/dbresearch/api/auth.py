@@ -10,6 +10,7 @@ from dbresearch.auth import (
     AuthProvider,
     Credentials,
     CurrentUser,
+    LoginPending,
     LoginRejected,
     ProviderUnavailable,
     client_ip,
@@ -41,6 +42,7 @@ def failed_username():
     return func.lower(func.btrim(AuditEvent.details["username"].astext))
 
 
+PENDING_DETAIL = "pending_approval"  # the web app shows "waiting for admin approval"
 IP_LIMIT_FACTOR = 4  # one IP may fail for several people (shared office NAT)
 
 
@@ -100,6 +102,11 @@ def login(
         )
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong username or password") from None
+    except LoginPending:
+        db.commit()  # keeps a new request; nothing else was written
+        audit.record(db, "auth.login_pending", "user", ip=ip, username=username, user_agent=agent)
+        db.commit()
+        raise HTTPException(status.HTTP_403_FORBIDDEN, PENDING_DETAIL) from None
     except ProviderUnavailable as exc:
         db.rollback()
         audit.record(

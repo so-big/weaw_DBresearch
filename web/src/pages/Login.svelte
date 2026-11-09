@@ -7,17 +7,23 @@
   let username = $state('');
   let password = $state('');
   let error = $state('');
+  let pending = $state(false);
   let busy = $state(false);
 
   async function submit(e) {
     e.preventDefault();
     busy = true;
     error = '';
+    pending = false;
     try {
       session.user = await post('/auth/login', { username: username.trim(), password });
       refreshReviewCount();
       navigate(route.query.get('next') || '/documents', { replace: true });
     } catch (err) {
+      if (err.status === 403 && err.detail === 'pending_approval') {
+        pending = true;
+        return;
+      }
       error =
         err.status === 401 ? 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'
         : err.status === 429 ? 'เข้าสู่ระบบผิดหลายครั้งเกินไป รอ 15 นาทีแล้วลองใหม่'
@@ -49,6 +55,7 @@
         <input id="login-pass" type="password" bind:value={password} autocomplete="current-password" required />
       </label>
       {#if error}<div class="notice bad" role="alert">{error}</div>{/if}
+      {#if pending}<div class="notice info" role="status">ส่งคำขอเข้าใช้งานแล้ว รอผู้ดูแลระบบอนุมัติ เมื่ออนุมัติแล้วเข้าสู่ระบบด้วยรหัสเดิมได้เลย</div>{/if}
       <button class="btn big" disabled={busy}>{busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}</button>
       <p class="hint">ระบบนี้จะเปลี่ยนไปใช้บัญชีของมหาวิทยาลัย (SSO) เมื่อฝ่ายไอทีเชื่อมต่อเสร็จ</p>
     </form>

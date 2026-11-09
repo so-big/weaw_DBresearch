@@ -42,6 +42,11 @@ class LoginRejected(Exception):
         self.reason = reason
 
 
+class LoginPending(Exception):
+    """The password was right, but ADMIN has not approved this account yet. The login
+    endpoint commits first (so a new request is kept) and tells the visitor to wait."""
+
+
 class ProviderUnavailable(Exception):
     """The login backend (e.g. the university API) could not answer."""
 
@@ -93,6 +98,8 @@ class ChainProvider:
 
 def active_user(db: Session, user_id: uuid.UUID) -> User:
     user = db.get(User, user_id)
+    if user is not None and user.status == UserStatus.PENDING:
+        raise LoginPending()
     if user is None or user.status != UserStatus.ACTIVE:
         raise LoginRejected("disabled")
     return user

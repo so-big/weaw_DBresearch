@@ -26,9 +26,10 @@ class Settings(BaseSettings):
     university_api_timeout_seconds: float = 5.0
     # Account types allowed in, as the API names them (comma list). Students never are.
     university_allowed_types: str = "teacher"
-    # First login of an allowed account creates it as role `user`. False = ADMIN must add
-    # the person first (by the same email, or by their ID).
-    university_auto_create: bool = False
+    # A first login nobody added yet becomes a *pending* request that ADMIN approves on the
+    # Users page. Departments listed here (comma list, as the API names them) skip the queue;
+    # it only works once the API returns the department.
+    university_auto_approve_departments: str = ""
 
     # Sessions: hard limit, idle timeout, and how many devices one user may stay logged in on.
     session_cookie: str = "dbr_session"

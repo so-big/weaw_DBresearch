@@ -1,12 +1,14 @@
 <script>
   // Accounts and roles. Local username/password is for the demo; SSO users need neither.
   import { get, post, patch, errorText } from '../../lib/api.js';
-  import { toast, session } from '../../lib/state.svelte.js';
+  import { toast, session, access } from '../../lib/state.svelte.js';
   import { thDateTime } from '../../lib/format.js';
   import Modal from '../../components/Modal.svelte';
   import Icon from '../../components/Icon.svelte';
 
   let users = $state(null);
+  let requests = $state([]);
+  let rejecting = $state(null);
   let error = $state('');
   let creating = $state(null);
   let resetting = $state(null);
@@ -14,7 +16,8 @@
 
   async function load() {
     try {
-      users = await get('/admin/users');
+      [users, requests] = await Promise.all([get('/admin/users'), get('/admin/users/requests')]);
+      access.requests = requests.length;
     } catch (err) {
       error = errorText(err);
     }
@@ -52,6 +55,16 @@
     } catch (err) {
       toast(errorText(err), 'bad');
     }
+  }
+  async function decide(r, action) {
+    try {
+      await post(`/admin/users/${r.id}/${action}`);
+      toast(action === 'approve' ? `อนุมัติ ${r.display_name} แล้ว` : 'ปฏิเสธคำขอแล้ว');
+    } catch (err) {
+      toast(err.status === 409 ? 'คำขอนี้ได้รับการพิจารณาไปแล้ว' : errorText(err), 'bad');
+    }
+    rejecting = null;
+    load();
   }
   async function endSessions(u) {
     try {
@@ -94,6 +107,27 @@
 <div class="stack">
   <div class="row"><h1>ผู้ใช้</h1><span class="spacer"></span><button class="btn" onclick={newUser}><Icon name="plus" size={17} />เพิ่มผู้ใช้</button></div>
   {#if error}<div class="notice bad">{error}</div>{/if}
+  {#if requests.length}
+    <section class="card requests" aria-labelledby="req-h">
+      <h2 id="req-h">คำขอเข้าใช้งาน <span class="badge needs_review">{requests.length}</span></h2>
+      <p class="hint">บัญชีมหาวิทยาลัยที่เข้าระบบครั้งแรก ยังเข้าใช้งานไม่ได้จนกว่าจะอนุมัติ ผู้ใช้ที่อนุมัติแล้วอ่านเอกสารได้ทุกฉบับ</p>
+      <ul>
+        {#each requests as r (r.id)}
+          <li>
+            <div class="who">
+              <b>{r.display_name}</b>
+              <small class="muted">{[r.email, r.university_id && `รหัส ${r.university_id}`, r.department, r.account_type].filter(Boolean).join(' · ')}</small>
+              <small class="muted">ขอเมื่อ {thDateTime(r.requested_at)}</small>
+            </div>
+            <div class="acts">
+              <button class="btn ghost" onclick={() => (rejecting = r)}>ปฏิเสธ</button>
+              <button class="btn" onclick={() => decide(r, 'approve')}>อนุมัติ</button>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
   <div class="card table-wrap">
     <table class="data">
       <thead><tr><th>ชื่อ</th><th>บทบาท</th><th>สถานะ</th><th>เข้าใช้ล่าสุด</th><th>อุปกรณ์</th><th></th></tr></thead>
@@ -132,7 +166,7 @@
       </tbody>
     </table>
   </div>
-  <p class="hint">อาจารย์เข้าสู่ระบบด้วยรหัสและรหัสผ่านของมหาวิทยาลัย (นักศึกษาเข้าไม่ได้) ชื่อผู้ใช้และรหัสผ่านในหน้านี้ใช้สำหรับระบบทดลองและผู้ดูแลระบบเท่านั้น ผู้ใช้จะออกจากระบบอัตโนมัติเมื่อไม่ได้ใช้งาน 1 ชั่วโมง</p>
+  <p class="hint">อาจารย์และบุคลากรเข้าสู่ระบบด้วยรหัสและรหัสผ่านของมหาวิทยาลัย (นักศึกษาเข้าไม่ได้) ครั้งแรกต้องรอผู้ดูแลระบบอนุมัติ ยกเว้นผู้ที่เพิ่มไว้ก่อนในหน้านี้ ชื่อผู้ใช้และรหัสผ่านในหน้านี้ใช้สำหรับระบบทดลองและผู้ดูแลระบบเท่านั้น ผู้ใช้จะออกจากระบบอัตโนมัติเมื่อไม่ได้ใช้งาน 1 ชั่วโมง</p>
 </div>
 
 {#if creating}
@@ -151,6 +185,16 @@
     {#snippet footer()}
       <button class="btn ghost" onclick={() => (creating = null)}>ยกเลิก</button>
       <button class="btn" onclick={create} disabled={!creating.email.trim() || !creating.display_name.trim()}>เพิ่มผู้ใช้</button>
+    {/snippet}
+  </Modal>
+{/if}
+
+{#if rejecting}
+  <Modal title="ปฏิเสธคำขอ" onclose={() => (rejecting = null)}>
+    <p>{rejecting.display_name} จะเข้าระบบไม่ได้ บัญชีจะอยู่ในรายชื่อแบบปิดใช้งาน เปิดใช้งานภายหลังได้</p>
+    {#snippet footer()}
+      <button class="btn ghost" onclick={() => (rejecting = null)}>ยกเลิก</button>
+      <button class="btn danger" onclick={() => decide(rejecting, 'reject')}>ปฏิเสธ</button>
     {/snippet}
   </Modal>
 {/if}
@@ -185,6 +229,12 @@
 
 <style>
   .off { opacity: 0.6; }
+  .requests { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .requests h2 { font-size: 17px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
+  .requests ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .requests li { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--border); }
+  .who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .requests .acts { display: flex; gap: 8px; }
   .mini { min-height: 32px; padding: 3px 8px; font-size: 13.5px; width: auto; }
   .acts { white-space: nowrap; }
   .devices { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }

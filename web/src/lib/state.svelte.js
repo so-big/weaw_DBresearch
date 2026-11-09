@@ -43,6 +43,17 @@ export function bumpReviewCount() {
   reviewTimer = setTimeout(refreshReviewCount, 600);
 }
 
+// ───────── Access requests (count on the admin ผู้ใช้ menu) ─────────
+export const access = $state({ requests: 0 });
+export async function refreshAccessRequests() {
+  if (!isAdmin()) return;
+  try {
+    access.requests = (await get('/admin/users/requests')).length;
+  } catch {
+    /* badge is best effort */
+  }
+}
+
 // ───────── Theme ─────────
 export const theme = $state({ value: 'system' });
 export function initTheme() {

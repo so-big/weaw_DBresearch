@@ -7,7 +7,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from dbresearch import audit, documents, shares
@@ -59,6 +59,19 @@ class UserCreate(BaseModel):
 class AdminUserOut(UserOut):
     active_sessions: int = 0
     logins: list[str] = []  # 'local', 'university'
+    university_id: str | None = None
+
+
+class AccessRequestOut(BaseModel):
+    """A first university login waiting for approval (users.status = 'pending')."""
+
+    id: uuid.UUID
+    email: str
+    display_name: str
+    university_id: str | None
+    account_type: str | None
+    department: str | None
+    requested_at: datetime
 
 
 class SessionOut(BaseModel):
@@ -86,16 +99,90 @@ class PasswordIn(BaseModel):
 def list_users(db: DB, admin: AdminUser):
     sessions = count_active_sessions(db)
     logins: dict[uuid.UUID, list[str]] = {}
-    for user_id, provider in db.execute(
-        select(AuthIdentity.user_id, AuthIdentity.provider).order_by(AuthIdentity.provider)
+    university: dict[uuid.UUID, str] = {}
+    for user_id, provider, subject in db.execute(
+        select(AuthIdentity.user_id, AuthIdentity.provider, AuthIdentity.subject).order_by(
+            AuthIdentity.provider
+        )
     ):
         logins.setdefault(user_id, []).append(provider)
+        if provider == "university":
+            university[user_id] = subject
     return [
         AdminUserOut.model_validate(u).model_copy(
-            update={"active_sessions": sessions.get(u.id, 0), "logins": logins.get(u.id, [])}
+            update={
+                "active_sessions": sessions.get(u.id, 0),
+                "logins": logins.get(u.id, []),
+                "university_id": university.get(u.id),
+            }
         )
-        for u in db.scalars(select(User).order_by(User.display_name))
+        for u in db.scalars(
+            select(User).where(User.status != UserStatus.PENDING).order_by(User.display_name)
+        )
     ]
+
+
+@router.get("/users/requests", response_model=list[AccessRequestOut])
+def access_requests(db: DB, admin: AdminUser):
+    """First university logins waiting for approval, oldest first."""
+    rows = db.execute(
+        select(User, AuthIdentity.subject)
+        .outerjoin(
+            AuthIdentity,
+            (AuthIdentity.user_id == User.id) & (AuthIdentity.provider == "university"),
+        )
+        .where(User.status == UserStatus.PENDING)
+        .order_by(User.created_at)
+    ).all()
+    asked = {
+        e.entity_id: e.details
+        for e in db.scalars(
+            select(AuditEvent).where(
+                AuditEvent.action == "user.request",
+                AuditEvent.entity_id.in_([u.id for u, _ in rows]),
+            )
+        )
+    }
+    return [
+        AccessRequestOut(
+            id=u.id,
+            email=u.email,
+            display_name=u.display_name,
+            university_id=subject,
+            account_type=asked.get(u.id, {}).get("account_type"),
+            department=asked.get(u.id, {}).get("department"),
+            requested_at=u.created_at,
+        )
+        for u, subject in rows
+    ]
+
+
+def _decide(user_id: uuid.UUID, new_status: UserStatus, action: str, request, db, admin):
+    """Approve or reject a pending request; only one admin's decision wins."""
+    decided = db.execute(
+        update(User)
+        .where(User.id == user_id, User.status == UserStatus.PENDING)
+        .values(status=new_status, updated_at=func.now())
+        .returning(User.id)
+    ).scalar_one_or_none()
+    if decided is None:
+        if db.get(User, user_id) is None:
+            raise HTTPException(404, "User not found")
+        raise HTTPException(409, "This request was already decided")
+    audit.record(db, action, "user", user_id, actor_id=admin.id, ip=client_ip(request))
+    db.commit()
+
+
+@router.post("/users/{user_id}/approve", status_code=204)
+def approve_request(user_id: uuid.UUID, request: Request, db: DB, admin: AdminUser) -> None:
+    _decide(user_id, UserStatus.ACTIVE, "user.approve", request, db, admin)
+
+
+@router.post("/users/{user_id}/reject", status_code=204)
+def reject_request(user_id: uuid.UUID, request: Request, db: DB, admin: AdminUser) -> None:
+    """The account is kept, disabled: the same person asking again stays out, and ADMIN
+    can still turn it on later from the user list."""
+    _decide(user_id, UserStatus.DISABLED, "user.reject", request, db, admin)
 
 
 @router.get("/users/{user_id}/sessions", response_model=list[SessionOut])
@@ -161,6 +248,10 @@ def update_user(user_id: uuid.UUID, body: UserPatch, request: Request, db: DB, a
         (body.role and body.role != UserRole.ADMIN) or body.status == UserStatus.DISABLED
     ):
         raise HTTPException(422, "You can't remove your own admin access")
+    if body.status == UserStatus.PENDING or (
+        body.status is not None and user.status == UserStatus.PENDING
+    ):
+        raise HTTPException(409, "Use approve or reject for a pending request")
     changes = body.model_dump(exclude_none=True)
     for name, value in changes.items():
         setattr(user, name, value)

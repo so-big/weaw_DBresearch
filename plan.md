@@ -226,7 +226,7 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 
 ## Log
 
-- 2026-11-10 — Phase 7 step 5: ทุนพัฒนาข้อเสนอ section in the web app (list, grant page + timeline, review, overview); 181 tests pass.
+- 2026-11-10 — Phase 7 step 5: ทุนพัฒนาข้อเสนอ section in the web app (list, grant page + timeline, review, overview); 180 tests pass.
 - 2026-11-10 — Phase 7 step 4: bulk importer (plan / apply); real folder → 72 projects, 9 programme papers, 4 duplicates.
 - 2026-11-10 — Phase 7 step 3: proposal-memo reader; type 117/124, title and researcher 94/100 against the office spreadsheet.
 - 2026-11-09 — Phase 7 step 1: 124 proposal-development PDFs OCR'd on the server; paper type from text 116/124, 107/114 papers matched to the office spreadsheet.

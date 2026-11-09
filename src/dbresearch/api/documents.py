@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from rapidfuzz import fuzz
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from dbresearch import audit, jobs, projects, search
@@ -175,7 +175,11 @@ def _proposal_detail(db: Session, document: Document, out: DocumentDetail, versi
     events = db.scalars(
         select(ProjectEvent)
         .where(ProjectEvent.document_id == document.id)
-        .order_by(ProjectEvent.event_on.asc().nulls_last(), ProjectEvent.created_at)
+        # By the memo's date; an event without one sits on the day it was recorded.
+        .order_by(
+            func.coalesce(ProjectEvent.event_on, func.date(ProjectEvent.created_at)),
+            ProjectEvent.created_at,
+        )
     )
     for event in events:
         item = EventOut(

@@ -127,7 +127,9 @@ def test_timeline_title_change_cancel_and_close(client, login):
         json={"closed_on": "2026-08-04", "kpi_result": "ส่งข้อเสนอแล้ว", "spent_total": "19900"},
     ).json()
     assert closed["state"] == "closed" and closed["proposal"]["kpi_result"] == "ส่งข้อเสนอแล้ว"
-    assert [e["event_type"] for e in closed["events"]][-2:] == ["reopen", "close"]
+    # Ordered by the memos' dates: the close (dated August) comes before today's reopen.
+    kinds = [e["event_type"] for e in closed["events"]]
+    assert kinds == ["approved", "title_change", "cancel", "close", "reopen"]
     # Contracts have no timeline.
     contract = upload(client, make_pdf()).json()["id"]
     files = {"file": ("x.pdf", make_pdf(), "application/pdf")}

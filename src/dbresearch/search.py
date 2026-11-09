@@ -3,6 +3,7 @@
 import re
 import uuid
 from dataclasses import dataclass, field, replace
+from datetime import date
 
 from sqlalchemy import Select, case, exists, func, or_, select
 from sqlalchemy.orm import Session
@@ -18,9 +19,11 @@ from dbresearch.models import (
     DocumentPerson,
     DocumentTag,
     DocumentVersion,
+    FundingSource,
     FundingType,
     Person,
     PersonRole,
+    ProposalProject,
     Tag,
     VersionPurpose,
 )
@@ -28,6 +31,10 @@ from dbresearch.search_text import compact
 from dbresearch.textnorm import normalize
 
 SORTS = ("relevance", "newest", "oldest", "title", "reference")
+# The web app's sections (DESIGN §11): research contracts, proposal-development grants, and
+# programme papers. 'all' = every document (review queue, counts).
+SECTIONS = ("contracts", "proposals", "other", "all")
+PROJECT_STATES = ("active", "overdue", "closed", "cancelled")
 SNIPPET_RADIUS = 60
 
 
@@ -46,6 +53,50 @@ class Filters:
     ref_series: str | None = None
     uploaded_by: uuid.UUID | None = None
     project: list[str] = field(default_factory=list)  # 'open' / 'closed' (ปิดโครงการ = archive)
+    section: str = "contracts"
+    funding_source: list[FundingSource] = field(default_factory=list)
+    state: list[str] = field(default_factory=list)  # PROJECT_STATES (proposal grants)
+    department: list[str] = field(default_factory=list)  # the owner's unit
+    research_area: list[str] = field(default_factory=list)
+
+
+def section_condition(section: str):
+    """Contracts include uploads whose kind isn't set yet (they are reviewed as contracts);
+    proposal grants and programme papers get their kind at upload."""
+    if section == "proposals":
+        return Document.kind == DocKind.PROPOSAL_DEV
+    if section == "other":
+        return Document.kind == DocKind.OTHER
+    if section == "contracts":
+        return or_(Document.kind.is_(None), Document.kind.in_((DocKind.CONTRACT, DocKind.GRANT)))
+    return None
+
+
+def _kpi_due():
+    return (
+        select(ProposalProject.kpi_due)
+        .where(ProposalProject.document_id == Document.id)
+        .scalar_subquery()
+    )
+
+
+def state_expression():
+    """cancelled / closed (success) / overdue (past the KPI due date) / active."""
+    return case(
+        (Document.cancelled_at.is_not(None), "cancelled"),
+        (Document.closed_at.is_not(None), "closed"),
+        (_kpi_due() < date.today(), "overdue"),
+        else_="active",
+    )
+
+
+def _owner_unit():
+    return (
+        select(DocumentPerson.unit)
+        .where(DocumentPerson.document_id == Document.id, DocumentPerson.role == PersonRole.OWNER)
+        .limit(1)
+        .scalar_subquery()
+    )
 
 
 def _like(text: str) -> str:
@@ -56,12 +107,32 @@ def _like(text: str) -> str:
 
 def _conditions(db: Session, f: Filters) -> list:
     conds = [Document.deleted_at.is_(None)]
+    if (section := section_condition(f.section)) is not None:
+        conds.append(section)
     if f.q and (needle := compact(f.q)):
         conds.append(Document.search_text.ilike(_like(needle)))
     if f.kind:
         conds.append(Document.kind.in_(f.kind))
     if f.funding_type:
         conds.append(Document.funding_type.in_(f.funding_type))
+    if f.funding_source:
+        conds.append(Document.funding_source.in_(f.funding_source))
+    if f.state:
+        # 'active' includes overdue projects; 'overdue' alone narrows to them.
+        wanted = set(f.state)
+        state = state_expression()
+        if "active" in wanted:
+            wanted |= {"active", "overdue"}
+        conds.append(state.in_(sorted(wanted)))
+    if f.department:
+        conds.append(_owner_unit().in_(f.department))
+    if f.research_area:
+        conds.append(
+            exists().where(
+                ProposalProject.document_id == Document.id,
+                ProposalProject.research_area.in_(f.research_area),
+            )
+        )
     if f.fiscal_year:
         conds.append(Document.fiscal_year.in_(f.fiscal_year))
     if f.status:
@@ -187,16 +258,53 @@ def facets(db: Session, f: Filters) -> dict[str, list[dict]]:
         .where(Document.id.in_(ids_without(project=[])))
         .group_by(project)
     ).all()
-    return {
+    out = {
         "project": [{"value": value, "count": count} for value, count in project_rows],
         "kind": counts(Document.kind, "kind"),
         "funding_type": counts(Document.funding_type, "funding_type"),
+        "funding_source": counts(Document.funding_source, "funding_source"),
         "fiscal_year": counts(Document.fiscal_year, "fiscal_year"),
         "status": counts(Document.status, "status"),
         "categories": [
             {"value": str(cid), "name": name, "group_key": key, "count": count}
             for cid, name, key, count in category_rows
         ],
+    }
+    if f.section == "proposals":
+        state = state_expression()
+        out["state"] = [
+            {"value": value, "count": count}
+            for value, count in db.execute(
+                select(state, func.count())
+                .where(Document.id.in_(ids_without(state=[])))
+                .group_by(state)
+            ).all()
+        ]
+        out["department"] = counts(_owner_unit(), "department")
+        out["research_area"] = [
+            {"value": value, "count": count}
+            for value, count in db.execute(
+                select(ProposalProject.research_area, func.count())
+                .where(
+                    ProposalProject.document_id.in_(ids_without(research_area=[])),
+                    ProposalProject.research_area.is_not(None),
+                )
+                .group_by(ProposalProject.research_area)
+                .order_by(func.count().desc())
+            ).all()
+        ]
+    return out
+
+
+def proposal_rows(db: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """List-row extras for proposal grants: state, KPI due date, department."""
+    rows = db.execute(
+        select(Document.id, state_expression(), _kpi_due(), _owner_unit()).where(
+            Document.id.in_(document_ids), Document.kind == DocKind.PROPOSAL_DEV
+        )
+    ).all()
+    return {
+        doc_id: {"state": st, "kpi_due": due, "department": unit} for doc_id, st, due, unit in rows
     }
 
 
@@ -221,7 +329,7 @@ def snippet(db: Session, document: Document, q: str | None) -> str | None:
         return None
     closing = select(DocumentVersion.id).where(
         DocumentVersion.document_id == document.id,
-        DocumentVersion.purpose == VersionPurpose.CLOSURE,
+        DocumentVersion.purpose.in_((VersionPurpose.CLOSURE, VersionPurpose.PAPER)),
     )
     for text in db.scalars(
         select(DocumentPage.text)

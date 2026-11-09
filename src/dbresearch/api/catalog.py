@@ -9,7 +9,14 @@ from sqlalchemy import func, select
 
 from dbresearch import audit, search
 from dbresearch.auth import DB, CurrentUser, client_ip
-from dbresearch.models import Category, CategoryGroup, DocKind, DocStatus, FundingType
+from dbresearch.models import (
+    Category,
+    CategoryGroup,
+    DocKind,
+    DocStatus,
+    FundingSource,
+    FundingType,
+)
 from dbresearch.schemas import (
     CategoryGroupOut,
     CategoryNew,
@@ -40,6 +47,13 @@ def list_documents(
     ref_series: Annotated[str | None, Query(max_length=1)] = None,
     mine: bool = False,
     project: Annotated[list[Literal["open", "closed"]], Query()] = [],  # noqa: B006
+    section: Annotated[
+        str, Query(pattern="^(" + "|".join(search.SECTIONS) + ")$", description="web app section")
+    ] = "contracts",
+    funding_source: Annotated[list[FundingSource], Query()] = [],  # noqa: B006
+    state: Annotated[list[Literal["active", "overdue", "closed", "cancelled"]], Query()] = [],  # noqa: B006
+    department: Annotated[list[str], Query(max_length=300)] = [],  # noqa: B006
+    research_area: Annotated[list[str], Query(max_length=300)] = [],  # noqa: B006
     sort: Annotated[str, Query(pattern="^(" + "|".join(search.SORTS) + ")$")] = "relevance",
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -58,13 +72,22 @@ def list_documents(
         ref_series=ref_series,
         uploaded_by=user.id if mine else None,
         project=project,
+        section=section,
+        funding_source=funding_source,
+        state=state,
+        department=department,
+        research_area=research_area,
     )
     documents, total = search.search(db, filters, sort, page, page_size)
-    owners = search.owners(db, [d.id for d in documents])
+    ids = [d.id for d in documents]
+    owners = search.owners(db, ids)
+    extras = search.proposal_rows(db, ids)
     items = []
     for document in documents:
         item = DocumentSummary.model_validate(document)
         item.owners = owners.get(document.id, [])
+        for name, value in extras.get(document.id, {}).items():
+            setattr(item, name, value)
         item.snippet = search.snippet(db, document, q)
         items.append(item)
     return SearchOut(

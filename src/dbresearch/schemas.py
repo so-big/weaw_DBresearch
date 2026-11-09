@@ -6,7 +6,7 @@ Years are Gregorian internally; `*_be` fields carry the Buddhist-era value for d
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, computed_field
 
@@ -14,10 +14,13 @@ from dbresearch.models import (
     BudgetLineType,
     DocKind,
     DocStatus,
+    FundingSource,
     FundingType,
     LabelSource,
     OcrStatus,
     PersonRole,
+    ProjectEventType,
+    ProposalOutcome,
     ShareAccess,
     ShareEvent,
     UserRole,
@@ -64,6 +67,8 @@ class DocumentOut(BaseModel):
     id: uuid.UUID
     kind: DocKind | None
     funding_type: FundingType | None
+    funding_source: FundingSource | None = None
+    funder_name: str | None = None
     title: str
     title_en: str | None
     reference_no: str | None
@@ -80,6 +85,10 @@ class DocumentOut(BaseModel):
     closed_at: datetime | None = None
     closure_ref: str | None = None
     closure_note: str | None = None
+    cancelled_on: date | None = None
+    cancelled_at: datetime | None = None
+    cancel_ref: str | None = None
+    cancel_reason: str | None = None
     can_edit: bool = False
     versions: list[VersionOut] = []
 
@@ -126,7 +135,10 @@ class MetadataIn(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     title_en: str | None = Field(None, max_length=500)
     kind: DocKind
-    funding_type: FundingType
+    # Needed except for programme papers ('other'); set from funding_source when given.
+    funding_type: FundingType | None = None
+    funding_source: FundingSource | None = None
+    funder_name: str | None = Field(None, max_length=300)
     reference_no: str | None = Field(None, max_length=50)
     document_date: date | None = None
     effective_from: date | None = None
@@ -137,6 +149,56 @@ class MetadataIn(BaseModel):
     tags: list[TagChoice] = []
     people: list[PersonIn] = []
     budget_lines: list[BudgetLineIn] | None = None  # None = keep the existing lines
+    proposal: "ProposalIn | None" = None  # proposal-development grants only
+
+
+class ProposalIn(BaseModel):
+    """The fields only a proposal-development grant has (DESIGN §11)."""
+
+    request_ref: str | None = Field(None, max_length=200)
+    research_area: str | None = Field(None, max_length=300)
+    kpi_target: str | None = Field(None, max_length=2000)
+    kpi_due: date | None = None
+    kpi_result: str | None = Field(None, max_length=2000)
+    spent_total: Decimal | None = Field(None, ge=0, max_digits=14, decimal_places=2)
+    outcome: ProposalOutcome | None = None
+    outcome_funder: str | None = Field(None, max_length=300)
+    outcome_document_id: uuid.UUID | None = None
+
+
+class ProposalOut(ProposalIn):
+    model_config = ConfigDict(from_attributes=True)
+
+    outcome_document_title: str | None = None
+
+
+class EventOut(BaseModel):
+    id: uuid.UUID
+    event_type: ProjectEventType
+    event_on: date | None
+    memo_ref: str | None
+    details: dict
+    created_at: datetime
+    created_by_name: str | None = None
+    paper: "ClosureFileOut | None" = None  # the memo, with what the system read from it
+    paper_purpose: str | None = None  # 'main' | 'closure' | 'paper' (which file link to use)
+
+
+class CancelIn(BaseModel):
+    """Cancel a project (ยกเลิก). The date is the approval date on the cancellation memo."""
+
+    cancelled_on: date | None = None
+    cancel_ref: str | None = Field(None, max_length=200)
+    cancel_reason: str | None = Field(None, max_length=2000)
+
+
+class EventPatch(BaseModel):
+    event_on: date | None = None
+    memo_ref: str | None = Field(None, max_length=200)
+    note: str | None = Field(None, max_length=2000)
+
+
+PaperType = Literal["title_change", "budget_change", "close", "cancel", "other"]
 
 
 class CategoryOut(BaseModel):
@@ -188,6 +250,11 @@ class DocumentDetail(DocumentOut):
     budget_lines: list[BudgetLineOut] = []
     closed_by_name: str | None = None
     closure_files: list[ClosureFileOut] = []
+    # Proposal-development grants (DESIGN §11)
+    state: str | None = None  # active / overdue / closed / cancelled
+    proposal: ProposalOut | None = None
+    events: list[EventOut] = []
+    papers: list[ClosureFileOut] = []  # cancellation / change memos
 
 
 class CloseIn(BaseModel):
@@ -196,6 +263,9 @@ class CloseIn(BaseModel):
     closed_on: date | None = None
     closure_ref: str | None = Field(None, max_length=200)
     closure_note: str | None = Field(None, max_length=2000)
+    # Proposal grants: what was delivered and spent (stored on the project).
+    kpi_result: str | None = Field(None, max_length=2000)
+    spent_total: Decimal | None = Field(None, ge=0, max_digits=14, decimal_places=2)
 
 
 class CategoryNew(BaseModel):
@@ -228,6 +298,13 @@ class DocumentSummary(BaseModel):
     updated_at: datetime
     closed_on: date | None = None
     closed_at: datetime | None = None
+    funding_source: FundingSource | None = None
+    budget_total: Decimal | None = None
+    cancelled_at: datetime | None = None
+    # Proposal grants
+    state: str | None = None
+    kpi_due: date | None = None
+    department: str | None = None
     owners: list[str] = []
     snippet: str | None = None  # match wrapped in [[ ]] for highlighting
 
@@ -347,3 +424,7 @@ class UnlockIn(BaseModel):
 
 class PasswordOut(BaseModel):
     password: str
+
+
+MetadataIn.model_rebuild()
+EventOut.model_rebuild()

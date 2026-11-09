@@ -13,6 +13,7 @@ from dbresearch.models import (
     BudgetLine,
     Category,
     CategoryGroup,
+    DocKind,
     DocStatus,
     Document,
     DocumentCategory,
@@ -22,7 +23,8 @@ from dbresearch.models import (
     Tag,
     User,
 )
-from dbresearch.schemas import MetadataIn
+from dbresearch.projects import ProjectError, apply_proposal, set_funding
+from dbresearch.schemas import MetadataIn, ProposalIn
 from dbresearch.textnorm import normalize
 
 
@@ -122,6 +124,9 @@ def apply_metadata(
     document.title_en = normalize(data.title_en).strip() if data.title_en else None
     document.kind = data.kind
     document.funding_type = data.funding_type
+    set_funding(document, data.funding_source, data.funder_name)
+    if document.funding_type is None and data.kind != DocKind.OTHER:
+        raise MetadataError("Choose the funding source or internal/external funding")
     document.reference_no = reference
     document.document_date = data.document_date
     document.effective_from = data.effective_from
@@ -168,6 +173,14 @@ def apply_metadata(
                 unit=entry.unit,
             )
         )
+
+    if data.proposal is not None or document.kind == DocKind.PROPOSAL_DEV:
+        if document.kind != DocKind.PROPOSAL_DEV:
+            raise MetadataError("Proposal fields only apply to proposal-development grants")
+        try:
+            apply_proposal(db, document, data.proposal or ProposalIn())
+        except ProjectError as exc:
+            raise MetadataError(str(exc)) from exc
 
     if data.budget_lines is not None:
         db.execute(delete(BudgetLine).where(BudgetLine.document_id == document.id))

@@ -10,7 +10,7 @@ from rapidfuzz import fuzz
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from dbresearch import audit, jobs
+from dbresearch import audit, jobs, projects, search
 from dbresearch.auth import DB, CurrentUser, client_ip
 from dbresearch.documents import (
     MAX_BUNDLE,
@@ -43,6 +43,9 @@ from dbresearch.models import (
     FundingType,
     OcrStatus,
     Person,
+    ProjectEvent,
+    ProjectEventType,
+    ProposalProject,
     Tag,
     User,
     VersionPurpose,
@@ -50,18 +53,24 @@ from dbresearch.models import (
 from dbresearch.schemas import (
     AutofillOut,
     BudgetLineOut,
+    CancelIn,
     CategoryOut,
     CloseIn,
     ClosureFileOut,
     DocumentDetail,
     DocumentIds,
+    EventOut,
+    EventPatch,
     MetadataIn,
+    PaperType,
     PersonOut,
+    ProposalOut,
     TagOut,
     TrashItem,
     VersionOut,
 )
 from dbresearch.search import owners as document_owners
+from dbresearch.search_text import build as build_search_text
 from dbresearch.search_text import compact
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -95,6 +104,8 @@ def document_detail(db: Session, document: Document, user: User) -> DocumentDeta
     out.closure_files = [
         closure_file(v, document) for v in versions if v.purpose == VersionPurpose.CLOSURE
     ][::-1]
+    if projects.is_proposal(document):
+        _proposal_detail(db, document, out, {v.id: v for v in versions})
     if document.closed_by:
         out.closed_by_name = db.scalar(
             select(User.display_name).where(User.id == document.closed_by)
@@ -146,6 +157,42 @@ def document_detail(db: Session, document: Document, user: User) -> DocumentDeta
     return out
 
 
+def _proposal_detail(db: Session, document: Document, out: DocumentDetail, versions: dict) -> None:
+    out.state = db.scalar(select(search.state_expression()).where(Document.id == document.id))
+    details = db.get(ProposalProject, document.id)
+    if details is not None:
+        out.proposal = ProposalOut.model_validate(details)
+        if details.outcome_document_id:
+            out.proposal.outcome_document_title = db.scalar(
+                select(Document.title).where(Document.id == details.outcome_document_id)
+            )
+    out.papers = [
+        closure_file(v, document)
+        for v in sorted(versions.values(), key=lambda v: v.version_no)
+        if v.purpose == VersionPurpose.PAPER
+    ]
+    names = dict(db.execute(select(User.id, User.display_name)).all())
+    events = db.scalars(
+        select(ProjectEvent)
+        .where(ProjectEvent.document_id == document.id)
+        .order_by(ProjectEvent.event_on.asc().nulls_last(), ProjectEvent.created_at)
+    )
+    for event in events:
+        item = EventOut(
+            id=event.id,
+            event_type=event.event_type,
+            event_on=event.event_on,
+            memo_ref=event.memo_ref,
+            details=event.details or {},
+            created_at=event.created_at,
+            created_by_name=names.get(event.created_by),
+        )
+        if (version := versions.get(event.version_id)) is not None:
+            item.paper = closure_file(version, document)
+            item.paper_purpose = version.purpose.value
+        out.events.append(item)
+
+
 def closure_file(version: DocumentVersion, document: Document) -> ClosureFileOut:
     out = ClosureFileOut.model_validate(version)
     found = version.extracted_fields or {}
@@ -188,8 +235,11 @@ def upload(
     except UploadError as exc:
         db.rollback()
         return _upload_errors(exc)
+    document = db.get(Document, version.document_id)
+    if projects.is_proposal(document):
+        projects.ensure_proposal(db, document)
     db.commit()
-    return document_detail(db, db.get(Document, version.document_id), user)
+    return document_detail(db, document, user)
 
 
 # ───────────── Several documents at once (select mode) ─────────────
@@ -384,6 +434,9 @@ def add_closure_file(
 def close(document_id: uuid.UUID, body: CloseIn, request: Request, db: DB, user: CurrentUser):
     """Close the project and move it to the archive (or edit the closing details)."""
     document = editable_document(db, document_id, user)
+    if document.cancelled_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A cancelled project can't be closed")
+    first = document.closed_at is None
     close_project(
         db,
         user,
@@ -393,16 +446,142 @@ def close(document_id: uuid.UUID, body: CloseIn, request: Request, db: DB, user:
         closure_note=body.closure_note,
         ip=client_ip(request),
     )
+    if projects.is_proposal(document):
+        details = projects.ensure_proposal(db, document)
+        details.kpi_result = (body.kpi_result or "").strip() or details.kpi_result
+        if body.spent_total is not None:
+            details.spent_total = body.spent_total
+        if first:
+            projects.add_event(
+                db,
+                user,
+                document,
+                ProjectEventType.CLOSE,
+                event_on=body.closed_on,
+                memo_ref=body.closure_ref,
+                details={"kpi_result": details.kpi_result} if details.kpi_result else {},
+            )
+    db.commit()
+    return document_detail(db, document, user)
+
+
+@router.post("/{document_id}/cancel", response_model=DocumentDetail)
+def cancel(document_id: uuid.UUID, body: CancelIn, request: Request, db: DB, user: CurrentUser):
+    """Cancel a proposal grant (ยกเลิก), or edit the cancellation details."""
+    document = editable_document(db, document_id, user)
+    if not projects.is_proposal(document):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only proposal grants can be cancelled")
+    first = document.cancelled_at is None
+    try:
+        projects.cancel_project(
+            db,
+            user,
+            document,
+            cancelled_on=body.cancelled_on,
+            cancel_ref=body.cancel_ref,
+            cancel_reason=body.cancel_reason,
+            ip=client_ip(request),
+        )
+    except projects.ProjectError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if first:
+        projects.add_event(
+            db,
+            user,
+            document,
+            ProjectEventType.CANCEL,
+            event_on=body.cancelled_on,
+            memo_ref=body.cancel_ref,
+            details={"reason": document.cancel_reason} if document.cancel_reason else {},
+        )
     db.commit()
     return document_detail(db, document, user)
 
 
 @router.post("/{document_id}/reopen", response_model=DocumentDetail)
 def reopen(document_id: uuid.UUID, request: Request, db: DB, user: CurrentUser):
+    """Active again: undoes a close or (proposal grants) a cancellation. Papers stay."""
     document = editable_document(db, document_id, user)
-    if document.closed_at is None:
+    if document.closed_at is None and document.cancelled_at is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "The project is not closed")
-    reopen_project(db, user, document, client_ip(request))
+    if document.closed_at is not None:
+        reopen_project(db, user, document, client_ip(request))
+    else:
+        audit.record(
+            db,
+            "document.reopen",
+            "document",
+            document.id,
+            actor_id=user.id,
+            ip=client_ip(request),
+            was="cancelled",
+        )
+        projects.clear_cancel(document)
+    if projects.is_proposal(document):
+        projects.add_event(db, user, document, ProjectEventType.REOPEN)
+    db.commit()
+    return document_detail(db, document, user)
+
+
+@router.post(
+    "/{document_id}/papers", status_code=status.HTTP_201_CREATED, response_model=DocumentDetail
+)
+def add_paper(
+    document_id: uuid.UUID,
+    request: Request,
+    db: DB,
+    user: CurrentUser,
+    file: Annotated[UploadFile, File()],
+    paper_type: Annotated[PaperType, Form()],
+    new_title: Annotated[str | None, Form(max_length=500)] = None,
+):
+    """Attach a memo to a proposal grant's timeline (closing, cancellation, title or budget
+    change). Stored encrypted and OCR'd; what it says pre-fills the next step's form. A title
+    change with `new_title` renames the project at once (the old title stays searchable)."""
+    document = editable_document(db, document_id, user)
+    if not projects.is_proposal(document):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only proposal grants have a timeline")
+    purpose = VersionPurpose.CLOSURE if paper_type == "close" else VersionPurpose.PAPER
+    try:
+        version = store_version(
+            db,
+            user,
+            file.file,
+            file.filename or "",
+            document=document,
+            purpose=purpose,
+            ip=client_ip(request),
+        )
+    except UploadError as exc:
+        db.rollback()
+        return _upload_errors(exc)
+    details = {}
+    if paper_type == "title_change" and new_title and new_title.strip():
+        details = projects.change_title(db, user, document, new_title, client_ip(request))
+    projects.add_event(
+        db, user, document, projects.PAPER_EVENTS[paper_type], version=version, details=details
+    )
+    db.flush()
+    document.search_text = build_search_text(db, document)
+    db.commit()
+    return document_detail(db, document, user)
+
+
+@router.patch("/{document_id}/events/{event_id}", response_model=DocumentDetail)
+def edit_event(
+    document_id: uuid.UUID,
+    event_id: uuid.UUID,
+    body: EventPatch,
+    request: Request,
+    db: DB,
+    user: CurrentUser,
+):
+    """Correct an event's date, memo no. or note (as read from the memo)."""
+    document = editable_document(db, document_id, user)
+    try:
+        projects.update_event(db, user, document, event_id, body, client_ip(request))
+    except projects.ProjectError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     db.commit()
     return document_detail(db, document, user)
 
@@ -503,6 +682,7 @@ def download(
     user: CurrentUser,
     version: int | None = None,
     closure: int | None = None,
+    paper: int | None = None,
     inline: bool = False,
 ):
     """The current version, `?version=N`, or closing paper `?closure=N`. `inline=true` opens
@@ -513,6 +693,10 @@ def download(
         query = query.where(
             DocumentVersion.purpose == VersionPurpose.CLOSURE,
             DocumentVersion.version_no == closure,
+        )
+    elif paper is not None:
+        query = query.where(
+            DocumentVersion.purpose == VersionPurpose.PAPER, DocumentVersion.version_no == paper
         )
     elif version is None:
         query = query.where(DocumentVersion.id == document.current_version_id)
@@ -532,6 +716,7 @@ def download(
         ip=client_ip(request),
         version=stored.version_no,
         **({"closure_file": True} if closure is not None else {}),
+        **({"paper": True} if paper is not None else {}),
     )
     db.commit()
     return stream_version(stored, inline)

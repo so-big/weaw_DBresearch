@@ -8,17 +8,22 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Query
 from sqlalchemy import func, or_, select
 
-from dbresearch import shares
+from dbresearch import search, shares
 from dbresearch.auth import DB, CurrentUser
 from dbresearch.models import (
     AuditEvent,
     Category,
     CategoryGroup,
+    DocKind,
     DocStatus,
     Document,
     DocumentCategory,
+    DocumentPerson,
     DocumentVersion,
     OcrStatus,
+    PersonRole,
+    ProposalOutcome,
+    ProposalProject,
     ShareLink,
     User,
     UserRole,
@@ -139,8 +144,10 @@ def charts(
     months: Annotated[int, Query(ge=1, le=36)] = 12,
     days: Annotated[int, Query(ge=7, le=180)] = 30,
 ) -> dict:
-    """Data for the overview charts. Live documents only; counts, not file contents."""
+    """Data for the overview charts. Live documents only; counts, not file contents.
+    The by-year figures are research contracts; proposal grants have /reports/proposals."""
     live = Document.deleted_at.is_(None)
+    contracts = search.section_condition("contracts")
 
     years: dict[int, dict] = {}
     for fiscal_year, funding, count, budget in db.execute(
@@ -150,7 +157,7 @@ def charts(
             func.count(),
             func.coalesce(func.sum(Document.budget_total), 0),
         )
-        .where(live, Document.fiscal_year.is_not(None))
+        .where(live, contracts, Document.fiscal_year.is_not(None))
         .group_by(Document.fiscal_year, Document.funding_type)
     ):
         row = years.setdefault(
@@ -213,9 +220,76 @@ def charts(
     return {
         "by_year": [years[y] for y in sorted(years)],
         "no_fiscal_year": db.scalar(
-            select(func.count()).select_from(Document).where(live, Document.fiscal_year.is_(None))
+            select(func.count())
+            .select_from(Document)
+            .where(live, contracts, Document.fiscal_year.is_(None))
         ),
         "uploads_by_month": [{"month": m, "count": uploads.get(m, 0)} for m in month_keys],
         "activity_by_day": [{"day": d.isoformat(), **activity[d]} for d in day_keys],
         "categories": list(groups.values()),
     }
+
+
+@router.get("/proposals")
+def proposals_report(db: DB, user: CurrentUser) -> dict:
+    """Proposal-development grants per fiscal year: how many, their state, money, outcome."""
+    live = Document.deleted_at.is_(None)
+    state = search.state_expression()
+    years: dict[int | None, dict] = {}
+
+    def row(year: int | None) -> dict:
+        return years.setdefault(
+            year,
+            {
+                "fiscal_year": year,
+                "fiscal_year_be": year + 543 if year else None,
+                "total": 0,
+                "active": 0,
+                "overdue": 0,
+                "closed": 0,
+                "cancelled": 0,
+                "budget": 0.0,
+                "spent": 0.0,
+                "won": 0,
+            },
+        )
+
+    query = (
+        select(
+            Document.fiscal_year,
+            state,
+            func.count(),
+            func.coalesce(func.sum(Document.budget_total), 0),
+            func.coalesce(func.sum(ProposalProject.spent_total), 0),
+            func.count().filter(ProposalProject.outcome == ProposalOutcome.WON),
+        )
+        .outerjoin(ProposalProject, ProposalProject.document_id == Document.id)
+        .where(live, Document.kind == DocKind.PROPOSAL_DEV)
+        .group_by(Document.fiscal_year, state)
+    )
+    for year, st, count, budget, spent, won in db.execute(query):
+        r = row(year)
+        r["total"] += count
+        r[st] += count
+        r["budget"] += float(budget)
+        r["spent"] += float(spent)
+        r["won"] += won
+    unit = (
+        select(DocumentPerson.unit)
+        .where(DocumentPerson.document_id == Document.id, DocumentPerson.role == PersonRole.OWNER)
+        .limit(1)
+        .scalar_subquery()
+    )
+    departments = [
+        {"department": name, "count": count}
+        for name, count in db.execute(
+            select(unit, func.count())
+            .where(live, Document.kind == DocKind.PROPOSAL_DEV)
+            .group_by(unit)
+            .order_by(func.count().desc())
+        )
+    ]
+    ordered = sorted(
+        years.values(), key=lambda r: (r["fiscal_year"] is None, r["fiscal_year"] or 0)
+    )
+    return {"by_year": ordered, "by_department": departments}

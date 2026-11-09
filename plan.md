@@ -1,4 +1,4 @@
-# plan.md — Task Tracker
+3# plan.md — Task Tracker
 
 Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `[~]` in progress · `[x]` done · `[?]` needs decision.
 
@@ -205,7 +205,7 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 
 ### Decided (2026-11-09)
 - **Funding source filter** with exactly: `งบประมาณ FF`, `รายได้ ม.นเรศวร`, `รายได้คณะ`, `แหล่งทุนภายนอก`
-  (all sections). **FF counts as external** when internal/external is derived.
+  (all sections). ~~FF counts as external~~ → **FF counts as internal** (changed 2026-11-11) when internal/external is derived.
 - Research Hangout files and the faculty-meeting resolution: a **separate part** for now
   ("เอกสารอื่น ๆ" per fiscal year); ask the research office later what they are (maybe a summary of all funding).
 - **The research office enters** proposal-development papers (teachers just sign). Research office staff
@@ -220,12 +220,21 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
 ### Open questions
 - [?] What are the Research Hangout files and the faculty-meeting resolution? (ask the research office)
 
+## Phase 8 — New front-end design (on hold, added 2026-11-11)
+
+- [?] **Decide again when the remaining tasks are almost done**: whether to redesign the web app, and how far
+  (new look only, or new layout and screens too). Not started; no design work until then.
+- [ ] When it starts: brainstorm the direction, make mocks (`docs/ui/`), agree on them, then update DESIGN §10
+  (current UI rules) and CLAUDE.md before building
+
 ## Demo environment
 
 - Demo admin: username `admin`, password in `~/dbresearch/secrets/demo-admin-password` on the server (mode 600).
 - Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
 ## Log
+
+- 2026-11-11 — FF (Fundamental Fund) now counts as **internal** funding (was external); migration `d5a7c3e9f1b2` switches existing FF documents. New front-end design added as Phase 8, on hold until the remaining tasks are almost done.
 
 - 2026-11-11 — Phase 6: approval queue for first university logins (pending → approve / reject on the Users page). Share links confirmed working on phone and PC.
 

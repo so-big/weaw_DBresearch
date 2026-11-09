@@ -11,7 +11,7 @@ export const STATUS = {
 };
 export const KIND = { contract: 'สัญญา', grant: 'ทุนวิจัย', proposal_dev: 'ทุนพัฒนาข้อเสนอ', other: 'เอกสารประกอบ' };
 export const FUNDING = { internal: 'ทุนภายใน', external: 'ทุนภายนอก' };
-// Where the money comes from (the funding filter). FF counts as external.
+// Where the money comes from (the funding filter). FF counts as internal.
 export const FUNDING_SOURCE = {
   ff: 'งบประมาณ FF',
   nu_income: 'รายได้ ม.นเรศวร',

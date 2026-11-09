@@ -219,7 +219,7 @@ def test_funding_type_follows_funding_source(conn) -> None:
     for source, ok, wrong in (
         ("faculty_income", "internal", "external"),
         ("nu_income", "internal", "external"),
-        ("ff", "external", "internal"),  # FF counts as external
+        ("ff", "internal", "external"),  # FF counts as internal
         ("external", "external", "internal"),
     ):
         with conn.begin_nested():
@@ -233,7 +233,7 @@ def test_python_funding_map_matches_the_check() -> None:
 
     assert set(FUNDING_TYPE_OF) == set(FundingSource)
     internal = {s for s, t in FUNDING_TYPE_OF.items() if t == "internal"}
-    assert internal == {FundingSource.NU_INCOME, FundingSource.FACULTY_INCOME}
+    assert internal == {FundingSource.FF, FundingSource.NU_INCOME, FundingSource.FACULTY_INCOME}
 
 
 def test_programme_papers_are_ready_without_a_funding_type(conn) -> None:

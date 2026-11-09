@@ -81,9 +81,12 @@ def test_review_saves_funding_source_and_project_fields(client, login):
     assert doc["proposal"]["research_area"] == "เทคโนโลยีสมมติ"
     assert [e["event_type"] for e in doc["events"]] == ["approved"]
     assert doc["events"][0]["memo_ref"] == "อว 0000.00/1"
-    # FF counts as external.
+    # FF counts as internal; an outside funder is external.
     ff = client.put(f"/documents/{grant}/metadata", json=review(funding_source="ff")).json()
-    assert ff["funding_type"] == "external" and len(ff["events"]) == 1
+    assert ff["funding_type"] == "internal" and len(ff["events"]) == 1
+    outside = review(funding_source="external", funder_name="สกสว.")
+    outside = client.put(f"/documents/{grant}/metadata", json=outside).json()
+    assert outside["funding_type"] == "external"
     # Neither a source nor a type: refused. Proposal fields on a contract: refused.
     missing = review(funding_source=None)
     assert client.put(f"/documents/{grant}/metadata", json=missing).status_code == 422

@@ -51,7 +51,7 @@ def ensure_proposal(db: Session, document: Document) -> ProposalProject:
 
 
 def set_funding(document: Document, source: FundingSource | None, funder: str | None) -> None:
-    """funding_type follows the source (FF counts as external); the DB checks it too."""
+    """funding_type follows the source (FF counts as internal); the DB checks it too."""
     document.funding_source = source
     document.funder_name = (funder or "").strip() or None
     if source is not None:

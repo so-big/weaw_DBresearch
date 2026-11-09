@@ -344,7 +344,7 @@
         <div class="field" class:invalid={errors.funding_source}>
           <span>แหล่งเงินทุน *</span>
           <div class="seg wrap">{#each Object.entries(FUNDING_SOURCE) as [v, l] (v)}<button type="button" aria-pressed={form.funding_source === v} onclick={() => (form.funding_source = v)}>{l}</button>{/each}</div>
-          {#if errors.funding_source}<small class="err">{errors.funding_source}</small>{:else}<small>รายได้คณะ และรายได้ ม.นเรศวร นับเป็นทุนภายใน · งบประมาณ FF และแหล่งทุนภายนอก นับเป็นทุนภายนอก</small>{/if}
+          {#if errors.funding_source}<small class="err">{errors.funding_source}</small>{:else}<small>งบประมาณ FF รายได้ ม.นเรศวร และรายได้คณะ นับเป็นทุนภายใน · แหล่งทุนภายนอก นับเป็นทุนภายนอก</small>{/if}
           {@render hint('funding_source')}
         </div>
         {#if form.funding_source === 'external'}

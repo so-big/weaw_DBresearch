@@ -107,9 +107,10 @@ class FundingSource(enum.StrEnum):
     EXTERNAL = "external"  # แหล่งทุนภายนอก (+ documents.funder_name)
 
 
-# internal / external follows from the source; FF counts as external (decided 2026-11-09).
+# internal / external follows from the source; FF counts as internal (decided 2026-11-11,
+# was external).
 FUNDING_TYPE_OF = {
-    FundingSource.FF: "external",
+    FundingSource.FF: "internal",
     FundingSource.NU_INCOME: "internal",
     FundingSource.FACULTY_INCOME: "internal",
     FundingSource.EXTERNAL: "external",
@@ -290,7 +291,8 @@ class Document(Base):
         # funding_type follows funding_source (FUNDING_TYPE_OF).
         CheckConstraint(
             "funding_source IS NULL OR (funding_type IS NOT NULL AND "
-            "(funding_source IN ('nu_income', 'faculty_income')) = (funding_type = 'internal'))",
+            "(funding_source IN ('ff', 'nu_income', 'faculty_income')) = "
+            "(funding_type = 'internal'))",
             name="funding_type_matches_source",
         ),
         CheckConstraint("closed_at IS NULL OR cancelled_at IS NULL", name="closed_or_cancelled"),

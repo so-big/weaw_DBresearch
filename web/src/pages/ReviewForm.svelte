@@ -117,14 +117,15 @@
 
   function pickType(v) {
     form.funding_type = v;
-    const internal = form.funding_source === 'nu_income' || form.funding_source === 'faculty_income';
+    const internal = INTERNAL_SOURCES.includes(form.funding_source);
     if (form.funding_source && internal !== (v === 'internal')) form.funding_source = ''; // no longer matches
   }
-  // Funding source → internal / external (FF counts as external; the server checks it too).
+  // Funding source → internal / external (FF counts as internal; the server checks it too).
+  const INTERNAL_SOURCES = ['ff', 'nu_income', 'faculty_income'];
   function pickSource(v) {
     if (form.funding_source === v) return (form.funding_source = '');
     form.funding_source = v;
-    form.funding_type = v === 'nu_income' || v === 'faculty_income' ? 'internal' : 'external';
+    form.funding_type = INTERNAL_SOURCES.includes(v) ? 'internal' : 'external';
   }
 
   // ───────── Suggestion hints under each field ─────────
@@ -461,7 +462,7 @@
               <button type="button" aria-pressed={form.funding_source === v} onclick={() => pickSource(v)}>{l}</button>
             {/each}
           </div>
-          <small>ไม่บังคับ · เลือกแล้วประเภทเงินทุนจะตั้งให้ตามแหล่งเงิน (งบประมาณ FF นับเป็นทุนภายนอก)</small>
+          <small>ไม่บังคับ · เลือกแล้วประเภทเงินทุนจะตั้งให้ตามแหล่งเงิน (งบประมาณ FF นับเป็นทุนภายใน)</small>
         </div>
         {#if form.funding_source === 'external'}
           <label class="field"><span>ชื่อแหล่งทุนภายนอก</span><input id="f-funder" bind:value={form.funder_name} /></label>

@@ -7,7 +7,9 @@ import { bumpReviewCount } from './state.svelte.js';
 const PARALLEL = 2;
 const MAX_MB = 100;
 
-export const uploads = $state({ open: false, items: [] });
+// `kind`: what new files become ('' = a contract, reviewed later; 'proposal_dev' = a
+// proposal-development grant). Preset from the page the upload starts on.
+export const uploads = $state({ open: false, items: [], kind: '' });
 let nextId = 0;
 let running = 0;
 const requests = new Map(); // row id -> XMLHttpRequest (kept outside the reactive state)
@@ -16,7 +18,8 @@ const active = (i) => i.state === 'wait' || i.state === 'up';
 export const busyCount = () => uploads.items.filter(active).length;
 export const doneOk = () => uploads.items.filter((i) => i.state === 'ok');
 
-export function openUpload() {
+export function openUpload(kind) {
+  if (typeof kind === 'string') uploads.kind = kind;
   uploads.open = true;
 }
 export function closeUpload() {
@@ -34,7 +37,7 @@ function isPdf(file) {
 
 export function addFiles(fileList) {
   for (const file of Array.from(fileList || [])) {
-    const item = { id: ++nextId, file, name: file.name, size: file.size, progress: 0, state: 'wait', message: '', docId: null };
+    const item = { id: ++nextId, file, name: file.name, size: file.size, progress: 0, state: 'wait', message: '', docId: null, kind: uploads.kind };
     if (!isPdf(file)) {
       item.state = 'bad';
       item.message = 'รับเฉพาะไฟล์ PDF';
@@ -66,6 +69,7 @@ async function send(id) {
     row.file,
     (p) => (row.progress = p),
     (xhr) => requests.set(id, xhr),
+    { kind: row.kind },
   );
   requests.delete(id);
   running--;

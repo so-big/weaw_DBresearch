@@ -4,7 +4,7 @@
   import { trashDocs } from '../lib/trash.js';
   import { navigate } from '../lib/router.svelte.js';
   import { toast, screen, bumpReviewCount } from '../lib/state.svelte.js';
-  import { STATUS, KIND, FUNDING, ROLE, thDate, thDateTime, money, bytes, personName, toThaiInput, parseThaiDate } from '../lib/format.js';
+  import { STATUS, KIND, FUNDING, FUNDING_SOURCE, ROLE, thDate, thDateTime, money, bytes, personName, toThaiInput, parseThaiDate } from '../lib/format.js';
   import Icon from '../components/Icon.svelte';
   import Modal from '../components/Modal.svelte';
   import ShareDialog from '../components/ShareDialog.svelte';
@@ -21,7 +21,9 @@
   async function load() {
     clearTimeout(timer);
     try {
-      doc = await get(`/documents/${id}`);
+      const d = await get(`/documents/${id}`);
+      if (d.kind === 'proposal_dev' || d.kind === 'other') return navigate(`/proposals/${id}`, { replace: true });
+      doc = d;
       error = '';
       // While the scan (or a closing paper) is being read, check back every few seconds.
       const reading = doc.closure_files.some((f) => f.ocr_status === 'pending' || f.ocr_status === 'running');
@@ -45,6 +47,7 @@
           ['เลขที่สัญญา', doc.reference_no, 'cno'],
           ['ประเภทเอกสาร', KIND[doc.kind]],
           ['ประเภทเงินทุน', FUNDING[doc.funding_type]],
+          ['แหล่งเงินทุน', doc.funding_source && `${FUNDING_SOURCE[doc.funding_source]}${doc.funder_name ? ` · ${doc.funder_name}` : ''}`],
           ['ปีงบประมาณ', doc.fiscal_year_be && `พ.ศ. ${doc.fiscal_year_be}`],
           ['วันที่เอกสาร', doc.document_date && thDate(doc.document_date)],
           ['ระยะเวลา', doc.effective_from && `${thDate(doc.effective_from)} – ${thDate(doc.effective_to)}`],

@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { route, match, navigate } from './lib/router.svelte.js';
   import { get, setUnauthorizedHandler } from './lib/api.js';
   import { session, screen, refreshReviewCount, toast } from './lib/state.svelte.js';
@@ -18,6 +18,8 @@
   import Account from './pages/Account.svelte';
   import Admin from './pages/admin/Admin.svelte';
   import Overview from './pages/Overview.svelte';
+  import ProposalDetail from './pages/ProposalDetail.svelte';
+  import ProposalReview from './pages/ProposalReview.svelte';
   import Trash from './pages/Trash.svelte';
   import NotFound from './pages/NotFound.svelte';
 
@@ -58,7 +60,8 @@
 
   const page = $derived.by(() => {
     const p = route.path;
-    if (p === '/documents') return { C: Documents };
+    if (p === '/documents') return { C: Documents, props: { section: 'contracts' }, key: 'contracts' };
+    if (p === '/proposals') return { C: Documents, props: { section: 'proposals' }, key: 'proposals' };
     if (p === '/review') return { C: ReviewQueue };
     if (p === '/shares') return { C: Shares };
     if (p === '/account') return { C: Account };
@@ -66,9 +69,19 @@
     if (p === '/trash') return { C: Trash };
     if (p === '/admin' || p.startsWith('/admin/')) return { C: Admin, props: { section: p.split('/')[2] || 'users' } };
     let m;
+    if ((m = match('/proposals/:id/review'))) return { C: ProposalReview, props: { id: m.id }, key: `pr${m.id}` };
+    if ((m = match('/proposals/:id'))) return { C: ProposalDetail, props: { id: m.id }, key: `p${m.id}` };
     if ((m = match('/documents/:id/review'))) return { C: ReviewForm, props: { id: m.id }, key: `r${m.id}` };
     if ((m = match('/documents/:id'))) return { C: DocumentDetail, props: { id: m.id }, key: `d${m.id}` };
     return { C: NotFound };
+  });
+
+  // New uploads become proposal grants when started from that section.
+  $effect(() => {
+    const inProposals = route.path === '/proposals' || route.path.startsWith('/proposals/');
+    untrack(() => {
+      if (!uploads.open) uploads.kind = inProposals ? 'proposal_dev' : '';
+    });
   });
 
   // Drop files anywhere on the app to upload them. Browsers and file managers announce files

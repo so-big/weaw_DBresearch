@@ -115,6 +115,39 @@ def add_event(
     return event
 
 
+def record_decision(
+    db: Session,
+    user: User,
+    document: Document,
+    event_type: ProjectEventType,
+    *,
+    event_on: date | None,
+    memo_ref: str | None,
+    details: dict,
+) -> ProjectEvent:
+    """The close / cancel action's timeline entry. When its memo was just attached (an undated
+    event of the same type), fill that one in instead of adding a second entry."""
+    pending = db.scalar(
+        select(ProjectEvent)
+        .where(
+            ProjectEvent.document_id == document.id,
+            ProjectEvent.event_type == event_type,
+            ProjectEvent.event_on.is_(None),
+            ProjectEvent.version_id.is_not(None),
+        )
+        .order_by(ProjectEvent.created_at.desc())
+        .limit(1)
+    )
+    if pending is None:
+        return add_event(
+            db, user, document, event_type, event_on=event_on, memo_ref=memo_ref, details=details
+        )
+    pending.event_on = event_on
+    pending.memo_ref = (memo_ref or "").strip() or pending.memo_ref
+    pending.details = {**(pending.details or {}), **details}
+    return pending
+
+
 def change_title(db: Session, user: User, document: Document, new_title: str, ip: str | None):
     """A title-change memo was approved: the project goes by its new title; the old one
     stays findable in the event (search_text indexes it)."""

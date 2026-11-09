@@ -8,7 +8,8 @@
   import Modal from './Modal.svelte';
 
   const tabs = $derived([
-    { href: '/documents', label: 'เอกสาร', on: route.path === '/documents' || route.path.startsWith('/documents/') },
+    { href: '/documents', label: 'สัญญาทุนวิจัย', on: route.path === '/documents' || route.path.startsWith('/documents/') },
+    { href: '/proposals', label: 'ทุนพัฒนาข้อเสนอ', on: route.path === '/proposals' || route.path.startsWith('/proposals/') },
     { href: '/review', label: 'รอตรวจสอบ', count: review.count, on: route.path === '/review' },
     { href: '/overview', label: 'ภาพรวม', on: route.path === '/overview' },
     { href: '/shares', label: 'ลิงก์แชร์', on: route.path === '/shares' },
@@ -17,7 +18,9 @@
 
   let nav = $state();
   let ind = $state({ x: 0, w: 0, show: false });
-  let q = $state(route.path === '/documents' ? route.query.get('q') || '' : '');
+  // The search box searches the section you are in (contracts unless in proposal grants).
+  const listPath = $derived(route.path.startsWith('/proposals') ? '/proposals' : '/documents');
+  let q = $state(route.path === '/documents' || route.path === '/proposals' ? route.query.get('q') || '' : '');
   let menuOpen = $state(false);
   let askAll = $state(false);
   let searchInput = $state();
@@ -39,16 +42,17 @@
   });
 
   $effect(() => {
-    if (route.path === '/documents') q = route.query.get('q') || '';
+    if (route.path === '/documents' || route.path === '/proposals') q = route.query.get('q') || '';
   });
 
   function submit(e) {
     e.preventDefault();
-    const sp = new URLSearchParams(route.path === '/documents' ? route.query : '');
+    const here = route.path === listPath;
+    const sp = new URLSearchParams(here ? route.query : '');
     if (q.trim()) sp.set('q', q.trim());
     else sp.delete('q');
     sp.delete('page');
-    navigate(`/documents${sp.toString() ? `?${sp}` : ''}`, { replace: route.path === '/documents' });
+    navigate(`${listPath}${sp.toString() ? `?${sp}` : ''}`, { replace: here });
   }
 
   function onKey(e) {
@@ -86,7 +90,7 @@
     {#if route.path !== '/documents'}
       <form class="search" onsubmit={submit} role="search">
         <Icon name="search" size={16} />
-        <input bind:this={searchInput} bind:value={q} type="search" placeholder="ค้นหาชื่อเรื่อง เลขสัญญา ข้อความ" aria-label="ค้นหาเอกสาร" />
+        <input bind:this={searchInput} bind:value={q} type="search" placeholder={listPath === '/proposals' ? 'ค้นหาทุนพัฒนาข้อเสนอ' : 'ค้นหาชื่อเรื่อง เลขสัญญา ข้อความ'} aria-label="ค้นหาเอกสาร" />
         <kbd>/</kbd>
       </form>
     {/if}

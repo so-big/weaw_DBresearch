@@ -456,7 +456,7 @@ def close(document_id: uuid.UUID, body: CloseIn, request: Request, db: DB, user:
         if body.spent_total is not None:
             details.spent_total = body.spent_total
         if first:
-            projects.add_event(
+            projects.record_decision(
                 db,
                 user,
                 document,
@@ -489,7 +489,7 @@ def cancel(document_id: uuid.UUID, body: CancelIn, request: Request, db: DB, use
     except projects.ProjectError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     if first:
-        projects.add_event(
+        projects.record_decision(
             db,
             user,
             document,

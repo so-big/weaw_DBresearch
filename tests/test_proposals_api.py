@@ -168,3 +168,16 @@ def test_filters_facets_and_report(client, login):
     assert years[2025]["overdue"] == 1 and years[2026]["active"] == 1
     assert years[2026]["budget"] == 20000.0
     assert {d["department"] for d in report["by_department"]} == {"ภาควิชาสมมติ", "ภาควิชาอื่น"}
+
+
+def test_closing_with_its_memo_is_one_timeline_entry(client, login):
+    login()
+    grant = new_grant(client)
+    client.put(f"/documents/{grant}/metadata", json=review())
+    paper(client, grant, "close")  # the memo first, as the close form uploads it
+    closed = client.post(
+        f"/documents/{grant}/close", json={"closed_on": "2026-08-04", "closure_ref": "อว 1/2"}
+    ).json()
+    closes = [e for e in closed["events"] if e["event_type"] == "close"]
+    assert len(closes) == 1
+    assert closes[0]["event_on"] == "2026-08-04" and closes[0]["paper_purpose"] == "closure"

@@ -15,14 +15,16 @@
   let data = $state(null);
   let charts = $state(null);
   let gaps = $state(null);
+  let grants = $state(null); // proposal-development grants per fiscal year (DESIGN §11)
   let error = $state('');
   let group = $state('research_type');
 
-  Promise.all([get('/reports/overview'), get('/reports/charts'), get('/reports/missing-numbers')])
-    .then(([o, c, m]) => {
+  Promise.all([get('/reports/overview'), get('/reports/charts'), get('/reports/missing-numbers'), get('/reports/proposals')])
+    .then(([o, c, m, p]) => {
       data = o;
       charts = c;
       gaps = m;
+      grants = p;
       if (!c.categories.some((g) => g.key === group) && c.categories[0]) group = c.categories[0].key;
     })
     .catch((err) => (error = errorText(err)));
@@ -32,6 +34,15 @@
     { key: 'external', label: 'ทุนภายนอก', color: 'var(--c-external)' },
     { key: 'unset', label: 'ยังไม่ระบุ', color: 'var(--c-unset)' },
   ];
+  // Grants by state; the KPI-overdue ones stand out in the warning colour.
+  const STATES = [
+    { key: 'closed', label: 'ปิดทุนแล้ว', color: 'var(--ok)' },
+    { key: 'active', label: 'ดำเนินการอยู่', color: 'var(--info)' },
+    { key: 'overdue', label: 'เกินกำหนด', color: 'var(--warn)' },
+    { key: 'cancelled', label: 'ยกเลิก', color: 'var(--faint)' },
+  ];
+  const grantYears = $derived((grants?.by_year || []).filter((y) => y.fiscal_year));
+  const grantSeries = $derived(STATES.filter((s) => grantYears.some((y) => y[s.key] > 0)));
   const fundSeries = $derived(FUND.filter((f) => charts?.by_year.some((y) => y[f.key] > 0)));
   const budgetSeries = $derived(FUND.filter((f) => charts?.by_year.some((y) => y[`budget_${f.key}`] > 0)));
   const total = $derived(data ? Object.values(data.documents).reduce((a, b) => a + b, 0) : 0);
@@ -46,6 +57,7 @@
   const SECTIONS = [
     ['ov-years', 'ปีงบ'],
     ['ov-budget', 'งบประมาณ'],
+    ['ov-grants', 'ทุนพัฒนา'],
     ['ov-uploads', 'อัปโหลด'],
     ['ov-activity', 'การใช้งาน'],
     ['ov-categories', 'หมวดหมู่'],
@@ -107,7 +119,7 @@
   <div class="grid">
     <ChartCard
       id="ov-years"
-      title="เอกสารตามปีงบประมาณ"
+      title="สัญญาทุนวิจัยตามปีงบประมาณ"
       note={charts.no_fiscal_year ? `ไม่นับ ${charts.no_fiscal_year} ฉบับที่ยังไม่ระบุปีงบ` : 'แยกตามประเภทเงินทุน'}
       legend={fundSeries}
     >
@@ -133,6 +145,16 @@
       {#snippet table()}
         <table class="data"><thead><tr><th>ปีงบ</th>{#each budgetSeries as s (s.key)}<th class="r">{s.label}</th>{/each}</tr></thead>
           <tbody>{#each charts.by_year as y (y.fiscal_year)}<tr><td>{y.fiscal_year_be}</td>{#each budgetSeries as s (s.key)}<td class="r num">{baht(y[`budget_${s.key}`])}</td>{/each}</tr>{/each}</tbody></table>
+      {/snippet}
+    </ChartCard>
+
+    <ChartCard id="ov-grants" title="ทุนพัฒนาข้อเสนอตามปีงบประมาณ" note="จำนวนโครงการ แยกตามสถานะ" legend={grantSeries}>
+      {#if grantYears.length}
+        <Columns data={grantYears.map((y) => ({ label: `${y.fiscal_year_be}`, tip: `ปีงบ ${y.fiscal_year_be}`, values: y }))} series={grantSeries} unit=" โครงการ" height={H.col} />
+      {:else}<p class="empty muted">ยังไม่มีโครงการทุนพัฒนาข้อเสนอ</p>{/if}
+      {#snippet table()}
+        <table class="data"><thead><tr><th>ปีงบ</th><th class="r">โครงการ</th>{#each STATES as s (s.key)}<th class="r">{s.label}</th>{/each}<th class="r">งบประมาณ</th><th class="r">ใช้จ่ายจริง</th><th class="r">ได้รับทุนภายนอก</th></tr></thead>
+          <tbody>{#each grantYears as y (y.fiscal_year)}<tr><td><a href="/proposals?fiscal_year={y.fiscal_year}&project=all">{y.fiscal_year_be}</a></td><td class="r num">{y.total}</td>{#each STATES as s (s.key)}<td class="r num">{y[s.key]}</td>{/each}<td class="r num">{baht(y.budget)}</td><td class="r num">{y.spent ? baht(y.spent) : '–'}</td><td class="r num">{y.won}</td></tr>{/each}</tbody></table>
       {/snippet}
     </ChartCard>
 

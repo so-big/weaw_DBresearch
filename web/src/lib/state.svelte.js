@@ -27,6 +27,7 @@ export async function refreshReviewCount() {
   clearTimeout(reviewTimer);
   try {
     const res = await get('/documents', {
+      section: 'all',
       status: ['needs_review', 'failed'],
       mine: isAdmin() ? undefined : true,
       page_size: 1,

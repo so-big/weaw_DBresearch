@@ -19,6 +19,7 @@
 
   <nav class="card links">
     <a class="rowlink" href="/overview"><Icon name="chart" /><span>ภาพรวม</span><Icon name="chevron" size={18} /></a>
+    <a class="rowlink" href="/shares"><Icon name="link" /><span>ลิงก์แชร์ของฉัน</span><Icon name="chevron" size={18} /></a>
     <a class="rowlink" href="/trash"><Icon name="trash" /><span>ถังขยะของฉัน</span><Icon name="chevron" size={18} /></a>
     {#if isAdmin()}
       <a class="rowlink" href="/admin"><Icon name="shield" /><span>ผู้ดูแลระบบ</span><Icon name="chevron" size={18} /></a>

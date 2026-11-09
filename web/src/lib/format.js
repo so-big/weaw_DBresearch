@@ -9,8 +9,29 @@ export const STATUS = {
   ready: 'พร้อมใช้งาน',
   failed: 'อ่านไม่สำเร็จ',
 };
-export const KIND = { contract: 'สัญญา', grant: 'ทุนวิจัย' };
+export const KIND = { contract: 'สัญญา', grant: 'ทุนวิจัย', proposal_dev: 'ทุนพัฒนาข้อเสนอ', other: 'เอกสารประกอบ' };
 export const FUNDING = { internal: 'ทุนภายใน', external: 'ทุนภายนอก' };
+// Where the money comes from (the funding filter). FF counts as external.
+export const FUNDING_SOURCE = {
+  ff: 'งบประมาณ FF',
+  nu_income: 'รายได้ ม.นเรศวร',
+  faculty_income: 'รายได้คณะ',
+  external: 'แหล่งทุนภายนอก',
+};
+// Proposal-development grants (DESIGN §11)
+export const PROJECT_STATE = { active: 'ดำเนินการอยู่', overdue: 'เกินกำหนด', closed: 'ปิดทุนแล้ว', cancelled: 'ยกเลิก' };
+export const EVENT = {
+  approved: 'อนุมัติทุน',
+  title_change: 'เปลี่ยนชื่อเรื่อง',
+  budget_change: 'เปลี่ยนแปลงหมวดค่าใช้จ่าย',
+  close: 'ปิดทุน',
+  cancel: 'ยกเลิกทุน',
+  reopen: 'เปิดโครงการอีกครั้ง',
+  other: 'เอกสารอื่น',
+};
+export const OUTCOME = { submitted: 'ยื่นข้อเสนอแล้ว', won: 'ได้รับทุน', not_won: 'ไม่ได้รับทุน' };
+/** The page for a document, by its section. */
+export const docPath = (d) => (d?.kind === 'proposal_dev' || d?.kind === 'other' ? `/proposals/${d.id}` : `/documents/${d.id}`);
 // Letter in the contract no. (R2568E001) = the faculty that issued it. Add more as they turn up.
 export const FACULTY = { E: 'คณะวิศวกรรมศาสตร์' };
 export const ROLE = {

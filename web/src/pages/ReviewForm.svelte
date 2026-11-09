@@ -6,7 +6,7 @@
   import { navigate } from '../lib/router.svelte.js';
   import { toast, screen, bumpReviewCount, isAdmin } from '../lib/state.svelte.js';
   import { categoryGroups, resetCatalog } from '../lib/catalog.js';
-  import { KIND, FUNDING, ROLE, FIELD, BE, thDate, money, toThaiInput, parseThaiDate } from '../lib/format.js';
+  import { KIND, FUNDING, FUNDING_SOURCE, ROLE, FIELD, BE, thDate, money, toThaiInput, parseThaiDate, docPath } from '../lib/format.js';
   import Icon from '../components/Icon.svelte';
 
   let { id } = $props();
@@ -33,6 +33,7 @@
     clearTimeout(timer);
     try {
       const [d, a, g] = await Promise.all([get(`/documents/${id}`), get(`/documents/${id}/autofill`), categoryGroups()]);
+      if (d.kind === 'proposal_dev') return navigate(`/proposals/${id}/review`, { replace: true });
       doc = d;
       sug = a.suggestions || {};
       groups = g;
@@ -96,6 +97,8 @@
       title_en: pick('title_en', d.title_en) || '',
       kind: d.kind || (first ? inf.kind : '') || '',
       funding_type: d.funding_type || (first ? inf.funding_type : '') || '',
+      funding_source: d.funding_source || '',
+      funder_name: d.funder_name || '',
       reference_no: pick('reference_no', d.reference_no) || '',
       document_date: toThaiInput(pick('document_date', d.document_date)),
       effective_from: toThaiInput(pick('effective_from', d.effective_from)),
@@ -110,6 +113,18 @@
       people,
       budget_lines: d.budget_lines.map((b) => ({ ...b, amount: b.amount ?? '', percent: b.percent ?? '', due_date: toThaiInput(b.due_date) })),
     };
+  }
+
+  function pickType(v) {
+    form.funding_type = v;
+    const internal = form.funding_source === 'nu_income' || form.funding_source === 'faculty_income';
+    if (form.funding_source && internal !== (v === 'internal')) form.funding_source = ''; // no longer matches
+  }
+  // Funding source → internal / external (FF counts as external; the server checks it too).
+  function pickSource(v) {
+    if (form.funding_source === v) return (form.funding_source = '');
+    form.funding_source = v;
+    form.funding_type = v === 'nu_income' || v === 'faculty_income' ? 'internal' : 'external';
   }
 
   // ───────── Suggestion hints under each field ─────────
@@ -285,6 +300,8 @@
       title_en: form.title_en.trim() || null,
       kind: form.kind,
       funding_type: form.funding_type,
+      funding_source: form.funding_source || null,
+      funder_name: form.funding_source === 'external' ? form.funder_name.trim() || null : null,
       reference_no: form.reference_no.trim() || null,
       document_date: parseThaiDate(form.document_date) || null,
       effective_from: parseThaiDate(form.effective_from) || null,
@@ -321,9 +338,9 @@
       bumpReviewCount();
       toast('บันทึกข้อมูลแล้ว');
       if (next) {
-        const queue = await get('/documents', { status: ['needs_review', 'failed'], mine: isAdmin() ? undefined : true, sort: 'oldest', page_size: 5 });
+        const queue = await get('/documents', { section: 'all', status: ['needs_review', 'failed'], mine: isAdmin() ? undefined : true, sort: 'oldest', page_size: 5 });
         const following = queue.items.find((d) => d.id !== id);
-        navigate(following ? `/documents/${following.id}/review` : '/review');
+        navigate(following ? `${docPath(following)}/review` : '/review');
       } else navigate(`/documents/${id}`);
     } catch (err) {
       saveError = err.status === 409 ? { dup: err.data?.document_id } : { text: errorText(err) };
@@ -428,15 +445,27 @@
         <div class="two">
           <div class="field" class:invalid={errors.kind}>
             <span>ประเภทเอกสาร *</span>
-            <div class="seg">{#each Object.entries(KIND) as [v, l] (v)}<button type="button" aria-pressed={form.kind === v} onclick={() => (form.kind = v)}>{l}</button>{/each}</div>
+            <div class="seg">{#each Object.entries(KIND).filter(([v]) => v === 'contract' || v === 'grant') as [v, l] (v)}<button type="button" aria-pressed={form.kind === v} onclick={() => (form.kind = v)}>{l}</button>{/each}</div>
             {#if errors.kind}<small class="err">{errors.kind}</small>{/if}
           </div>
           <div class="field" class:invalid={errors.funding_type}>
             <span>ประเภทเงินทุน *</span>
-            <div class="seg">{#each Object.entries(FUNDING) as [v, l] (v)}<button type="button" aria-pressed={form.funding_type === v} onclick={() => (form.funding_type = v)}>{l}</button>{/each}</div>
+            <div class="seg">{#each Object.entries(FUNDING) as [v, l] (v)}<button type="button" aria-pressed={form.funding_type === v} onclick={() => pickType(v)}>{l}</button>{/each}</div>
             {#if errors.funding_type}<small class="err">{errors.funding_type}</small>{:else}<small>ดูจากหัวสัญญา: “ระหว่าง …กับ…” = ทุนภายนอก, “จากงบประมาณ…” ของหน่วยงานเดียว = ทุนภายใน</small>{/if}
           </div>
         </div>
+        <div class="field">
+          <span>แหล่งเงินทุน</span>
+          <div class="seg wrap">
+            {#each Object.entries(FUNDING_SOURCE) as [v, l] (v)}
+              <button type="button" aria-pressed={form.funding_source === v} onclick={() => pickSource(v)}>{l}</button>
+            {/each}
+          </div>
+          <small>ไม่บังคับ · เลือกแล้วประเภทเงินทุนจะตั้งให้ตามแหล่งเงิน (งบประมาณ FF นับเป็นทุนภายนอก)</small>
+        </div>
+        {#if form.funding_source === 'external'}
+          <label class="field"><span>ชื่อแหล่งทุนภายนอก</span><input id="f-funder" bind:value={form.funder_name} /></label>
+        {/if}
         <div class="two">
           <label class="field">
             <span>เลขที่สัญญา</span>
@@ -631,6 +660,7 @@
   .pdf { position: sticky; top: calc(var(--header-h) + 20px); height: calc(100vh - var(--header-h) - 40px); overflow: hidden; }
   .pdf iframe { width: 100%; height: 100%; border: 0; display: block; }
   textarea { resize: vertical; line-height: 1.5; }
+  .seg.wrap { flex-wrap: wrap; }
   .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
   .three { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
   .err { color: var(--bad) !important; }

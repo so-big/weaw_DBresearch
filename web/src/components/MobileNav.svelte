@@ -7,8 +7,10 @@
 
   const on = (prefix) => route.path === prefix || route.path.startsWith(prefix + '/');
 
+  // Search the section you are in (contracts unless in proposal grants).
   function search() {
-    if (route.path !== '/documents') navigate('/documents');
+    const list = route.path.startsWith('/proposals') ? '/proposals' : '/documents';
+    if (route.path !== list) navigate(list);
     ui.searchFocus++;
   }
 </script>
@@ -24,16 +26,16 @@
 </header>
 
 <nav class="bottom" class:away={ui.bar} aria-label="เมนูหลัก" inert={ui.bar}>
-  <a href="/documents" aria-current={on('/documents') ? 'page' : undefined}><Icon name="doc" size={22} />เอกสาร</a>
+  <a href="/documents" aria-current={on('/documents') ? 'page' : undefined}><Icon name="doc" size={22} />สัญญา</a>
+  <a href="/proposals" aria-current={on('/proposals') ? 'page' : undefined}><Icon name="bulb" size={22} />ทุนพัฒนา</a>
+  <button class="fab" onclick={search} aria-label="ค้นหา">
+    <span class="circle"><Icon name="search" size={26} stroke={2.3} /></span>ค้นหา
+  </button>
   <a href="/review" aria-current={on('/review') ? 'page' : undefined}>
     <Icon name="check" size={22} />รอตรวจ
     {#if review.count}<span class="count">{review.count}</span>{/if}
   </a>
-  <button class="fab" onclick={search} aria-label="ค้นหา">
-    <span class="circle"><Icon name="search" size={26} stroke={2.3} /></span>ค้นหา
-  </button>
-  <a href="/shares" aria-current={on('/shares') ? 'page' : undefined}><Icon name="link" size={22} />แชร์</a>
-  <a href="/account" aria-current={on('/account') || on('/admin') || on('/overview') || on('/trash') ? 'page' : undefined}><Icon name="user" size={22} />บัญชี</a>
+  <a href="/account" aria-current={on('/account') || on('/admin') || on('/overview') || on('/trash') || on('/shares') ? 'page' : undefined}><Icon name="user" size={22} />บัญชี</a>
 </nav>
 
 <style>

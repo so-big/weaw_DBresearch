@@ -36,7 +36,8 @@
     const first = ok[0];
     clearFinished();
     closeUpload();
-    navigate(ok.length === 1 && first ? `/documents/${first.docId}/review` : '/review');
+    const base = first?.kind === 'proposal_dev' ? '/proposals' : '/documents';
+    navigate(ok.length === 1 && first ? `${base}/${first.docId}/review` : '/review');
   }
   function key(e) {
     if (e.key === 'Escape') closeUpload();
@@ -71,6 +72,14 @@
       <h2 id="up-title">อัปโหลดเอกสาร</h2>
       <button class="icon-btn" onclick={closeUpload} aria-label="ปิด"><Icon name="x" /></button>
     </div>
+
+    <div class="seg kinds" role="group" aria-label="ประเภทเอกสารที่อัปโหลด">
+      <button aria-pressed={uploads.kind !== 'proposal_dev'} onclick={() => (uploads.kind = '')}>สัญญาทุนวิจัย</button>
+      <button aria-pressed={uploads.kind === 'proposal_dev'} onclick={() => (uploads.kind = 'proposal_dev')}>ทุนพัฒนาข้อเสนอ</button>
+    </div>
+    {#if uploads.kind === 'proposal_dev'}
+      <small class="muted hint">อัปโหลดบันทึกขออนุมัติทุนเป็นไฟล์หลักของโครงการ เอกสารปิดทุน ยกเลิก หรือเปลี่ยนแปลง ให้แนบจากหน้าโครงการ</small>
+    {/if}
 
     <label
       class="drop"
@@ -116,7 +125,7 @@
                 <span class="muted">{it.message}</span>
               {:else if it.state === 'dup'}
                 <span class="badge needs_review">{it.message}</span>
-                {#if it.docId}<a href="/documents/{it.docId}" onclick={closeUpload}>เปิดเอกสารเดิม</a>{/if}
+                {#if it.docId}<a href="/{it.kind === 'proposal_dev' ? 'proposals' : 'documents'}/{it.docId}" onclick={closeUpload}>เปิดเอกสารเดิม</a>{/if}
               {:else}
                 <span class="badge failed">{it.message}</span>
                 {#if it.retryable}<button class="link-btn" onclick={() => retry(it.id)}>ลองใหม่</button>{/if}
@@ -172,6 +181,9 @@
     padding: 0 16px calc(16px + env(safe-area-inset-bottom)); gap: 12px;
   }
   .head { display: flex; align-items: center; justify-content: space-between; }
+  .kinds { align-self: stretch; }
+  .kinds button { flex: 1; }
+  .hint { font-size: 12.5px; line-height: 1.5; }
   .drop {
     display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
     padding: 22px 16px; border: 2px dashed var(--drop-line); border-radius: 14px; background: var(--primary-soft);

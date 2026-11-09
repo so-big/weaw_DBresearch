@@ -1,6 +1,8 @@
 <script>
   // Search + filters. A maroon masthead holds the search box and quick figures; below it the
   // PC gets a filter column, phones get quick chips + a filter sheet.
+  // `section`: 'contracts' (สัญญาทุนวิจัย) or 'proposals' (ทุนพัฒนาข้อเสนอ, DESIGN §11). In
+  // proposals, `?view=other` lists the programme papers (calls, yearly approvals).
   import { onMount, tick, untrack } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
@@ -12,24 +14,35 @@
   import Modal from '../components/Modal.svelte';
   import { openUpload } from '../lib/uploads.svelte.js';
   import { categoryGroups } from '../lib/catalog.js';
-  import { STATUS, KIND, FUNDING, BE, thDate, snippetHtml } from '../lib/format.js';
+  import { STATUS, KIND, FUNDING, FUNDING_SOURCE, PROJECT_STATE, BE, thDate, money, snippetHtml } from '../lib/format.js';
   import FilterPanel from '../components/FilterPanel.svelte';
   import { sheet as sheetGesture } from '../lib/sheet.js';
   import Icon from '../components/Icon.svelte';
+
+  let { section = 'contracts' } = $props();
+  const grants = $derived(section === 'proposals');
+  const base = $derived(grants ? '/proposals' : '/documents');
+  const other = $derived(grants && route.query.get('view') === 'other');
+  const apiSection = $derived(other ? 'other' : section);
 
   const PAGE = 20;
   // '' = the default order: relevance when searching, otherwise latest first.
   const sortsFor = (q) => [
     ...(q ? [['', 'เกี่ยวข้องที่สุด'], ['newest', 'อัปเดตล่าสุด']] : [['', 'อัปเดตล่าสุด']]),
     ['oldest', 'เก่าที่สุด'],
-    ['reference', 'เลขที่สัญญา'],
+    ...(grants ? [] : [['reference', 'เลขที่สัญญา']]),
     ['title', 'ชื่อเรื่อง ก–ฮ'],
   ];
-  const LIST_KEYS = ['fiscal_year', 'funding_type', 'status', 'kind', 'category'];
+  const LIST_KEYS = $derived(
+    grants
+      ? ['fiscal_year', 'funding_source', 'status', 'department', 'research_area']
+      : ['fiscal_year', 'funding_type', 'funding_source', 'status', 'kind', 'category'],
+  );
 
   function readFilters(q) {
-    // project: '' = active projects (default), 'closed' = the archive, 'all' = both
-    const f = { q: q.get('q') || '', person: q.get('person') || '', mine: q.get('mine') === 'true', sort: q.get('sort') || '', project: q.get('project') || '' };
+    // project: '' = active projects (default), 'closed' = the archive, 'all' = both.
+    // Proposal grants also have 'overdue' and 'cancelled'.
+    const f = { q: q.get('q') || '', person: q.get('person') || '', mine: q.get('mine') === 'true', sort: q.get('sort') || '', project: q.get('project') || '', view: q.get('view') || '' };
     for (const k of LIST_KEYS) f[k] = q.getAll(k);
     return f;
   }
@@ -51,12 +64,20 @@
     categoryGroups().then((g) => (groups = g)).catch(() => {});
   });
 
+  // Proposal grants: the radio picks a state ('' = still running, overdue included).
+  const stateParam = (p) => (p === 'all' ? undefined : p ? [p] : ['active']);
   function apiParams(f, extra = {}) {
+    const archive = apiSection === 'contracts'
+      ? { project: f.project === 'all' ? undefined : f.project === 'closed' ? 'closed' : 'open' }
+      : apiSection === 'proposals'
+        ? { state: stateParam(f.project) }
+        : {};
     return {
+      section: apiSection,
       q: f.q || undefined,
       person: f.person || undefined,
       mine: f.mine || undefined,
-      project: f.project === 'all' ? undefined : f.project === 'closed' ? 'closed' : 'open',
+      ...archive,
       sort: f.sort || (f.q ? 'relevance' : 'newest'),
       ...Object.fromEntries(LIST_KEYS.map((k) => [k, f[k]])),
       ...extra,
@@ -112,13 +133,14 @@
   const thisFY = now.getMonth() >= 9 ? now.getFullYear() + 1 : now.getFullYear(); // Oct–Sep
   let stats = $state(null);
   onMount(() => {
-    get('/documents', { page_size: 1, with_facets: true })
+    get('/documents', { section, page_size: 1, with_facets: true })
       .then((r) => {
         const by = (list, v) => list?.find((f) => String(f.value) === String(v))?.count || 0;
         stats = {
           total: r.total,
           review: by(r.facets?.status, 'needs_review') + by(r.facets?.status, 'failed'),
           year: by(r.facets?.fiscal_year, thisFY),
+          overdue: by(r.facets?.state, 'overdue'),
         };
       })
       .catch(() => {});
@@ -145,7 +167,7 @@
     setQuery({ ...next, mine: next.mine ? 'true' : '' });
   }
   function clearAll() {
-    update({ q: filters.q, sort: filters.sort, project: '' });
+    update({ q: filters.q, sort: filters.sort, project: '', view: filters.view });
   }
 
   let qTimer;
@@ -160,13 +182,17 @@
     const out = [];
     const names = new Map(groups.flatMap((g) => g.options.map((o) => [o.id, o.name_th])));
     for (const y of filters.fiscal_year) out.push({ k: 'fiscal_year', v: y, label: `ปีงบ ${Number(y) + BE}` });
-    for (const v of filters.funding_type) out.push({ k: 'funding_type', v, label: FUNDING[v] || v });
+    for (const v of filters.funding_type || []) out.push({ k: 'funding_type', v, label: FUNDING[v] || v });
+    for (const v of filters.funding_source) out.push({ k: 'funding_source', v, label: FUNDING_SOURCE[v] || v });
+    for (const v of filters.department || []) out.push({ k: 'department', v, label: v });
+    for (const v of filters.research_area || []) out.push({ k: 'research_area', v, label: v });
     for (const v of filters.status) out.push({ k: 'status', v, label: STATUS[v] || v });
-    for (const v of filters.kind) out.push({ k: 'kind', v, label: KIND[v] || v });
-    for (const v of filters.category) out.push({ k: 'category', v, label: names.get(v) || 'หมวดหมู่' });
+    for (const v of filters.kind || []) out.push({ k: 'kind', v, label: KIND[v] || v });
+    for (const v of filters.category || []) out.push({ k: 'category', v, label: names.get(v) || 'หมวดหมู่' });
     if (filters.person) out.push({ k: 'person', label: `นักวิจัย: ${filters.person}` });
     if (filters.mine) out.push({ k: 'mine', label: 'ที่ฉันอัปโหลด' });
-    if (filters.project) out.push({ k: 'project', label: filters.project === 'closed' ? 'โครงการที่ปิดแล้ว' : 'รวมโครงการที่ปิดแล้ว' });
+    if (filters.project && grants) out.push({ k: 'project', label: filters.project === 'all' ? 'ทุกสถานะ' : PROJECT_STATE[filters.project] || filters.project });
+    else if (filters.project) out.push({ k: 'project', label: filters.project === 'closed' ? 'โครงการที่ปิดแล้ว' : 'รวมโครงการที่ปิดแล้ว' });
     return out;
   });
   function removeChip(c) {
@@ -179,6 +205,14 @@
   // Phone quick chips: the two latest fiscal years, funding type, needs review.
   const quick = $derived.by(() => {
     const years = (facets?.fiscal_year || []).map((f) => String(f.value)).sort((a, b) => b - a).slice(0, 2);
+    if (grants)
+      return [
+        ...years.map((y) => ({ k: 'fiscal_year', v: y, label: `ปีงบ ${Number(y) + BE}` })),
+        { k: 'project', v: 'overdue', label: 'เกินกำหนด' },
+        { k: 'project', v: 'closed', label: 'ปิดทุนแล้ว' },
+        { k: 'project', v: 'cancelled', label: 'ยกเลิก' },
+        { k: 'status', v: 'needs_review', label: 'รอตรวจสอบ' },
+      ];
     return [
       ...years.map((y) => ({ k: 'fiscal_year', v: y, label: `ปีงบ ${Number(y) + BE}` })),
       { k: 'funding_type', v: 'internal', label: 'ทุนภายใน' },
@@ -188,7 +222,11 @@
     ];
   });
   // Matches hidden in the archive (counted without the project filter).
-  const archived = $derived(filters.project ? 0 : (facets?.project || []).find((f) => f.value === 'closed')?.count || 0);
+  const archived = $derived.by(() => {
+    if (filters.project || other) return 0;
+    const count = (list, v) => (list || []).find((f) => f.value === v)?.count || 0;
+    return grants ? count(facets?.state, 'closed') + count(facets?.state, 'cancelled') : count(facets?.project, 'closed');
+  });
   const quickOn = (c) => (c.k === 'project' ? filters.project === c.v : filters[c.k].includes(c.v));
   function toggleQuick(c) {
     if (c.k === 'project') return update({ ...filters, project: filters.project === c.v ? '' : c.v });
@@ -305,7 +343,7 @@
 <header class="mast" class:wide={screen.wide}>
   <div class="mast-in">
     {#if screen.wide}<p class="hello">สวัสดี {firstName}</p>{/if}
-    <h1>ค้นหาสัญญาและเอกสารทุนวิจัย</h1>
+    <h1>{other ? 'เอกสารประกอบโครงการทุนพัฒนาข้อเสนอ' : grants ? 'ทุนพัฒนาข้อเสนอโครงการวิจัย' : 'ค้นหาสัญญาและเอกสารทุนวิจัย'}</h1>
     <div class="mrow">
       <form class="msearch" role="search" onsubmit={submitQ}>
         <Icon name="search" size={20} />
@@ -314,7 +352,7 @@
           value={phoneQ}
           oninput={typeQ}
           type="search"
-          placeholder={screen.wide ? 'ชื่อเรื่อง เลขที่สัญญา หรือข้อความในเอกสาร' : 'ค้นหาเอกสาร'}
+          placeholder={screen.wide ? (grants ? 'ชื่อเรื่อง ชื่อนักวิจัย หรือข้อความในบันทึก' : 'ชื่อเรื่อง เลขที่สัญญา หรือข้อความในเอกสาร') : 'ค้นหาเอกสาร'}
           aria-label="ค้นหาเอกสาร"
           enterkeyhint="search"
         />
@@ -329,14 +367,24 @@
     </div>
     {#if stats && screen.wide}
       <div class="figs">
-        <span class="fig">เอกสารทั้งหมด <b class="num">{stats.total.toLocaleString('th-TH')}</b></span>
+        <span class="fig">{grants ? 'โครงการทั้งหมด' : 'เอกสารทั้งหมด'} <b class="num">{stats.total.toLocaleString('th-TH')}</b></span>
         <button class="fig" aria-pressed={filters.status.includes('needs_review')} onclick={() => onlyFilter('status', 'needs_review')}>
           รอตรวจสอบ <b class="num">{stats.review.toLocaleString('th-TH')}</b>
         </button>
         <button class="fig" aria-pressed={filters.fiscal_year.includes(String(thisFY))} onclick={() => onlyFilter('fiscal_year', thisFY)}>
           ปีงบ {thisFY + BE} <b class="num">{stats.year.toLocaleString('th-TH')}</b>
         </button>
+        {#if grants && stats.overdue}
+          <button class="fig" aria-pressed={filters.project === 'overdue'} onclick={() => update({ ...filters, project: filters.project === 'overdue' ? '' : 'overdue' })}>
+            เกินกำหนด <b class="num">{stats.overdue.toLocaleString('th-TH')}</b>
+          </button>
+        {/if}
       </div>
+    {/if}
+    {#if grants}
+      <a class="viewlink" href={other ? '/proposals' : '/proposals?view=other'}>
+        {other ? '← กลับไปที่รายการโครงการ' : 'เอกสารประกอบโครงการ (ประกาศรับทุน อนุมัติโครงการรวม) →'}
+      </a>
     {/if}
   </div>
 </header>
@@ -348,7 +396,7 @@
         <h3>ตัวกรอง</h3>
         <button class="link-btn" onclick={clearAll} disabled={!hasFilters}>ล้างทั้งหมด</button>
       </div>
-      <FilterPanel value={filters} {facets} {groups} onchange={update} idp="pc" />
+      <FilterPanel value={filters} {facets} {groups} section={apiSection} onchange={update} idp="pc" />
     </aside>
   {:else}
     <div class="phone-head">
@@ -404,12 +452,12 @@
         {#if hasFilters || filters.q}
           <Icon name="search" size={30} />
           <p>ไม่พบเอกสารที่ตรงกับการค้นหา{archived ? ` ในโครงการที่ยังดำเนินการอยู่` : ''}</p>
-          {#if archived}<button class="btn" onclick={() => update({ ...filters, project: 'all' })}>ดูในโครงการที่ปิดแล้ว ({archived.toLocaleString('th-TH')})</button>{/if}
+          {#if archived}<button class="btn" onclick={() => update({ ...filters, project: 'all' })}>{grants ? 'ดูในโครงการที่ปิดทุนหรือยกเลิกแล้ว' : 'ดูในโครงการที่ปิดแล้ว'} ({archived.toLocaleString('th-TH')})</button>{/if}
           {#if hasFilters}<button class="btn ghost" onclick={clearAll}>ล้างตัวกรองทั้งหมด</button>{/if}
         {:else}
           <Icon name="doc" size={30} />
           <p>ยังไม่มีเอกสารในระบบ</p>
-          <button class="btn" onclick={openUpload}><Icon name="upload" size={17} />อัปโหลดไฟล์แรก</button>
+          <button class="btn" onclick={() => openUpload(grants ? 'proposal_dev' : '')}><Icon name="upload" size={17} />อัปโหลดไฟล์แรก</button>
         {/if}
       </div>
     {:else}
@@ -420,7 +468,7 @@
             {#if selecting}
               <button class="cover" aria-pressed={on} aria-label="เลือก {d.title}" onclick={() => toggle(d)}></button>
             {:else}
-              <a class="cover" href="/documents/{d.id}" aria-label={d.title}></a>
+              <a class="cover" href="{base}/{d.id}" aria-label={d.title}></a>
             {/if}
             <span class="tilebox">
               <span class="ftile f-{d.funding_type || 'unset'}" title={d.funding_type ? FUNDING[d.funding_type] : 'ยังไม่ระบุประเภทเงินทุน'} aria-hidden="true">
@@ -432,19 +480,29 @@
             </span>
             <div class="grow">
               <div class="topline">
-                {#if d.reference_no}<span class="cno">{d.reference_no}</span>{:else}<span class="noref">ไม่มีเลขที่</span>{/if}
-                {#if d.kind}<span class="kind">{KIND[d.kind]}</span>{/if}
+                {#if grants}
+                  {#if d.department}<span class="kind">{d.department}</span>{/if}
+                  {#if d.funding_source}<span class="kind">{FUNDING_SOURCE[d.funding_source]}</span>{/if}
+                {:else}
+                  {#if d.reference_no}<span class="cno">{d.reference_no}</span>{:else}<span class="noref">ไม่มีเลขที่</span>{/if}
+                  {#if d.kind}<span class="kind">{KIND[d.kind]}</span>{/if}
+                {/if}
               </div>
               <div class="t">{@html snippetHtml(filters.q && d.title.includes(filters.q) ? d.title.replaceAll(filters.q, `[[${filters.q}]]`) : d.title)}</div>
               {#if d.snippet}<div class="snip">{@html snippetHtml(d.snippet)}</div>{/if}
               <div class="meta">
                 {#if d.owners?.length}<span>{d.owners.join(', ')}</span>{/if}
                 {#if d.fiscal_year_be}<span>ปีงบ {d.fiscal_year_be}</span>{/if}
-                {#if d.funding_type}<span>{FUNDING[d.funding_type]}</span>{/if}
+                {#if grants && d.budget_total}<span>{money(d.budget_total)}</span>{/if}
+                {#if grants && d.kpi_due && (d.state === 'active' || d.state === 'overdue')}<span>ส่งผลงานภายใน {thDate(d.kpi_due)}</span>{/if}
+                {#if !grants && d.funding_type}<span>{FUNDING[d.funding_type]}</span>{/if}
               </div>
             </div>
             <div class="side-meta">
-              {#if d.closed_at}<span class="badge closed">ปิดโครงการแล้ว</span>{:else}<span class="badge {d.status}">{STATUS[d.status]}</span>{/if}
+              {#if d.status !== 'ready'}<span class="badge {d.status}">{STATUS[d.status]}</span>
+              {:else if d.state}<span class="badge st-{d.state}">{PROJECT_STATE[d.state]}</span>
+              {:else if d.closed_at}<span class="badge closed">ปิดโครงการแล้ว</span>
+              {:else}<span class="badge {d.status}">{STATUS[d.status]}</span>{/if}
               <span class="muted date">{thDate(d.updated_at)}</span>
               {#if !screen.wide && !selecting}
                 <a class="btn small dl" href={fileUrl(d.id)} aria-label="ดาวน์โหลด {d.title}"><Icon name="download" size={15} /></a>
@@ -465,7 +523,7 @@
         <button class="btn ghost more" onclick={() => load(filters, true)}>แสดงเพิ่ม ({(total - items.length).toLocaleString('th-TH')} รายการ)</button>
       {/if}
       {#if archived && items.length >= total}
-        <p class="archived muted">มีอีก {archived.toLocaleString('th-TH')} รายการในโครงการที่ปิดแล้ว <button class="link-btn" onclick={() => update({ ...filters, project: 'all' })}>แสดงด้วย</button></p>
+        <p class="archived muted">มีอีก {archived.toLocaleString('th-TH')} รายการใน{grants ? 'โครงการที่ปิดทุนหรือยกเลิกแล้ว' : 'โครงการที่ปิดแล้ว'} <button class="link-btn" onclick={() => update({ ...filters, project: 'all' })}>แสดงด้วย</button></p>
       {/if}
     {/if}
     {#if selecting}<div class="bar-room" aria-hidden="true"></div>{/if}
@@ -538,7 +596,7 @@
       </select>
     </div>
     <div class="sheet-body">
-      <FilterPanel value={draft} facets={draftFacets} {groups} onchange={changeDraft} idp="ph" />
+      <FilterPanel value={draft} facets={draftFacets} {groups} section={apiSection} onchange={changeDraft} idp="ph" />
     </div>
     <div class="sheet-foot">
       <button class="btn ghost" onclick={() => changeDraft({ q: draft.q, sort: draft.sort, person: '', mine: false, project: '', ...Object.fromEntries(LIST_KEYS.map((k) => [k, []])) })}>ล้าง</button>
@@ -622,6 +680,8 @@
   .fig b { font-family: var(--f-display); font-weight: 500; font-size: 16px; }
   button.fig:hover { background: rgba(255, 255, 255, 0.22); }
   button.fig[aria-pressed='true'] { background: #fff; color: var(--m-600); border-color: #fff; }
+  .viewlink { align-self: flex-start; color: #fff; opacity: 0.88; font-size: 13.5px; text-decoration: underline; text-underline-offset: 3px; }
+  .viewlink:hover { opacity: 1; }
   .fbtn { position: relative; flex: none; width: 52px; display: grid; place-items: center; border: 0; border-radius: 14px; background: rgba(255, 255, 255, 0.16); color: #fff; }
   .fbtn .n { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; border-radius: 999px; background: var(--accent); color: #2b1d00; font-size: 11px; font-weight: 700; display: grid; place-items: center; padding: 0 5px; }
   .mast:not(.wide) { margin: -14px -12px 12px; border-radius: 0 0 20px 20px; }

@@ -4,7 +4,7 @@
   import { get, errorText } from '../lib/api.js';
   import { isAdmin, review } from '../lib/state.svelte.js';
   import { openUpload } from '../lib/uploads.svelte.js';
-  import { STATUS, thDate } from '../lib/format.js';
+  import { STATUS, KIND, thDate, docPath } from '../lib/format.js';
   import Icon from '../components/Icon.svelte';
 
   let mineOnly = $state(!isAdmin());
@@ -16,6 +16,7 @@
     clearTimeout(timer);
     try {
       const res = await get('/documents', {
+        section: 'all',
         status: ['processing', 'needs_review', 'failed'],
         mine: mineOnly || undefined,
         sort: 'oldest',
@@ -71,7 +72,7 @@
         {#each ready as d (d.id)}
           <div class="item enter">
             <div class="grow">
-              <a class="t" href="/documents/{d.id}">{d.title}</a>
+              <a class="t" href={docPath(d)}>{d.title}</a>{#if d.kind === 'proposal_dev'}<small class="kindtag">{KIND[d.kind]}</small>{/if}
               <div class="meta">
                 {#if d.reference_no}<span class="cno">{d.reference_no}</span>{/if}
                 <span>อัปโหลด {thDate(d.updated_at)}</span>
@@ -79,7 +80,7 @@
               </div>
             </div>
             <span class="badge {d.status}">{STATUS[d.status]}</span>
-            <a class="btn small" href="/documents/{d.id}/review">ตรวจสอบ</a>
+            <a class="btn small" href="{docPath(d)}/review">ตรวจสอบ</a>
           </div>
         {/each}
       </div>
@@ -100,6 +101,7 @@
 </div>
 
 <style>
+  .kindtag { margin-left: 8px; font-size: 12px; color: var(--accent-text); background: var(--accent-soft); border-radius: 999px; padding: 0 8px; white-space: nowrap; }
   .page { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
   .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
   .head p { font-size: 14px; max-width: 60ch; }

@@ -60,7 +60,7 @@ export const del = (path) => api(path, { method: 'DELETE' });
 
 /** Upload with progress (fetch can't report upload progress). Resolves {status, data};
  * status -1 = cancelled. `onStart` receives the request so the caller can abort it. */
-export function uploadFile(path, file, onProgress, onStart) {
+export function uploadFile(path, file, onProgress, onStart, fields = {}) {
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
     onStart?.(xhr);
@@ -76,12 +76,13 @@ export function uploadFile(path, file, onProgress, onStart) {
     xhr.onerror = () => resolve({ status: 0, data: null });
     const form = new FormData();
     form.append('file', file);
+    for (const [key, value] of Object.entries(fields)) if (value != null && value !== '') form.append(key, value);
     xhr.send(form);
   });
 }
 
-export const fileUrl = (id, { inline = false, version, closure } = {}) =>
-  `/api/documents/${id}/file${query({ inline: inline || undefined, version, closure })}`;
+export const fileUrl = (id, { inline = false, version, closure, paper } = {}) =>
+  `/api/documents/${id}/file${query({ inline: inline || undefined, version, closure, paper })}`;
 
 /** Several documents as one zip, built by the server. */
 export const zipUrl = (ids) => `/api/documents/zip${query({ id: ids })}`;

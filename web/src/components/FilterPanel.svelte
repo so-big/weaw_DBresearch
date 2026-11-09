@@ -1,9 +1,10 @@
 <script>
   // Filter groups with live counts. Ticks within a group = "any of these"; groups combine with AND.
   // `value` is a plain filters object; every change calls onchange with a new object.
-  import { STATUS, KIND, FUNDING, BE } from '../lib/format.js';
+  import { STATUS, KIND, FUNDING, FUNDING_SOURCE, BE } from '../lib/format.js';
 
-  let { value, facets, groups = [], onchange, idp = 'f' } = $props();
+  // section: 'contracts' | 'proposals' | 'other' (DESIGN §11) picks the groups shown.
+  let { value, facets, groups = [], section = 'contracts', onchange, idp = 'f' } = $props();
 
   const SHOW = 5;
   let expanded = $state({});
@@ -30,17 +31,55 @@
   const catCounts = $derived(countMap(facets?.categories));
   // Closed projects live in an archive: hidden unless asked for.
   const projectCounts = $derived(countMap(facets?.project));
-  const projects = $derived([
-    ['', 'ดำเนินการอยู่', projectCounts.get('open') ?? 0],
-    ['closed', 'ปิดแล้ว', projectCounts.get('closed') ?? 0],
-    ['all', 'ทั้งหมด', (projectCounts.get('open') ?? 0) + (projectCounts.get('closed') ?? 0)],
-  ]);
+  // Proposal grants: running (overdue included), overdue, closed with success, cancelled.
+  const stateCounts = $derived(countMap(facets?.state));
+  const st = (k) => stateCounts.get(k) ?? 0;
+  const projects = $derived(
+    section === 'proposals'
+      ? [
+          ['', 'ดำเนินการอยู่', st('active') + st('overdue')],
+          ['overdue', 'เกินกำหนดส่งผลงาน', st('overdue')],
+          ['closed', 'ปิดทุนแล้ว', st('closed')],
+          ['cancelled', 'ยกเลิก', st('cancelled')],
+          ['all', 'ทั้งหมด', st('active') + st('overdue') + st('closed') + st('cancelled')],
+        ]
+      : section === 'contracts'
+        ? [
+            ['', 'ดำเนินการอยู่', projectCounts.get('open') ?? 0],
+            ['closed', 'ปิดแล้ว', projectCounts.get('closed') ?? 0],
+            ['all', 'ทั้งหมด', (projectCounts.get('open') ?? 0) + (projectCounts.get('closed') ?? 0)],
+          ]
+        : [],
+  );
+  // Free-text groups (department, research area): their values come from the facets.
+  const fromValues = (key) => {
+    const counts = countMap(facets?.[key]);
+    const all = new Set([...counts.keys(), ...(value[key] || [])]);
+    return [...all].map((v) => ({ v, label: v, n: counts.get(v) ?? 0 }));
+  };
+  const fiscal = $derived({ key: 'fiscal_year', label: 'ปีงบประมาณ', open: true, options: years });
+  const source = $derived({ key: 'funding_source', label: 'แหล่งเงินทุน', open: true, options: fromLabels(FUNDING_SOURCE, facets?.funding_source) });
+  const status = $derived({ key: 'status', label: 'สถานะการตรวจสอบ', open: section !== 'contracts', options: fromLabels(STATUS, facets?.status) });
 
-  const sections = $derived([
-    { key: 'fiscal_year', label: 'ปีงบประมาณ', open: true, options: years },
+  const sections = $derived(
+    section === 'proposals'
+      ? [
+          fiscal,
+          source,
+          { key: 'department', label: 'ภาควิชา', open: true, options: fromValues('department') },
+          { key: 'research_area', label: 'กรอบงานวิจัย', open: false, options: fromValues('research_area') },
+          status,
+        ]
+      : section === 'other'
+        ? [fiscal, status]
+        : contractSections,
+  );
+  const contractSections = $derived([
+    fiscal,
     { key: 'funding_type', label: 'ประเภทเงินทุน', open: true, options: fromLabels(FUNDING, facets?.funding_type) },
-    { key: 'status', label: 'สถานะ', open: true, options: fromLabels(STATUS, facets?.status) },
-    { key: 'kind', label: 'ประเภทเอกสาร', open: false, options: fromLabels(KIND, facets?.kind) },
+    { ...source, open: false },
+    { ...status, label: 'สถานะ', open: true },
+    { key: 'kind', label: 'ประเภทเอกสาร', open: false, options: fromLabels({ contract: KIND.contract, grant: KIND.grant }, facets?.kind) },
     ...groups.map((g) => ({
       key: 'category',
       id: g.id,
@@ -68,6 +107,7 @@
 </script>
 
 <div class="panel">
+  {#if projects.length}
   <div class="proj" role="radiogroup" aria-label="โครงการ">
     <span class="plabel">โครงการ</span>
     {#each projects as [v, label, n] (v)}
@@ -78,6 +118,7 @@
       </label>
     {/each}
   </div>
+  {/if}
   {#each sections as s (s.id || s.key)}
     {#if s.options.length}
       <details open={s.open || selectedIn(s) > 0}>

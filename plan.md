@@ -203,15 +203,17 @@ Source: USB folder `ขออนุมัติทุนพัฒนาข้อ
   (all sections). **FF counts as external** when internal/external is derived.
 - Research Hangout files and the faculty-meeting resolution: a **separate part** for now
   ("เอกสารอื่น ๆ" per fiscal year); ask the research office later what they are (maybe a summary of all funding).
-- **Only the research office enters** proposal-development papers (teachers just sign). Proposed: only
-  ADMIN (research office staff) can upload / edit in this section; every user can still read.
+- **The research office enters** proposal-development papers (teachers just sign). Research office staff
+  are teachers or employees with a university ID → plain **`user`** accounts. **ADMIN = IT only.**
+  No section-level upload restriction: any user may upload (as for contracts); edit/delete stays
+  uploader-or-ADMIN; every user reads everything.
+- University login must also admit **staff/employee** accounts, not only teachers
+  (`UNIVERSITY_ALLOWED_TYPES`, exact type names from the API spec). Admin approval still applies.
 - **Outcome tracking** (proposed, optional at closing): proposal submitted → won / not won, funder name,
   link to the research contract in this system when won. Report: how many seed grants became outside grants.
 
 ### Open questions
 - [?] What are the Research Hangout files and the faculty-meeting resolution? (ask the research office)
-- [?] Do research office staff need ADMIN rights for everything, or should we add a narrower
-      "research office" permission later?
 
 ## Demo environment
 

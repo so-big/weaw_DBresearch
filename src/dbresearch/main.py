@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -47,7 +48,32 @@ async def security_headers(request: Request, call_next) -> Response:
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()"
+    )
+    if request.url.path.startswith("/api/"):
+        # Document lists and metadata must not stay in shared or browser caches.
+        response.headers.setdefault("Cache-Control", "no-store")
+    if get_settings().cookie_secure:
+        # HTTPS only from now on. No includeSubDomains: other university sites share the
+        # parent domain and are not ours to force.
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
     return response
+
+
+def unsafe_settings() -> list[str]:
+    """Settings that are fine on a laptop but must not reach production."""
+    settings = get_settings()
+    problems = []
+    if not settings.cookie_secure:
+        problems.append("COOKIE_SECURE is false (session cookie also sent over plain HTTP)")
+    if settings.secret_key in ("dev-only-change-me", "change-me") or len(settings.secret_key) < 32:
+        problems.append("SECRET_KEY is the default or shorter than 32 characters")
+    return problems
+
+
+for problem in unsafe_settings():
+    logging.getLogger("dbresearch").warning("Unsafe setting: %s", problem)
 
 
 @app.middleware("http")

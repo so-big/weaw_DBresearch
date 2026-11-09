@@ -3,6 +3,9 @@
   import Icon from '../components/Icon.svelte';
   import { session, isAdmin, theme, setTheme } from '../lib/state.svelte.js';
   import { logout } from '../lib/auth.js';
+  import Modal from '../components/Modal.svelte';
+
+  let askAll = $state(false);
 </script>
 
 <div class="page">
@@ -31,8 +34,19 @@
     </div>
   </section>
 
-  <button class="btn ghost big" onclick={logout}><Icon name="logout" />ออกจากระบบ</button>
+  <button class="btn ghost big" onclick={() => logout()}><Icon name="logout" />ออกจากระบบ</button>
+  <button class="link-btn all" onclick={() => (askAll = true)}>ออกจากระบบทุกอุปกรณ์</button>
 </div>
+
+{#if askAll}
+  <Modal title="ออกจากระบบทุกอุปกรณ์?" onclose={() => (askAll = false)}>
+    <p>ทุกเครื่องที่เข้าระบบด้วยบัญชีนี้อยู่ รวมถึงเครื่องนี้ จะต้องเข้าสู่ระบบใหม่</p>
+    {#snippet footer()}
+      <button class="btn ghost" onclick={() => (askAll = false)}>ยกเลิก</button>
+      <button class="btn danger" onclick={() => logout(true)}>ออกจากระบบทุกอุปกรณ์</button>
+    {/snippet}
+  </Modal>
+{/if}
 
 <style>
   .page { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
@@ -44,4 +58,5 @@
   .rowlink:first-child { border-top: 0; }
   .rowlink:active { background: var(--subtle); }
   .rowlink span { flex: 1; font-weight: 500; }
+  .all { align-self: center; padding: 8px; }
 </style>

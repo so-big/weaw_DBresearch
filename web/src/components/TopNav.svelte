@@ -5,6 +5,7 @@
   import { session, review, isAdmin, theme, setTheme, ui } from '../lib/state.svelte.js';
   import { openUpload, busyCount, uploads } from '../lib/uploads.svelte.js';
   import { logout } from '../lib/auth.js';
+  import Modal from './Modal.svelte';
 
   const tabs = $derived([
     { href: '/documents', label: 'เอกสาร', on: route.path === '/documents' || route.path.startsWith('/documents/') },
@@ -18,6 +19,7 @@
   let ind = $state({ x: 0, w: 0, show: false });
   let q = $state(route.path === '/documents' ? route.query.get('q') || '' : '');
   let menuOpen = $state(false);
+  let askAll = $state(false);
   let searchInput = $state();
   let measure = $state(0); // bumps on resize / font load so the underline re-measures
   document.fonts?.ready.then(() => measure++);
@@ -107,12 +109,23 @@
             {/each}
           </div>
           <a class="mlink" href="/trash" onclick={() => (menuOpen = false)}><Icon name="trash" size={17} />ถังขยะของฉัน</a>
-          <button class="btn ghost" onclick={logout}><Icon name="logout" size={17} />ออกจากระบบ</button>
+          <button class="btn ghost" onclick={() => logout()}><Icon name="logout" size={17} />ออกจากระบบ</button>
+          <button class="link-btn all" onclick={() => ((menuOpen = false), (askAll = true))}>ออกจากระบบทุกอุปกรณ์</button>
         </div>
       {/if}
     </div>
   </div>
 </header>
+
+{#if askAll}
+  <Modal title="ออกจากระบบทุกอุปกรณ์?" onclose={() => (askAll = false)}>
+    <p>ทุกเครื่องที่เข้าระบบด้วยบัญชีนี้อยู่ รวมถึงเครื่องนี้ จะต้องเข้าสู่ระบบใหม่</p>
+    {#snippet footer()}
+      <button class="btn ghost" onclick={() => (askAll = false)}>ยกเลิก</button>
+      <button class="btn danger" onclick={() => logout(true)}>ออกจากระบบทุกอุปกรณ์</button>
+    {/snippet}
+  </Modal>
+{/if}
 
 <style>
   .top { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border); }
@@ -141,6 +154,7 @@
   .who { display: flex; flex-direction: column; }
   .mlink { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin: 0 -4px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: 14px; }
   .mlink:hover { background: var(--subtle); }
+  .all { font-size: 13px; padding: 4px 0; align-self: center; }
   .who small { font-size: 12px; overflow-wrap: anywhere; }
   @media (max-width: 1020px) { .brand .sub { display: none; } .search kbd { display: none; } }
 </style>

@@ -17,9 +17,24 @@ class Settings(BaseSettings):
     # The DB must use ICU th-TH, or pg_trgm ignores Thai text (DESIGN §5).
     expected_db_locale: str = "th-TH"
 
-    # Sessions (local login; college SSO replaces the provider later).
+    # Login providers, tried in this order: "local" (dev/demo + bootstrap admins) and
+    # "university" (the university login API, dbresearch.university).
+    auth_providers: str = "local"
+    # University login API (placeholder until the API spec arrives). HTTPS only.
+    university_api_url: str | None = None
+    university_api_key: str | None = None
+    university_api_timeout_seconds: float = 5.0
+    # Account types allowed in, as the API names them (comma list). Students never are.
+    university_allowed_types: str = "teacher"
+    # First login of an allowed account creates it as role `user`. False = ADMIN must add
+    # the person first (by the same email, or by their ID).
+    university_auto_create: bool = True
+
+    # Sessions: hard limit, idle timeout, and how many devices one user may stay logged in on.
     session_cookie: str = "dbr_session"
     session_ttl_hours: int = 12
+    session_idle_minutes: int = 60
+    session_max_per_user: int = 5
     cookie_secure: bool = False  # True behind HTTPS; the SSH-tunnel demo is plain HTTP
     # Behind Cloudflare Tunnel: take the visitor's IP from this header (e.g. CF-Connecting-IP).
     # Safe only because the API port is bound to 127.0.0.1, so only the local tunnel reaches it.

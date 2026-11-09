@@ -26,8 +26,9 @@ API = "http://testserver/api"
 # Everything users create. Seeded reference data (categories, settings, templates) is kept:
 # `users` is DELETEd, not truncated, because TRUNCATE … CASCADE would follow
 # extraction_templates.created_by and wipe the seeded templates too.
+# `audit_events` is append-only (a trigger blocks TRUNCATE), so it is emptied separately.
 USER_DATA_TABLES = (
-    "people, tags, jobs, audit_events, documents, document_versions, sessions, "
+    "people, tags, jobs, documents, document_versions, sessions, "
     "auth_identities, share_links, share_access_log, budget_lines, document_pages, "
     "document_sections, document_people, document_categories, document_tags"
 )
@@ -90,6 +91,10 @@ def db_clean(app_db: str) -> Iterator[None]:
     yield
     engine = create_engine(app_db)
     with engine.begin() as conn:
+        # Replica mode skips ordinary triggers (superuser only), here the append-only guard.
+        conn.execute(text("SET LOCAL session_replication_role = replica"))
+        conn.execute(text("TRUNCATE audit_events RESTART IDENTITY"))
+        conn.execute(text("SET LOCAL session_replication_role = origin"))
         conn.execute(text(f"TRUNCATE {USER_DATA_TABLES} RESTART IDENTITY CASCADE"))
         conn.execute(text("DELETE FROM users"))
     engine.dispose()

@@ -171,7 +171,8 @@ class User(Base):
 
 
 class AuthIdentity(Base):
-    """One way to log in. Local password now; college SSO is added by the IT team later."""
+    """One way to log in: 'local' (dev/demo password) or 'university' (staff ID, checked by
+    the university's login API; no password stored)."""
 
     __tablename__ = "auth_identities"
     __table_args__ = (
@@ -196,6 +197,8 @@ class Session(Base):
     expires_at: Mapped[datetime]
     revoked_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = created_at()
+    # Last request on this session; it ends after `session_idle_minutes` without one.
+    last_seen_at: Mapped[datetime] = mapped_column(server_default=NOW)
     ip: Mapped[str | None] = mapped_column(INET)
     user_agent: Mapped[str | None]
 

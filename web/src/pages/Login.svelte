@@ -18,7 +18,11 @@
       refreshReviewCount();
       navigate(route.query.get('next') || '/documents', { replace: true });
     } catch (err) {
-      error = err.status === 401 ? 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' : errorText(err);
+      error =
+        err.status === 401 ? 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'
+        : err.status === 429 ? 'เข้าสู่ระบบผิดหลายครั้งเกินไป รอ 15 นาทีแล้วลองใหม่'
+        : err.status === 503 ? 'ระบบตรวจสอบบัญชีของมหาวิทยาลัยไม่ตอบสนอง ลองใหม่ภายหลัง'
+        : errorText(err);
     } finally {
       busy = false;
     }

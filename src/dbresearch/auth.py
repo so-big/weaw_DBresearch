@@ -1,9 +1,8 @@
 """Authentication: swappable providers, server-side sessions, FastAPI dependencies.
 
-The college IT team will plug in SSO by adding another `AuthProvider` (e.g. OIDC or a trusted
-proxy header) and returning it from `get_provider`. Everything else (sessions, roles in our
-DB, audit) stays the same. Local login exists for dev/demo only: no password reset, MFA, or
-self-registration (CLAUDE.md).
+Providers are tried in the order of `auth_providers` (e.g. "local,university"). Local login
+exists for dev/demo and bootstrap admins only: no password reset, MFA, or self-registration
+(CLAUDE.md). The university login API lives in `dbresearch.university`. Roles stay in our DB.
 """
 
 import ipaddress
@@ -13,11 +12,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Protocol
 
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.orm import Session
 
 from dbresearch.config import get_settings
-from dbresearch.db import get_db
+from dbresearch.db import get_db, get_engine
 from dbresearch.models import AuthIdentity, User, UserRole, UserStatus
 from dbresearch.models import Session as UserSession
 from dbresearch.security import hash_password, new_token, token_hash, verify_password
@@ -25,6 +24,8 @@ from dbresearch.security import hash_password, new_token, token_hash, verify_pas
 LOCAL = "local"
 # Verifying against a dummy hash keeps "unknown user" as slow as "wrong password".
 _DUMMY_HASH = hash_password("timing-equaliser")
+# Refresh `sessions.last_seen_at` at most this often (not on every request).
+_SEEN_EVERY = timedelta(minutes=1)
 
 
 @dataclass(frozen=True)
@@ -33,11 +34,24 @@ class Credentials:
     password: str
 
 
+class LoginRejected(Exception):
+    """A definite "no". `reason` goes to the audit log only, never to the visitor."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+class ProviderUnavailable(Exception):
+    """The login backend (e.g. the university API) could not answer."""
+
+
 class AuthProvider(Protocol):
     name: str
 
     def authenticate(self, db: Session, credentials: Credentials) -> User | None:
-        """Return the active user for these credentials, or None."""
+        """Return the active user. Return None if this provider has no such account (the
+        next provider is tried); raise LoginRejected or ProviderUnavailable otherwise."""
         ...
 
 
@@ -54,16 +68,45 @@ class LocalPasswordProvider:
             )
         )
         if identity is None or identity.password_hash is None:
-            verify_password(_DUMMY_HASH, credentials.password)
             return None
         if not verify_password(identity.password_hash, credentials.password):
-            return None
-        user = db.get(User, identity.user_id)
-        return user if user is not None and user.status == UserStatus.ACTIVE else None
+            raise LoginRejected("wrong_password")
+        return active_user(db, identity.user_id)
+
+
+class ChainProvider:
+    """Ask each provider in turn until one knows the account."""
+
+    name = "chain"
+
+    def __init__(self, providers: list[AuthProvider]):
+        self.providers = providers
+
+    def authenticate(self, db: Session, credentials: Credentials) -> User:
+        for provider in self.providers:
+            user = provider.authenticate(db, credentials)
+            if user is not None:
+                return user
+        verify_password(_DUMMY_HASH, credentials.password)
+        raise LoginRejected("unknown_user")
+
+
+def active_user(db: Session, user_id: uuid.UUID) -> User:
+    user = db.get(User, user_id)
+    if user is None or user.status != UserStatus.ACTIVE:
+        raise LoginRejected("disabled")
+    return user
 
 
 def get_provider() -> AuthProvider:
-    return LocalPasswordProvider()
+    from dbresearch.university import UniversityApiProvider
+
+    known = {LOCAL: LocalPasswordProvider, "university": UniversityApiProvider.from_settings}
+    names = [n.strip() for n in get_settings().auth_providers.split(",") if n.strip()]
+    unknown = set(names) - known.keys()
+    if unknown or not names:
+        raise RuntimeError(f"Unknown AUTH_PROVIDERS entries: {sorted(unknown) or names}")
+    return ChainProvider([known[name]() for name in names])
 
 
 def normalize_username(username: str) -> str:
@@ -82,34 +125,89 @@ def add_local_identity(db: Session, user: User, username: str, password: str) ->
 
 
 # ───────────── Sessions ─────────────
+def active_session_filter(now: datetime):
+    """Not revoked, not past its hard limit, and used within the idle timeout."""
+    idle = timedelta(minutes=get_settings().session_idle_minutes)
+    return and_(
+        UserSession.revoked_at.is_(None),
+        UserSession.expires_at > now,
+        UserSession.last_seen_at > now - idle,
+    )
+
+
 def create_session(db: Session, user: User, ip: str | None, user_agent: str | None) -> str:
+    """Start a session; the user's oldest sessions beyond `session_max_per_user` end."""
+    settings = get_settings()
     token, digest = new_token()
     now = datetime.now(UTC)
     db.add(
         UserSession(
             user_id=user.id,
             token_hash=digest,
-            expires_at=now + timedelta(hours=get_settings().session_ttl_hours),
+            expires_at=now + timedelta(hours=settings.session_ttl_hours),
+            last_seen_at=now,
             ip=ip,
             user_agent=(user_agent or "")[:300],
         )
+    )
+    db.flush()
+    extra = (
+        select(UserSession.id)
+        .where(UserSession.user_id == user.id, active_session_filter(now))
+        .order_by(UserSession.last_seen_at.desc(), UserSession.created_at.desc())
+        .offset(settings.session_max_per_user)
+    )
+    db.execute(
+        update(UserSession)
+        .where(UserSession.id.in_(extra.scalar_subquery()))
+        .values(revoked_at=now)
     )
     user.last_login_at = now
     return token
 
 
 def resolve_session(db: Session, token: str) -> User | None:
+    now = datetime.now(UTC)
     row = db.execute(
-        select(User)
+        select(User, UserSession.id, UserSession.last_seen_at)
         .join(UserSession, UserSession.user_id == User.id)
         .where(
             UserSession.token_hash == token_hash(token),
-            UserSession.revoked_at.is_(None),
-            UserSession.expires_at > datetime.now(UTC),
+            active_session_filter(now),
             User.status == UserStatus.ACTIVE,
         )
-    ).scalar_one_or_none()
-    return row
+    ).one_or_none()
+    if row is None:
+        return None
+    user, session_id, last_seen = row
+    if now - last_seen > _SEEN_EVERY:
+        # Own short transaction, so the request's session stays untouched.
+        with get_engine().begin() as conn:
+            conn.execute(
+                update(UserSession)
+                .where(UserSession.id == session_id)
+                .values(last_seen_at=func.now())
+            )
+    return user
+
+
+def count_active_sessions(db: Session) -> dict[uuid.UUID, int]:
+    rows = db.execute(
+        select(UserSession.user_id, func.count())
+        .where(active_session_filter(datetime.now(UTC)))
+        .group_by(UserSession.user_id)
+    ).all()
+    return dict(rows)
+
+
+def list_active_sessions(db: Session, user_id: uuid.UUID) -> list[UserSession]:
+    return list(
+        db.scalars(
+            select(UserSession)
+            .where(UserSession.user_id == user_id, active_session_filter(datetime.now(UTC)))
+            .order_by(UserSession.last_seen_at.desc())
+        )
+    )
 
 
 def revoke_session(db: Session, token: str) -> None:
@@ -120,12 +218,14 @@ def revoke_session(db: Session, token: str) -> None:
     )
 
 
-def revoke_all_sessions(db: Session, user_id: uuid.UUID) -> None:
-    db.execute(
+def revoke_all_sessions(db: Session, user_id: uuid.UUID) -> int:
+    """End every session of this user; returns how many were still open."""
+    result = db.execute(
         update(UserSession)
         .where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
         .values(revoked_at=datetime.now(UTC))
     )
+    return result.rowcount
 
 
 # ───────────── Dependencies ─────────────

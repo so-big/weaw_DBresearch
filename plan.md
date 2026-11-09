@@ -51,7 +51,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] One PDF = **exactly one contract** (one contract no.). Different numbers within a PDF → warning only, no split.
 - [x] Package = contract body + `เอกสารแนบ 1–5`. Auto-fill only from the body, att. 1 (money: total) and att. 5 (proposal: titles, checkboxes, team). Att. 2–4 are OCR'd for search only.
 - [x] OCR text stored **unencrypted** in the DB: accepted (low-sensitivity; files themselves stay encrypted).
-- [x] Login: the **IT team integrates college SSO**. We build a minimal swappable `AuthProvider` (local login for dev/demo only); roles live in our DB.
+- [x] Login: the **university login API** (university ID + password, returns the account type). **Teachers only**; guests use share links. Deployed on the university's server (already trusted by the API). Roles live in our DB. *(2026-11-09, replaces "IT team integrates SSO")*
 - [x] Backups **kept forever** (never prune), off the server, nightly `pg_dump` + blob folder via restic, to the college NAS (assumed). **KEK backed up separately**; losing it = losing every file.
 - [x] File store: **local folder + `BlobStore` interface** (MinIO discontinued 2026-04).
 - [x] Sharing: **any USER** can share any document they can read; only the link's creator or an ADMIN manages it.
@@ -62,7 +62,8 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 ## Decisions still open
 
 - [?] **Backup target** (IT team): **assumed college NAS**; access method still unknown (`RESTIC_REPOSITORY` is configurable).
-- [?] **SSO protocol** (IT team): OIDC / SAML / LDAP / proxy header → which `AuthProvider` to build.
+- [?] **University login API spec** (IT team): URL, fields, account-type names, API key → fill in `HttpUniversityClient.verify`.
+- [?] Teachers from other faculties: allowed (auto-create) or ADMIN adds each one (`UNIVERSITY_AUTO_CREATE=false`)?
 
 ## Phase 1 — Foundation ✅ done 2026-10-28
 
@@ -126,12 +127,24 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Close a project (ปิดโครงการ): closing papers attached to the contract (encrypted, OCR'd, readings pre-fill the form), archive filter, reopen (migration `a3d9c2e71b54`)
 - [x] Deployed; 135 tests pass on the server; screens checked on PC, tablet and phone (no JS errors)
 
+## Phase 6 — Login security (2026-11-09)
+
+- [x] Idle timeout (60 min) on top of the 12 h limit; re-login ends the browser's old session
+- [x] At most 5 sessions per user; log out on every device (user), device list + end sessions (admin)
+- [x] HSTS when `COOKIE_SECURE=true`, `no-store` on `/api`, Permissions-Policy; startup + admin warning for unsafe settings
+- [x] Login audit: reason for each failure, user agent, blocked attempts, API outages; admin 24 h security summary
+- [x] `audit_events` append-only by trigger (migration `e4b7a1c9d025`)
+- [x] University login provider (teachers only, auto-create or pre-add by email/ID), with a placeholder HTTP client
+- [ ] Fill in the real university API once the spec arrives; test it on the university's server
+
 ## Demo environment
 
 - Demo admin: username `admin`, password in `~/dbresearch/secrets/demo-admin-password` on the server (mode 600).
 - Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
 ## Log
+
+- 2026-11-09 — Login security: idle timeout, session cap, log out everywhere, richer login audit + admin summary, append-only audit log, HSTS/no-store, university login provider (teachers only, API spec pending).
 
 - 2026-11-02 — Feedback round 1: faculty letter ≠ funding type, auto-fill tuned on 13 real contracts + 13 closing papers, inline category options, people/budget layout, close & archive projects.
 

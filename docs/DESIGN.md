@@ -21,7 +21,8 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 | Visibility | Every USER can view/download **all** documents. |
 | Edit rights | Only the **uploader or ADMIN** can edit metadata, add versions, delete. |
 | Roles | ADMIN, USER. **GUEST is not an account**: a guest is anyone holding a valid share link. |
-| Accounts | **Login will be integrated with the college system by the IT team.** We ship a minimal, swappable auth layer: local username/password for dev/demo only, behind an `AuthProvider` interface. Identity comes from the provider; **roles stay in our DB**, managed by ADMIN. No password reset, MFA or self-registration in v1. |
+| Accounts | **Login goes through the university's login API** (university ID + password; the API also returns the account type). Only **teacher** accounts may log in (`UNIVERSITY_ALLOWED_TYPES`); students are refused. Guests never need an account (share links). The app is deployed on the university's server, which the API already trusts. Providers sit behind `AuthProvider` and are tried in order (`AUTH_PROVIDERS=local,university`); local username/password stays for dev/demo and bootstrap admins. **Roles stay in our DB**, managed by ADMIN: a teacher's first login creates a `user` account (or links to a user ADMIN added with the same email or university ID; `UNIVERSITY_AUTO_CREATE=false` makes pre-adding mandatory). No password reset, MFA or self-registration of local accounts. *(Decided 2026-11-09. The API spec is still pending: only `HttpUniversityClient.verify` in `dbresearch/university.py` changes when it arrives.)* |
+| Login security | Server-side sessions (cookie holds a random token, DB its hash; `HttpOnly`, `SameSite=Lax`, `Secure` in production). A session ends after **12 h**, or **60 min idle** (`sessions.last_seen_at`, refreshed at most once a minute). At most **5 sessions per user**: a new login ends the oldest; logging in again on a browser ends that browser's old session. Users can log out on every device; ADMIN can see a user's devices and end them. Brute-force guard: 5 failures per username or 20 per IP in 15 min → `429`. University API outages answer `503` and don't count as failures. With `COOKIE_SECURE=true` every response sends HSTS (no `includeSubDomains`: other university sites share the domain). `/api` responses are `no-store`. ADMIN's audit page shows a 24 h login summary (failures, blocks, top usernames/IPs, which are locked now) and warns about unsafe server settings. |
 | Encryption | App-level envelope encryption: one random key (DEK) per file version, wrapped by a master key (KEK). |
 | Auto-fill | Per page: OCR with word positions (Tesseract `tha+eng`), split the PDF into sections, then apply **section templates stored in the DB** (several label variants per field: inline / right / below). User confirms. Nothing leaves the server. See §6. |
 | Uploads | **Scanner PDFs only** (`application/pdf`; other types rejected). Phone photos are used only as test samples, taken in a scanner app's document mode. |
@@ -119,13 +120,13 @@ CREATE TABLE users (
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
 
--- One user can have several ways to log in (local password now, SSO later).
+-- One user can have several ways to log in (local password, university account).
 CREATE TABLE auth_identities (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  provider      text NOT NULL,            -- 'local', later 'sso-university'
-  subject       text NOT NULL,            -- username or SSO subject id
-  password_hash text,                     -- argon2id; NULL for SSO
+  provider      text NOT NULL,            -- 'local' | 'university'
+  subject       text NOT NULL,            -- username, or the university ID
+  password_hash text,                     -- argon2id; NULL for 'university' (never stored)
   created_at    timestamptz NOT NULL DEFAULT now(),
   UNIQUE (provider, subject),
   CHECK (provider <> 'local' OR password_hash IS NOT NULL)
@@ -138,6 +139,7 @@ CREATE TABLE sessions (                   -- server-side sessions so they can be
   expires_at  timestamptz NOT NULL,
   revoked_at  timestamptz,
   created_at  timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now(),  -- idle timeout (session_idle_minutes)
   ip          inet,
   user_agent  text
 );
@@ -382,7 +384,7 @@ CREATE TABLE share_access_log (
 );
 
 -- ───────────── Audit, settings, jobs ─────────────
-CREATE TABLE audit_events (               -- append-only; app role has INSERT/SELECT only
+CREATE TABLE audit_events (               -- append-only: a trigger rejects UPDATE/DELETE/TRUNCATE
   id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   actor_id    uuid REFERENCES users(id),
   action      text NOT NULL,              -- 'document.download', 'share.create', 'user.disable'…
@@ -640,7 +642,7 @@ state-changing request needs the header `X-Requested-With: dbresearch` (CSRF gua
 Paths below are relative to `/api`.
 
 ```
-Auth       POST /auth/login · POST /auth/logout · GET /auth/me
+Auth       POST /auth/login · POST /auth/logout · POST /auth/logout-all · GET /auth/me
 Documents  POST /documents (multipart upload) · GET /documents (search: q, kind[], funding_type[],
            fiscal_year[], status[], category[], tag[], person, ref_year_be, ref_series, mine, sort,
            page, page_size, with_facets; several values in one filter = any of them; each facet
@@ -658,7 +660,7 @@ Shares     POST /documents/{id}/shares · GET /shares · GET /shares/{id}/log
            DELETE /shares/{id} · POST /shares/{id}/password
 Guest      GET /s/{token} · POST /s/{token}/unlock · GET /s/{token}/file?download=
            (the link people open is the web page /s/{token}; its grant cookie is scoped to /api/s/{token})
-Admin      /admin/users (+ PATCH, /password) · /admin/shares?state=active|all|… · /admin/trash (restore, purge)
+Admin      /admin/users (+ PATCH, /password, /sessions, POST /sessions/revoke) · /admin/security · /admin/shares?state=active|all|… · /admin/trash (restore, purge)
            /admin/audit · /admin/settings · /admin/category-groups · /admin/categories
            /admin/templates
 ```
@@ -676,7 +678,8 @@ Admin      /admin/users (+ PATCH, /password) · /admin/shares?state=active|all|�
 ## 9. Open questions
 
 - **For the IT team**: confirm the college NAS as backup target (assumed) and how to reach it (SFTP / SMB / S3); who holds the KEK copies.
-- **For the IT team**: SSO protocol of the college system (OIDC, SAML, LDAP, or a trusted reverse-proxy header) → which `AuthProvider` to implement. Do SSO users get auto-created as `user` on first login, or must ADMIN pre-create them?
+- **For the IT team**: the university login API spec (URL, request/response fields, how the account type is named, API key or not). Decided already: teachers only, auto-created as `user` on first login (§1).
+- **Teachers outside the department**: the API admits every teacher of the university, and every user can read every document. If only this department should get in, set `UNIVERSITY_AUTO_CREATE=false` and have ADMIN add people, or filter by faculty if the API returns it.
 
 ---
 

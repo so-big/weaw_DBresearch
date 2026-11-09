@@ -19,11 +19,24 @@
     'document.reprocess': 'สั่งอ่านใหม่',
     'share.create': 'สร้างลิงก์', 'share.revoke': 'ยกเลิกลิงก์', 'share.new_password': 'รหัสลิงก์ใหม่',
     'auth.login': 'เข้าสู่ระบบ', 'auth.logout': 'ออกจากระบบ', 'auth.login_failed': 'เข้าสู่ระบบไม่สำเร็จ',
+    'auth.login_blocked': 'ถูกระงับชั่วคราว', 'auth.logout_all': 'ออกจากระบบทุกอุปกรณ์',
+    'auth.provider_error': 'ระบบมหาวิทยาลัยไม่ตอบ',
     'user.create': 'เพิ่มผู้ใช้', 'user.update': 'แก้ไขผู้ใช้', 'user.password_reset': 'ตั้งรหัสผ่านใหม่',
+    'user.sessions_revoked': 'ให้ออกจากระบบทุกอุปกรณ์',
     'category.create': 'เพิ่มหมวดหมู่', 'category.update': 'แก้ไขหมวดหมู่', 'category.delete': 'ลบหมวดหมู่',
     'category_group.create': 'เพิ่มกลุ่มหมวดหมู่', 'category_group.update': 'แก้ไขกลุ่มหมวดหมู่',
     'template.update': 'แก้ไขเทมเพลต', 'settings.update': 'แก้ไขการตั้งค่า',
   };
+
+  // Why a login failed (audit `reason`), in words.
+  const REASON = {
+    wrong_password: 'รหัสผ่านผิด', unknown_user: 'ไม่พบบัญชี', disabled: 'บัญชีถูกปิดใช้งาน',
+    not_registered: 'ยังไม่ได้เพิ่มในระบบ', username: 'บัญชีนี้ผิดหลายครั้ง', ip: 'IP นี้ผิดหลายครั้ง',
+  };
+  const reason = (v) => REASON[v] || (String(v).startsWith('type_not_allowed:') ? `ประเภทบัญชีไม่ได้รับอนุญาต (${v.split(':')[1]})` : v);
+
+  let security = $state(null);
+  get('/admin/security').then((r) => (security = r)).catch(() => {});
 
   let action = $state('');
   let rows = $state(null);
@@ -47,16 +60,44 @@
   });
 
   function details(d) {
-    const skip = new Set(['version']);
+    const skip = new Set(['version', 'user_agent']);
     return Object.entries(d || {})
       .filter(([k]) => !skip.has(k))
-      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+      .map(([k, v]) => (k === 'reason' || k === 'locked' ? reason(v) : `${k}: ${Array.isArray(v) ? v.join(', ') : v}`))
       .join(' · ');
   }
 </script>
 
 <div class="stack">
   <h1>บันทึกการใช้งาน</h1>
+  {#if security}
+    {#each security.warnings as w (w)}<div class="notice bad">ตั้งค่าเซิร์ฟเวอร์ไม่ปลอดภัย: {w}</div>{/each}
+    <section class="card pad sec">
+      <div class="row"><b>การเข้าสู่ระบบ 24 ชั่วโมงล่าสุด</b></div>
+      <div class="stats">
+        <div><span class="num big">{security.logins}</span><small class="muted">สำเร็จ</small></div>
+        <div class:warn={security.failed}><span class="num big">{security.failed}</span><small class="muted">ไม่สำเร็จ</small></div>
+        <div class:warn={security.blocked}><span class="num big">{security.blocked}</span><small class="muted">ถูกระงับ</small></div>
+        {#if security.provider_errors}<div class="warn"><span class="num big">{security.provider_errors}</span><small class="muted">ระบบมหาวิทยาลัยไม่ตอบ</small></div>{/if}
+      </div>
+      {#if security.by_username.length || security.by_ip.length}
+        <div class="tops">
+          {#each [['บัญชีที่ผิดบ่อย', security.by_username, false], ['IP ที่ผิดบ่อย', security.by_ip, true]] as [title, list, mono] (title)}
+            {#if list.length}
+              <div>
+                <span class="label">{title}</span>
+                <ul>
+                  {#each list as x (x.key)}
+                    <li><span class:mono>{x.key}</span> <small class="muted">{x.failures} ครั้ง</small>{#if x.locked} <span class="badge failed">ระงับอยู่</span>{/if}</li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+          {/each}
+        </div>
+      {/if}
+    </section>
+  {/if}
   <div class="chips">
     {#each ACTIONS as [v, l] (v)}<button class="chip" aria-pressed={action === v} onclick={() => (action = v)}>{l}</button>{/each}
   </div>
@@ -90,4 +131,12 @@
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .nowrap { white-space: nowrap; }
   .det { min-width: 200px; overflow-wrap: anywhere; }
+  .sec { display: flex; flex-direction: column; gap: 12px; }
+  .stats { display: flex; gap: 24px; flex-wrap: wrap; }
+  .stats > div { display: flex; flex-direction: column; }
+  .big { font-size: 22px; font-weight: 600; }
+  .warn .big { color: var(--bad); }
+  .tops { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .tops ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+  .tops li { overflow-wrap: anywhere; }
 </style>

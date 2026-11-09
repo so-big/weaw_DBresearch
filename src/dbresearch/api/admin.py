@@ -2,19 +2,29 @@
 Every change writes an audit row. Reports (open to every user) live in api/reports.py."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from dbresearch import audit, documents, shares
+from dbresearch.api.auth import IP_LIMIT_FACTOR, failed_logins, failed_username
 from dbresearch.api.documents import trash_items
 from dbresearch.api.shares import share_out
-from dbresearch.auth import DB, AdminUser, add_local_identity, client_ip, revoke_all_sessions
+from dbresearch.auth import (
+    DB,
+    AdminUser,
+    add_local_identity,
+    client_ip,
+    count_active_sessions,
+    list_active_sessions,
+    revoke_all_sessions,
+)
 from dbresearch.autofill.rules import validate_rules
+from dbresearch.config import get_settings as app_settings
 from dbresearch.models import (
     AuditEvent,
     AuthIdentity,
@@ -30,6 +40,7 @@ from dbresearch.models import (
     UserStatus,
 )
 from dbresearch.schemas import IpText, ShareOut, TrashItem, UserOut
+from dbresearch.university import add_university_identity
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -41,6 +52,24 @@ class UserCreate(BaseModel):
     role: UserRole = UserRole.USER
     username: str | None = Field(None, max_length=100)  # local login (dev/demo only)
     password: str | None = Field(None, min_length=10, max_length=200)
+    # University ID, for logging in through the university API before their first login.
+    university_id: str | None = Field(None, min_length=1, max_length=100)
+
+
+class AdminUserOut(UserOut):
+    active_sessions: int = 0
+    logins: list[str] = []  # 'local', 'university'
+
+
+class SessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    created_at: datetime
+    last_seen_at: datetime
+    expires_at: datetime
+    ip: IpText
+    user_agent: str | None
 
 
 class UserPatch(BaseModel):
@@ -53,9 +82,43 @@ class PasswordIn(BaseModel):
     password: str = Field(min_length=10, max_length=200)
 
 
-@router.get("/users", response_model=list[UserOut])
+@router.get("/users", response_model=list[AdminUserOut])
 def list_users(db: DB, admin: AdminUser):
-    return db.scalars(select(User).order_by(User.display_name)).all()
+    sessions = count_active_sessions(db)
+    logins: dict[uuid.UUID, list[str]] = {}
+    for user_id, provider in db.execute(
+        select(AuthIdentity.user_id, AuthIdentity.provider).order_by(AuthIdentity.provider)
+    ):
+        logins.setdefault(user_id, []).append(provider)
+    return [
+        AdminUserOut.model_validate(u).model_copy(
+            update={"active_sessions": sessions.get(u.id, 0), "logins": logins.get(u.id, [])}
+        )
+        for u in db.scalars(select(User).order_by(User.display_name))
+    ]
+
+
+@router.get("/users/{user_id}/sessions", response_model=list[SessionOut])
+def user_sessions(user_id: uuid.UUID, db: DB, admin: AdminUser):
+    return list_active_sessions(db, user_id)
+
+
+@router.post("/users/{user_id}/sessions/revoke", status_code=204)
+def revoke_user_sessions(user_id: uuid.UUID, request: Request, db: DB, admin: AdminUser) -> None:
+    """Log this user out on every device."""
+    if db.get(User, user_id) is None:
+        raise HTTPException(404, "User not found")
+    ended = revoke_all_sessions(db, user_id)
+    audit.record(
+        db,
+        "user.sessions_revoked",
+        "user",
+        user_id,
+        actor_id=admin.id,
+        ip=client_ip(request),
+        sessions=ended,
+    )
+    db.commit()
 
 
 @router.post("/users", response_model=UserOut, status_code=201)
@@ -68,10 +131,12 @@ def create_user(body: UserCreate, request: Request, db: DB, admin: AdminUser):
         db.flush()
         if body.username:
             add_local_identity(db, user, body.username, body.password)
-            db.flush()
+        if body.university_id:
+            add_university_identity(db, user, body.university_id)
+        db.flush()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(409, "Email or username already in use") from exc
+        raise HTTPException(409, "Email, username or university ID already in use") from exc
     audit.record(
         db,
         "user.create",
@@ -81,6 +146,7 @@ def create_user(body: UserCreate, request: Request, db: DB, admin: AdminUser):
         ip=client_ip(request),
         role=body.role.value,
         local_login=bool(body.username),
+        university_login=bool(body.university_id),
     )
     db.commit()
     return user
@@ -231,6 +297,74 @@ def audit_log(
         )
         for e, name in rows
     ]
+
+
+# ───────────── Login security summary ─────────────
+class LoginSource(BaseModel):
+    key: str  # an IP or a username
+    failures: int
+    locked: bool  # still over the brute-force limit right now
+
+
+class SecurityOut(BaseModel):
+    hours: int
+    failed: int
+    blocked: int
+    provider_errors: int
+    logins: int
+    by_ip: list[LoginSource]
+    by_username: list[LoginSource]
+    warnings: list[str]  # unsafe server settings (main.unsafe_settings)
+
+
+@router.get("/security", response_model=SecurityOut)
+def security_summary(db: DB, admin: AdminUser, hours: Annotated[int, Query(ge=1, le=720)] = 24):
+    """Failed and blocked logins: the most active IPs and usernames, and which are locked."""
+    from dbresearch.main import unsafe_settings  # main imports this module
+
+    settings = app_settings()
+    since = func.now() - timedelta(hours=hours)
+
+    def count(action: str) -> int:
+        return db.scalar(
+            select(func.count())
+            .select_from(AuditEvent)
+            .where(AuditEvent.action == action, AuditEvent.at >= since)
+        )
+
+    def top(column, limit_now: int) -> list[LoginSource]:
+        rows = db.execute(
+            select(column, func.count())
+            .where(
+                AuditEvent.action == "auth.login_failed",
+                AuditEvent.at >= since,
+                column.is_not(None),
+            )
+            .group_by(column)
+            .order_by(func.count().desc())
+            .limit(10)
+        ).all()
+        window = failed_logins(settings.login_window_minutes)
+        return [
+            LoginSource(
+                key=str(key),
+                failures=n,
+                locked=db.scalar(window.where(column == key)) >= limit_now,
+            )
+            for key, n in rows
+        ]
+
+    limit = settings.login_max_failures
+    return SecurityOut(
+        hours=hours,
+        failed=count("auth.login_failed"),
+        blocked=count("auth.login_blocked"),
+        provider_errors=count("auth.provider_error"),
+        logins=count("auth.login"),
+        by_ip=top(AuditEvent.ip, IP_LIMIT_FACTOR * limit),
+        by_username=top(failed_username(), limit),
+        warnings=unsafe_settings(),
+    )
 
 
 # ───────────── Settings ─────────────

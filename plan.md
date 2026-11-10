@@ -247,6 +247,90 @@ dependencies (npm audit + pip-audit: 0 known vulnerabilities).
 - [ ] When it starts: brainstorm the direction, make mocks (`docs/ui/`), agree on them, then update DESIGN §10
   (current UI rules) and CLAUDE.md before building
 
+## Phase 9 — Review round 2026-11-10: security, bugs, QoL, features (PLAN, no code yet)
+
+Found by reading the code (auth, shares, documents, admin, search, worker, web app, compose,
+backup script). "Confirmed" = traced in the code; "check" = needs a test on a real device/server.
+
+### 9A. Security fixes (do first, all small)
+- [ ] **S1 Password links show the title before the password** (confirmed): `GET /api/s/{token}`
+      returns title, file name, size and pages to anyone holding the link; `Guest.svelte` shows the
+      title on the password screen. Return only `requires_password` + `expires_at` until unlocked.
+- [ ] **S2 Uploads are read before the login check** (confirmed: FastAPI parses the form before
+      dependencies). Anyone can send 100 MB bodies to `POST /api/documents` and fill the API's 1 GB
+      in-memory `/tmp` before getting 401. Reject unauthenticated multipart POSTs in a middleware
+      (cookie → valid session) before the body is read; keep the Content-Length check.
+- [ ] **S3 Unauthenticated requests write rows forever**: every blocked login writes an
+      `auth.login_blocked` audit row (append-only, never cleaned) and every guest page load writes a
+      share log row. Add a Cloudflare rate-limit rule on `/api/auth/login` and `/api/s/*`, and
+      write one `login_blocked` row per lock window instead of one per request.
+- [ ] **S4 Anyone can lock a staff account** by typing 5 wrong passwords for that username
+      (15 min, repeatable). Decide: count username failures per IP too, or add a short delay
+      instead of a hard lock, or put Cloudflare Access in front (OPERATIONS.md option).
+- [ ] **S5 Opened PDFs run on our own site**: add `Content-Security-Policy: sandbox` to file
+      responses (`stream_version`), so a crafted PDF opened inline can't act as our site.
+- [ ] **S6 Container hardening**: `migrate` lacks `cap_drop`/`no-new-privileges`; the worker mounts
+      `./samples` (confidential scans) in the production compose file → move to a dev override.
+- [ ] **S7 Dependency checks**: no CI. Add a GitHub Action: ruff, unit tests, `npm run build`,
+      `pip-audit`, `npm audit --omit=dev`.
+- (existing) KEK custody, NAS backups (Phase 2), hide `/api/docs` + `/health` details (Security review).
+
+### 9B. Bugs
+- [ ] **B1 Renaming a category leaves old search text** (confirmed): `search_text` includes category
+      names but `PATCH /admin/categories/{id}` (name/aliases) doesn't rebuild it → the new name
+      finds nothing until each document is re-saved. Rebuild affected documents (a job).
+- [ ] **B2 OCR failure → document not searchable** (confirmed): `give_up` never builds
+      `search_text`, so a failed-OCR upload can't be found even by its file name until reviewed.
+- [ ] **B3 Duplicates via the trash** (confirmed): the duplicate check ignores trashed documents, so
+      re-uploading a trashed file makes a second document; restoring the first then gives two.
+      Point to the trashed copy ("restore it instead?").
+- [ ] **B4 Duplicate race** (confirmed): no unique index on `sha256_plain`; the upload window sends
+      2 files at once, so the same file dropped twice can be stored twice. Lock or unique index.
+- [ ] **B5 Title highlight ignores spaces/case** (confirmed): `Documents.svelte` highlights titles with
+      plain `includes(q)`, unlike the space-insensitive search, so most title hits aren't marked.
+- [ ] **B6 Slow result list** (confirmed by reading): `search.snippet` loads every page's text of
+      each result in Python (up to 100 results × hundreds of pages for proposal bundles). Find the
+      match in SQL, or only for the first page of results.
+- [ ] **B7 Docs drift**: DESIGN §1 still lists share-link "view-only mode" (dropped 2026-11-11);
+      plan.md has two open items for the university API spec (lines "Decisions still open").
+- [ ] **B8 (check)** "Every open counts": test on Android/iOS that opening or downloading once
+      uses only one count (some mobile viewers fetch twice).
+
+### 9C. QoL fixes to what exists
+- [ ] **Q1 Don't lose review work**: a 60-min idle timeout ends the session while someone types a
+      long review form (typing makes no requests); the save then fails and redirects to login.
+      Keep a local draft of the form, warn ~5 min before the session ends, and refresh it on typing.
+- [ ] **Q2 Unsaved-changes warning** when leaving the review form / proposal review (none today).
+- [ ] **Q3 Share dialog**: "copy link + password as a message" (ready-to-paste Thai text for
+      LINE/email, password on its own line), a QR code for handing a link over on a phone, and
+      the version pin the API already supports.
+- [ ] **Q4 Owner sees every link on their document**: the uploader can't see or revoke links a
+      colleague made on their document; list all active links on the document page.
+- [ ] **Q5 Thai error messages**: several API messages still reach users in English
+      (link-length cap, "No such version", cancelled/not-closed project, "Name or key already
+      exists", "Used by N document(s)", "already decided"). Map them or send error codes.
+- [ ] **Q6 Restore from trash**: say that old share links stay dead and offer "create a new link".
+
+### 9D. Feature ideas (pick later)
+- [ ] **F1 Export to Excel/CSV** of the current search/filters and the proposal report (the office
+      works from spreadsheets today). High value, small.
+- [ ] **F2 Reminders**: weekly digest for overdue KPIs, projects near their end date, and documents
+      waiting for review (email, if the university gives SMTP; else an in-app "due soon" page).
+- [ ] **F3 Researcher page**: all projects of one person (from `people`), totals per year and
+      funding source; link from every name.
+- [ ] **F4 Backup status on the admin page**: last successful backup time; warn after 26 h.
+      Needs the backup timer (Phase 2) to write a status row/file.
+- [ ] **F5 Saved searches / pinned filters** per user.
+- [ ] **F6 Share several papers in one link** (a teacher's whole set). Changes the "one document
+      per link" rule (DESIGN §1): decide first.
+- [ ] **F7 Find inside a document**: search box on the document page that jumps to the page.
+
+### Suggested order
+1. 9A S1–S3, S5, S6 (small, mostly one file each) → deploy → full tests on the server.
+2. 9B B1–B5, B7, then B6 → deploy.
+3. 9C Q1–Q2 (protect work), then Q3–Q6.
+4. Decide S4 and F6; pick features from 9D (F1 first).
+
 ## Demo environment
 
 - Demo admin: username `admin`, password in `~/dbresearch/secrets/demo-admin-password` on the server (mode 600).

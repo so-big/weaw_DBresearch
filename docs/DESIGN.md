@@ -769,6 +769,18 @@ Admin      /admin/users (+ PATCH, /password, /sessions, POST /sessions/revoke) �
 
 - **For the IT team**: confirm the college NAS as backup target (assumed) and how to reach it (SFTP / SMB / S3); who holds the KEK copies.
 - **For the IT team**: the university login API spec (URL, request/response fields, how the account type is named, API key or not). Decided already: staff only, no teachers or students (exact type names from the spec), new logins wait for approval (§1).
+- **University login formats and `RealLogin.php`** *(noted 2026-11-10)*:
+  - `samples/RealLogin.php` came from IT and is a test LDAP bind script (`ldap.nu.local`, Active Directory). Use it **only to test and compare** against the university's real logins. Never put it in production: an empty password logs anyone in, it echoes any CORS origin with credentials, it uses plain `ldap://` on port 389, it has no rate limit, and it returns no account type. Both this machine and the deploy server can reach `ldap.nu.local`, which answers on 389; the server also answers on 636 (LDAPS).
+  - When the project is handed to the department, login will check a database of user IDs instead (details still to come).
+  - Usernames by person:
+
+    | Who | Username | Example |
+    |---|---|---|
+    | Student | Student ID, 8 digits: entry year (last 2 digits of the พ.ศ. year) + faculty code + running number | `68369999` = entered 2568, faculty 36, no. 9999 |
+    | Student (email) | First name + first letter of the surname + entry year | `somchaij68@nu.ac.th` |
+    | Staff and teachers | First name + first letter of the surname, no digits | `somchaij@nu.ac.th` |
+
+  - What this means for the app: we can refuse students **from the username alone**, before calling AD (8-digit ID, or digits before `@`). Staff and teachers use the same format, so telling them apart needs AD groups or the user-ID database.
 - **Staff outside the department** *(decided 2026-11-09, built 2026-11-11)*: the API admits every staff account of the university, so a first login is a *pending* request until ADMIN approves it (§1). **Ask IT whether the API returns the department**: if it does, set `UNIVERSITY_AUTO_APPROVE_DEPARTMENTS` to our department's name as the API spells it.
 
 ---

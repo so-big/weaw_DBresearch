@@ -51,7 +51,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] One PDF = **exactly one contract** (one contract no.). Different numbers within a PDF → warning only, no split.
 - [x] Package = contract body + `เอกสารแนบ 1–5`. Auto-fill only from the body, att. 1 (money: total) and att. 5 (proposal: titles, checkboxes, team). Att. 2–4 are OCR'd for search only.
 - [x] OCR text stored **unencrypted** in the DB: accepted (low-sensitivity; files themselves stay encrypted).
-- [x] Login: the **university login API** (university ID + password, returns the account type). **Teachers only**; guests use share links. Deployed on the university's server (already trusted by the API). Roles live in our DB. *(2026-11-09, replaces "IT team integrates SSO")*
+- [x] Login: the **university login API** (university ID + password, returns the account type). **Staff only** (research office USER, IT team ADMIN); teachers and other guests use share links, students never get in. Deployed on the university's server (already trusted by the API). Roles live in our DB. *(2026-11-09, replaces "IT team integrates SSO")*
 - [x] Backups **kept forever** (never prune), off the server, nightly `pg_dump` + blob folder via restic, to the college NAS (assumed). **KEK backed up separately**; losing it = losing every file.
 - [x] File store: **local folder + `BlobStore` interface** (MinIO discontinued 2026-04).
 - [x] Sharing: **any USER** can share any document they can read; only the link's creator or an ADMIN manages it.
@@ -63,6 +63,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 - [?] **Backup target** (IT team): **assumed college NAS**; access method still unknown (`RESTIC_REPOSITORY` is configurable).
 - [?] **University login API spec** (IT team): URL, fields, account-type names, API key → fill in `HttpUniversityClient.verify`.
+- [?] **Login source**: `samples/RealLogin.php` (LDAP to `ldap.nu.local`) is for testing and comparing only (it is unsafe: empty password logs anyone in). The department deployment will use a database of user IDs. Username formats are in DESIGN §9. Students can be refused by username format; staff and teachers look the same, so we still need AD groups or the database to tell them apart.
 - [?] **Does the university API return the staff member's department/faculty?** Ask IT with the spec. If yes: auto-approve our department's staff, queue the rest.
 
 ## Phase 1 — Foundation ✅ done 2026-10-28
@@ -260,6 +261,7 @@ dependencies (npm audit + pip-audit: 0 known vulnerabilities).
 
 - 2026-11-11 — FF (Fundamental Fund) now counts as **internal** funding (was external); migration `d5a7c3e9f1b2` switches existing FF documents. New front-end design added as Phase 8, on hold until the remaining tasks are almost done.
 
+- 2026-11-10 — Noted university username formats (student ID / student email with entry year / staff and teacher email) and that `RealLogin.php` is for testing only; the department deployment will log in against a database of user IDs.
 - 2026-11-11 — Phase 6: approval queue for first university logins (pending → approve / reject on the Users page). Share links confirmed working on phone and PC.
 
 - 2026-11-10 — Phase 7 step 5: ทุนพัฒนาข้อเสนอ section in the web app (list, grant page + timeline, review, overview); 180 tests pass.

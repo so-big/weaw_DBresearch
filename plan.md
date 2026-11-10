@@ -251,6 +251,8 @@ dependencies (npm audit + pip-audit: 0 known vulnerabilities).
 - Demo admin: username `admin`, password in `~/dbresearch/secrets/demo-admin-password` on the server (mode 600).
 - Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
+- **RealLogin test (2026-11-10, temporary)**: `dbresearch-reallogin-test` (IT's PHP script, `127.0.0.1:8121`, joined to `dbresearch_default`) and `dbresearch-api-unitest` (a second app instance on `127.0.0.1:8122` with `UNIVERSITY_CLIENT=php_ldap_test`, same DB). SSH tunnel only; the public demo (8120) keeps local login only. Remove: `docker rm -f dbresearch-api-unitest dbresearch-reallogin-test && docker rmi dbresearch-reallogin-test && rm -rf ~/dbresearch/samples/reallogin-test`. Rebuild the test copy after deploys (`docker compose run` keeps the old image).
+
 ## Log
 
 - 2026-11-11 — Share links: every file open (view or download) counts toward the limit; "view only" option removed from the share window.
@@ -261,6 +263,7 @@ dependencies (npm audit + pip-audit: 0 known vulnerabilities).
 
 - 2026-11-11 — FF (Fundamental Fund) now counts as **internal** funding (was external); migration `d5a7c3e9f1b2` switches existing FF documents. New front-end design added as Phase 8, on hold until the remaining tasks are almost done.
 
+- 2026-11-10 — Test-only university login through IT's RealLogin.php (`UNIVERSITY_CLIENT=php_ldap_test`) on a private app copy (port 8122); student-format usernames refused before any password is sent.
 - 2026-11-10 — Noted university username formats (student ID / student email with entry year / staff and teacher email) and that `RealLogin.php` is for testing only; the department deployment will log in against a database of user IDs.
 - 2026-11-11 — Phase 6: approval queue for first university logins (pending → approve / reject on the Users page). Share links confirmed working on phone and PC.
 

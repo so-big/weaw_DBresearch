@@ -769,6 +769,7 @@ Admin      /admin/users (+ PATCH, /password, /sessions, POST /sessions/revoke) ย
 
 - **For the IT team**: confirm the college NAS as backup target (assumed) and how to reach it (SFTP / SMB / S3); who holds the KEK copies.
 - **For the IT team**: the university login API spec (URL, request/response fields, how the account type is named, API key or not). Decided already: staff only, no teachers or students (exact type names from the spec), new logins wait for approval (ยง1).
+- **Login system paused** *(2026-11-10)*: waiting for the real university login API or the department's user-ID server (the IT team continues it). Local login only until then.
 - **University login formats and `RealLogin.php`** *(noted 2026-11-10)*:
   - `samples/RealLogin.php` came from IT and is a test LDAP bind script (`ldap.nu.local`, Active Directory). Use it **only to test and compare** against the university's real logins. Never put it in production: an empty password logs anyone in, it echoes any CORS origin with credentials, it uses plain `ldap://` on port 389, it has no rate limit, and it returns no account type. Both this machine and the deploy server can reach `ldap.nu.local`, which answers on 389; the server also answers on 636 (LDAPS).
   - When the project is handed to the department, login will check a database of user IDs instead (details still to come).

@@ -63,6 +63,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 
 - [?] **Backup target** (IT team): **assumed college NAS**; access method still unknown (`RESTIC_REPOSITORY` is configurable).
 - [?] **University login API spec** (IT team): URL, fields, account-type names, API key → fill in `HttpUniversityClient.verify`.
+- [⏸] **Login system PAUSED (2026-11-10)**: waiting for the real university login API or the department's user-ID server; the IT team continues it. Until then the app uses local login only. Ready for it: `HttpUniversityClient` (fill in once the spec arrives), student usernames refused up front, approval queue, test-only `UNIVERSITY_CLIENT=php_ldap_test` (IT's RealLogin.php worked against the real AD on 2026-11-10).
 - [?] **Login source**: `samples/RealLogin.php` (LDAP to `ldap.nu.local`) is for testing and comparing only (it is unsafe: empty password logs anyone in). The department deployment will use a database of user IDs. Username formats are in DESIGN §9. Students can be refused by username format; staff and teachers look the same, so we still need AD groups or the database to tell them apart.
 - [?] **Does the university API return the staff member's department/faculty?** Ask IT with the spec. If yes: auto-approve our department's staff, queue the rest.
 
@@ -137,7 +138,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 - [x] Login audit: reason for each failure, user agent, blocked attempts, API outages; admin 24 h security summary
 - [x] `audit_events` append-only by trigger (migration `e4b7a1c9d025`)
 - [x] University login provider (teachers only, auto-create or pre-add by email/ID), with a placeholder HTTP client
-- [ ] Fill in the real university API once the spec arrives; test it on the university's server
+- [ ] ⏸ Paused: fill in the real university API (or the department's user-ID server) once it arrives; test it on the university's server
 - [x] **Approval queue** (decided 2026-11-09): a teacher's first login creates a *pending* request, not an account. They see "waiting for admin approval"; ADMIN approves/rejects on the Users page (audited). Replaces auto-create as the default, so teachers from other departments can't get in directly. If the API gives the department, auto-approve our own department (`UNIVERSITY_AUTO_APPROVE_DEPARTMENTS`). Built 2026-11-11: status `pending` (migration `b8e3f6a2c4d1`), `GET /api/admin/users/requests`, approve/reject (audited), count on the admin ผู้ใช้ menu, login page notice. `UNIVERSITY_AUTO_CREATE` removed.
 
 ## Phase 7 — ทุนพัฒนาข้อเสนอโครงการวิจัย (proposal-development grants) — PLAN, not started
@@ -251,7 +252,7 @@ dependencies (npm audit + pip-audit: 0 known vulnerabilities).
 - Demo admin: username `admin`, password in `~/dbresearch/secrets/demo-admin-password` on the server (mode 600).
 - Demo data: the **mock** sample uploaded once (status `needs_review`). The confidential real scan is *not* in the demo DB.
 
-- **RealLogin test (2026-11-10, temporary)**: `dbresearch-reallogin-test` (IT's PHP script, `127.0.0.1:8121`, joined to `dbresearch_default`) and `dbresearch-api-unitest` (a second app instance on `127.0.0.1:8122` with `UNIVERSITY_CLIENT=php_ldap_test`, same DB). SSH tunnel only; the public demo (8120) keeps local login only. Remove: `docker rm -f dbresearch-api-unitest dbresearch-reallogin-test && docker rmi dbresearch-reallogin-test && rm -rf ~/dbresearch/samples/reallogin-test`. Rebuild the test copy after deploys (`docker compose run` keeps the old image).
+- **RealLogin test (2026-11-10)**: done and removed (containers on 8121/8122 deleted). To repeat it, run IT's script in a `php:8.3-apache` container with the `ldap` extension on `dbresearch_default`, and a second app instance with `UNIVERSITY_CLIENT=php_ldap_test`, bound to `127.0.0.1` only (never on the public demo).
 
 ## Log
 
@@ -263,6 +264,7 @@ dependencies (npm audit + pip-audit: 0 known vulnerabilities).
 
 - 2026-11-11 — FF (Fundamental Fund) now counts as **internal** funding (was external); migration `d5a7c3e9f1b2` switches existing FF documents. New front-end design added as Phase 8, on hold until the remaining tasks are almost done.
 
+- 2026-11-10 — Login system paused until the real university API or the department's user-ID server is ready (IT team continues). RealLogin test containers removed.
 - 2026-11-10 — Test-only university login through IT's RealLogin.php (`UNIVERSITY_CLIENT=php_ldap_test`) on a private app copy (port 8122); student-format usernames refused before any password is sent.
 - 2026-11-10 — Noted university username formats (student ID / student email with entry year / staff and teacher email) and that `RealLogin.php` is for testing only; the department deployment will log in against a database of user IDs.
 - 2026-11-11 — Phase 6: approval queue for first university logins (pending → approve / reject on the Users page). Share links confirmed working on phone and PC.

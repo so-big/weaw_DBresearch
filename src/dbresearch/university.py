@@ -16,11 +16,12 @@ Rules:
 """
 
 import json
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -104,6 +105,62 @@ class HttpUniversityClient:
         )
 
 
+# Student usernames (DESIGN §9): an 8-digit student ID (entry year + faculty + running no.),
+# or an email local part ending in the 2-digit entry year (`somchaij68`). Staff and teachers
+# use first name + surname initial with no digits, so they can't be told apart here.
+_STUDENT_USERNAME = re.compile(r"\d{8}|[a-z]+\d{2}")
+
+
+def local_part(username: str) -> str:
+    return username.strip().lower().split("@", 1)[0]
+
+
+def is_student_username(username: str) -> bool:
+    return _STUDENT_USERNAME.fullmatch(local_part(username)) is not None
+
+
+class PhpLdapTestClient:
+    """TEST ONLY: IT's `RealLogin.php` (LDAP bind against the university AD).
+
+    POST username=<local part>&password=...  (the script adds `@nu.local` itself)
+    "Login successful" -> right password; "wrong user or password" -> wrong.
+
+    The script returns no ID, account type or department, so every non-student login is
+    reported as type "staff" and our users table decides: someone ADMIN added (same email or
+    university ID) logs in, anyone else becomes a pending request. The script logs anyone in
+    with an empty password, so blank passwords never reach it.
+    """
+
+    def __init__(self, url: str, email_domain: str, timeout: float):
+        if urlparse(url).scheme not in ("http", "https"):
+            raise RuntimeError("UNIVERSITY_API_URL must be http(s)://")
+        self.url, self.email_domain, self.timeout = url, email_domain, timeout
+
+    def verify(self, username: str, password: str) -> UniversityAccount | None:
+        user = local_part(username)
+        if not user or not password.strip():
+            return None
+        request = urllib.request.Request(
+            self.url,
+            data=urlencode({"username": user, "password": password}).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                text = response.read(4096).decode("utf-8", "replace")
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            # No details: an exception chain could carry the request body.
+            raise ProviderUnavailable(type(exc).__name__) from None
+        if "login successful" in text.lower():
+            return UniversityAccount(
+                subject=user, account_type="staff", email=f"{user}@{self.email_domain}"
+            )
+        if "wrong user or password" in text.lower():
+            return None
+        raise ProviderUnavailable("unexpected reply")
+
+
 class UniversityApiProvider:
     name = PROVIDER
 
@@ -122,11 +179,21 @@ class UniversityApiProvider:
         settings = get_settings()
         if not settings.university_api_url:
             raise RuntimeError("AUTH_PROVIDERS has 'university' but UNIVERSITY_API_URL is unset")
-        client = HttpUniversityClient(
-            settings.university_api_url,
-            settings.university_api_key,
-            settings.university_api_timeout_seconds,
-        )
+        client: UniversityClient
+        if settings.university_client == "php_ldap_test":
+            client = PhpLdapTestClient(
+                settings.university_api_url,
+                settings.university_email_domain,
+                settings.university_api_timeout_seconds,
+            )
+        elif settings.university_client == "api":
+            client = HttpUniversityClient(
+                settings.university_api_url,
+                settings.university_api_key,
+                settings.university_api_timeout_seconds,
+            )
+        else:
+            raise RuntimeError(f"Unknown UNIVERSITY_CLIENT: {settings.university_client!r}")
         return cls(
             client,
             set(settings.university_allowed_types.split(",")),
@@ -134,7 +201,11 @@ class UniversityApiProvider:
         )
 
     def authenticate(self, db: Session, credentials: Credentials) -> User:
-        account = self.client.verify(normalize_username(credentials.username), credentials.password)
+        username = normalize_username(credentials.username)
+        if is_student_username(username):
+            # Refused before the password goes anywhere.
+            raise LoginRejected("type_not_allowed:student")
+        account = self.client.verify(username, credentials.password)
         if account is None:
             raise LoginRejected("wrong_password")
         if account.account_type not in self.allowed_types:

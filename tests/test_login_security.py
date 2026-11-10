@@ -278,6 +278,14 @@ def test_own_department_is_approved_automatically(client, university):
     assert created.details["auto_approved"] is True
 
 
+def test_student_usernames_are_refused_before_the_university_is_asked(client, university):
+    for username in ("68369999", "somchaij68@nu.ac.th"):
+        assert sign_in(client, username, "any-pass").status_code == 401
+    assert university["fake"].calls == 0  # the password went nowhere
+    reasons = {r.details["reason"] for r in audit_rows("auth.login_failed")}
+    assert reasons == {"type_not_allowed:student"}
+
+
 def test_teachers_students_and_wrong_passwords_are_refused(client, university):
     # Teachers get share links instead of accounts; students never get in.
     assert sign_in(client, "p2001", "prof-pass").status_code == 401

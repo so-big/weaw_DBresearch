@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # Users page. Departments listed here (comma list, as the API names them) skip the queue;
     # it only works once the API returns the department.
     university_auto_approve_departments: str = ""
+    # Which university client to use: "api" (the real API, spec pending) or "php_ldap_test"
+    # (TEST ONLY: IT's RealLogin.php LDAP script, which only says right/wrong password, so
+    # our users table decides who gets in; plain http allowed). DESIGN §9.
+    university_client: str = "api"
+    # Staff email domain; the test client builds `<username>@<domain>` to match users ADMIN added.
+    university_email_domain: str = "nu.ac.th"
 
     # Sessions: hard limit, idle timeout, and how many devices one user may stay logged in on.
     session_cookie: str = "dbr_session"

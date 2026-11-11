@@ -17,6 +17,7 @@ from dbresearch.api import shares as shares_api
 from dbresearch.config import get_settings
 from dbresearch.crypto import load_keyring
 from dbresearch.db import get_engine
+from dbresearch.upload_guard import UploadAuthGuard
 
 app = FastAPI(
     title="DBresearch",
@@ -24,6 +25,9 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
     redoc_url=None,
 )
+# Added first, so it runs innermost: after the CSRF and size checks, still before any body
+# is read (the later @app.middleware ones wrap it and add headers to its 401).
+app.add_middleware(UploadAuthGuard)
 
 # Browsers can't add custom headers to cross-site requests without a CORS preflight, which
 # this API never allows. Requiring one on every state-changing request blocks CSRF even if

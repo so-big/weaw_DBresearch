@@ -27,6 +27,7 @@ from dbresearch.schemas import (
     DocumentSummary,
     PersonBrief,
     PersonPageOut,
+    PersonRef,
     SearchOut,
     SnippetFile,
 )
@@ -105,8 +106,8 @@ def list_documents(
     items = []
     for document in documents:
         item = DocumentSummary.model_validate(document)
-        item.owner_people = people.get(document.id, [])
-        item.owners = [p["name"] for p in item.owner_people]
+        item.owner_people = [PersonRef(**p) for p in people.get(document.id, [])]
+        item.owners = [p.name for p in item.owner_people]
         for name, value in extras.get(document.id, {}).items():
             setattr(item, name, value)
         if hit := found.get(document.id):

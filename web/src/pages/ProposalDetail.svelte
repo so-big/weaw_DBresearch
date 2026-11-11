@@ -11,11 +11,13 @@
   import Icon from '../components/Icon.svelte';
   import Modal from '../components/Modal.svelte';
   import ShareDialog from '../components/ShareDialog.svelte';
+  import DocumentLinks from '../components/DocumentLinks.svelte';
 
   let { id } = $props();
   let doc = $state(null);
   let error = $state('');
   let sharing = $state(false);
+  let linksKey = $state(0);
   let confirmDelete = $state(false);
   let busy = $state(false);
   let timer;
@@ -374,6 +376,8 @@
       </section>
     </div>
 
+    {#if doc.can_edit}<DocumentLinks id={doc.id} refresh={linksKey} />{/if}
+
     {#if doc.can_edit}
       <div class="danger">
         <button class="btn ghost small" onclick={() => (confirmDelete = true)}><Icon name="trash" size={15} />ย้ายไปถังขยะ</button>
@@ -381,7 +385,7 @@
     {/if}
   </div>
 
-  {#if sharing}<ShareDialog {doc} onclose={() => (sharing = false)} />{/if}
+  {#if sharing}<ShareDialog {doc} onclose={() => (sharing = false)} oncreated={() => linksKey++} />{/if}
 
   {#if attaching}
     <Modal title="แนบบันทึกเปลี่ยนแปลงโครงการ" onclose={() => !busy && (attaching = null)} width={520}>

@@ -1,12 +1,16 @@
 <script>
   // List of share links with revoke / new password / access log. Used by "my links" and admin.
   import { get, post, del, errorText } from '../lib/api.js';
-  import { toast } from '../lib/state.svelte.js';
+  import { toast, session, isAdmin } from '../lib/state.svelte.js';
   import { LINK_STATE, thDateTime, timeLeft } from '../lib/format.js';
   import Icon from './Icon.svelte';
   import Modal from './Modal.svelte';
 
-  let { links, onchange } = $props();
+  // byDoc: the list sits on one document's page, so show who made each link, not the title.
+  let { links, onchange, byDoc = false } = $props();
+
+  // Log and new password belong to the link's creator and admins; the document's uploader may only revoke.
+  const manages = (l) => isAdmin() || l.created_by === session.user?.id;
 
   let revoking = $state(null);
   let logFor = $state(null);
@@ -63,7 +67,11 @@
     {#each links as l (l.id)}
       <div class="card item enter" class:inactive={l.state !== 'active'}>
         <div class="top">
-          <a class="t" href="/documents/{l.document_id}">{l.document_title}</a>
+          {#if byDoc}
+            <span class="t"><Icon name="user" size={14} /> {l.created_by_name || 'ไม่ทราบผู้สร้าง'}</span>
+          {:else}
+            <a class="t" href="/documents/{l.document_id}">{l.document_title}</a>
+          {/if}
           <span class="badge {l.state === 'active' ? 'ready' : 'neutral'}">{LINK_STATE[l.state] || l.state}</span>
         </div>
         <div class="meta">
@@ -74,9 +82,9 @@
           {#if l.note}<span class="note">“{l.note}”</span>{/if}
         </div>
         <div class="acts">
-          <button class="link-btn" onclick={() => showLog(l)}>ประวัติการเข้าถึง</button>
+          {#if manages(l)}<button class="link-btn" onclick={() => showLog(l)}>ประวัติการเข้าถึง</button>{/if}
           {#if l.state === 'active' || l.state === 'locked'}
-            {#if l.access === 'password'}<button class="link-btn" onclick={() => regenerate(l)}>ตั้งรหัสผ่านใหม่</button>{/if}
+            {#if l.access === 'password' && manages(l)}<button class="link-btn" onclick={() => regenerate(l)}>ตั้งรหัสผ่านใหม่</button>{/if}
             <button class="link-btn danger" onclick={() => (revoking = l)}>ยกเลิกลิงก์</button>
           {/if}
         </div>

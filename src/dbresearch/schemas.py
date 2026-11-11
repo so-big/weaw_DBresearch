@@ -286,6 +286,14 @@ class AutofillOut(BaseModel):
 
 
 # ───────────── Search / pickers ─────────────
+class SnippetFile(BaseModel):
+    """Selector for GET /documents/{id}/file: main = ?version=N, closure = ?closure=N,
+    paper = ?paper=N."""
+
+    kind: Literal["main", "closure", "paper"]
+    version_no: int
+
+
 class DocumentSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -312,6 +320,8 @@ class DocumentSummary(BaseModel):
     received_no: str | None = None  # the request's เลขรับ
     owners: list[str] = []
     snippet: str | None = None  # match wrapped in [[ ]] for highlighting
+    snippet_page: int | None = None  # 1-based page of the snippet
+    snippet_file: SnippetFile | None = None  # the file that page is in
 
     @computed_field
     @property

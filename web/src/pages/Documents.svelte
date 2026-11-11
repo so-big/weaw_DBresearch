@@ -23,6 +23,12 @@
   let { section = 'contracts' } = $props();
   const grants = $derived(section === 'proposals');
   const base = $derived(grants ? '/proposals' : '/documents');
+
+  /** The inline viewer opened at the page the search snippet came from. */
+  function hitUrl(d) {
+    const { kind, version_no } = d.snippet_file;
+    return `${fileUrl(d.id, { inline: true, [kind === 'main' ? 'version' : kind]: version_no })}#page=${d.snippet_page}`;
+  }
   const other = $derived(grants && route.query.get('view') === 'other');
   const apiSection = $derived(other ? 'other' : section);
 
@@ -506,6 +512,9 @@
               </div>
               <div class="t">{#each highlightSegments(d.title, filters.q) as s}{#if s.hit}<mark>{s.text}</mark>{:else}{s.text}{/if}{/each}</div>
               {#if d.snippet}<div class="snip">{@html snippetHtml(d.snippet)}</div>{/if}
+              {#if d.snippet && d.snippet_page && d.snippet_file && !selecting}
+                <a class="hit" href={hitUrl(d)} target="_blank" rel="noopener">หน้า {d.snippet_page}{#if d.snippet_file.kind !== 'main'} · {d.snippet_file.kind === 'closure' ? 'เอกสารปิดโครงการ' : 'เอกสารแนบ'}{/if}</a>
+              {/if}
               <div class="meta">
                 {#if d.owners?.length}<span>{d.owners.join(', ')}</span>{/if}
                 {#if d.fiscal_year_be}<span>ปีงบ {d.fiscal_year_be}</span>{/if}
@@ -659,7 +668,9 @@
   .kind { color: var(--muted); }
   .grow { min-width: 0; flex: 1; }
   .t { font-weight: 500; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
-  .snip { font-size: 13px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .hit { position: relative; z-index: 2; display: inline-block; margin-top: 2px; font-size: 12.5px; color: var(--primary); text-decoration: none; }
+  .hit:hover { text-decoration: underline; }
+  .snip {font-size: 13px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
   .side-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12px; }
   .date { white-space: nowrap; }

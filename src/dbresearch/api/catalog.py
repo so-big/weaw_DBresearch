@@ -25,6 +25,7 @@ from dbresearch.schemas import (
     DocumentSummary,
     PersonBrief,
     SearchOut,
+    SnippetFile,
 )
 from dbresearch.search_text import compact
 from dbresearch.textnorm import normalize
@@ -104,7 +105,9 @@ def list_documents(
         item.owners = owners.get(document.id, [])
         for name, value in extras.get(document.id, {}).items():
             setattr(item, name, value)
-        item.snippet = found.get(document.id)
+        if hit := found.get(document.id):
+            item.snippet, item.snippet_page = hit["text"], hit["page"]
+            item.snippet_file = SnippetFile(**hit["file"])
         items.append(item)
     return SearchOut(
         items=items,

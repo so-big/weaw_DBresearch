@@ -2,11 +2,11 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from dbresearch import search_text
 from dbresearch.db import new_session
-from dbresearch.models import Document, DocumentPage
+from dbresearch.models import Document, DocumentPage, DocumentVersion, VersionPurpose
 from tests.conftest import make_pdf, needs_db
 from tests.test_review import category, metadata
 
@@ -96,6 +96,35 @@ def test_snippet_on_late_page_across_ocr_spacing_and_metadata_only(client, login
     assert "[[ดิน เค็ม]]" in items[late]["snippet"]  # OCR spacing kept, match spans the spaces
     assert items[late]["snippet"].endswith("ภาค อีสาน สรุป…")
     assert items[meta]["snippet"] is None  # hit is in the title only
+    assert items[late]["snippet_page"] == len(filler) + 1  # a late page, 1-based
+    assert items[late]["snippet_file"] == {"kind": "main", "version_no": 1}
+    assert items[meta]["snippet_page"] is None and items[meta]["snippet_file"] is None
+
+
+def test_snippet_in_a_closing_paper_points_at_that_paper(client, login):
+    login()
+    doc = create(client, title="Beta", reference_no="R2568E111", categories=[], people=[], tags=[])
+    closing = client.post(
+        f"/documents/{doc}/closure-files",
+        files={"file": ("close.pdf", make_pdf(2), "application/pdf")},
+    )
+    assert closing.status_code == 201, closing.text
+    with new_session() as db:
+        version = db.scalar(
+            select(DocumentVersion).where(
+                DocumentVersion.document_id == doc,
+                DocumentVersion.purpose == VersionPurpose.CLOSURE,
+            )
+        )
+        db.add(DocumentPage(version_id=version.id, page_no=2, text="สรุป ดินเค็ม ปิดโครงการ"))
+        db.flush()
+        document = db.get(Document, doc)
+        document.search_text = search_text.build(db, document)
+        db.commit()
+
+    (item,) = client.get("/documents", params={"q": "ดินเค็ม"}).json()["items"]
+    assert item["snippet_page"] == 2
+    assert item["snippet_file"] == {"kind": "closure", "version_no": 1}
 
 
 def test_filters_and_category_logic(client, login):

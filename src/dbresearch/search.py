@@ -338,10 +338,12 @@ def owners(db: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[s
     return result
 
 
-def snippets(db: Session, documents: list[Document], q: str | None) -> dict[uuid.UUID, str]:
+def snippets(db: Session, documents: list[Document], q: str | None) -> dict[uuid.UUID, dict]:
     """Text around the first match in each document's current version and closing papers
     (spaces ignored). One query for the whole result page loads only each document's first
-    matching page; documents with no page hit (e.g. a metadata-only hit) are left out."""
+    matching page; documents with no page hit (e.g. a metadata-only hit) are left out.
+    Each hit also says where it is: `page` (1-based) and `file` = {kind: main|closure|paper,
+    version_no}, the selector `GET /documents/{id}/file` takes."""
     needle = compact(q) if q else ""
     ids = [d.id for d in documents if d.current_version_id is not None]
     if len(needle) < 2 or not ids:
@@ -349,7 +351,13 @@ def snippets(db: Session, documents: list[Document], q: str | None) -> dict[uuid
     current = DocumentVersion.id == Document.current_version_id
     squashed = func.regexp_replace(DocumentPage.text, r"\s+", "", "g")
     rows = db.execute(
-        select(Document.id, DocumentPage.text)
+        select(
+            Document.id,
+            DocumentPage.text,
+            DocumentPage.page_no,
+            DocumentVersion.purpose,
+            DocumentVersion.version_no,
+        )
         .select_from(Document)
         .join(DocumentVersion, DocumentVersion.document_id == Document.id)
         .join(DocumentPage, DocumentPage.version_id == DocumentVersion.id)
@@ -364,9 +372,13 @@ def snippets(db: Session, documents: list[Document], q: str | None) -> dict[uuid
         .order_by(Document.id, case((current, 0), else_=1), DocumentPage.page_no)
     ).all()
     found = {}
-    for doc_id, text in rows:
+    for doc_id, text, page_no, purpose, version_no in rows:
         if hit := _snippet_in(text, needle):
-            found[doc_id] = hit
+            found[doc_id] = {
+                "text": hit,
+                "page": page_no,
+                "file": {"kind": purpose.value, "version_no": version_no},
+            }
     return found
 
 

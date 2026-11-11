@@ -670,7 +670,7 @@
   .t { font-weight: 500; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
   .hit { position: relative; z-index: 2; display: inline-block; margin-top: 2px; font-size: 12.5px; color: var(--primary); text-decoration: none; }
   .hit:hover { text-decoration: underline; }
-  .snip {font-size: 13px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .snip { font-size: 13px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
   .side-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12px; }
   .date { white-space: nowrap; }

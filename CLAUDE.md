@@ -9,6 +9,7 @@ The agreed design, schema, and open questions live in @docs/DESIGN.md. Read it b
 - Track tasks and open decisions in `plan.md`. Update its checkboxes and log as work lands.
 - This machine has no Docker and is too weak for the stack: run only ruff, quick unit tests and `npm run build` (in `web/`) here. Push to `origin main`, then deploy and test on the server: `ssh cs31@100.104.87.92 'cd ~/dbresearch && git pull && docker compose up -d --build'`.
 - Tests: `ssh cs31@100.104.87.92 'cd ~/dbresearch && docker compose exec -T api pytest -q'`. DB tests create a throwaway ICU th-TH database per session; locally only the pure unit tests run.
+- Sample/import commands need the dev override first (production compose does not mount `./samples`): `docker compose -f docker-compose.yml -f docker-compose.samples.yml up -d worker`.
 - Try auto-fill on a sample without saving anything: `docker compose exec worker python spikes/autofill_smoke.py /samples/<file>.pdf`.
 - Bulk-import proposal-development papers: `docker compose exec -T worker python -m dbresearch.importer plan /samples/<folder> > samples/<folder>/plan.json`, check the report, then `... importer apply /samples/<folder>/plan.json --as-email <user>` (DESIGN §11).
 - Template rule changes ship as a new data migration (never edit an applied one) or via the validated `PATCH /api/admin/templates/{id}`.

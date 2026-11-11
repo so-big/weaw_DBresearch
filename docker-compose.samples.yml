@@ -1,0 +1,8 @@
+# Dev/demo override: mounts confidential samples into the worker only (read-only).
+# Never use on a production deployment. Use:
+#   docker compose -f docker-compose.yml -f docker-compose.samples.yml up -d worker
+services:
+  worker:
+    volumes:
+      # Gitignored, never baked into the image.
+      - ./samples:/samples:ro

@@ -120,3 +120,4 @@ intended: data must not be lost.
 | Worker log (ids/counts only) | `docker compose logs worker --tail 50` |
 | Failed OCR jobs | `docker compose exec db psql -U dbresearch -c "select id, kind, attempts, last_error from jobs where state='failed'"` |
 | Tests | `docker compose exec -T api pytest -q` |
+| Samples / bulk import (dev/demo only) | The production compose file does not mount `./samples`. First run `docker compose -f docker-compose.yml -f docker-compose.samples.yml up -d worker`, then the `docker compose exec worker ... /samples/...` commands. Recreate the worker without the override afterwards to unmount. |

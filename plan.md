@@ -339,6 +339,8 @@ backup script). "Confirmed" = traced in the code; "check" = needs a test on a re
 
 ## Log
 
+- 2026-11-12 — Memo numbers (`ที่ อว 0603.09.xx/NNN`) on proposal-development papers: checked 36 random scans, the line is on all of them; the running number is typed on ~15 %, handwritten on ~55 %, blank on ~30 % (department copies). OCR reads the full number on only 23/124 papers, so it stays a typed field with an OCR suggestion. Now searchable (request, timeline, closing and cancelling numbers go into `search_text`, rebuilt on close / cancel / reopen / event edit), shown on the list row, and exported.
+
 - 2026-11-12 — Phase 9 (9A–9C + F1) built by `claude-work` workers in worktrees, reviewed, merged and deployed; 224 tests pass on the server, UI smoke clean, CI added. Notes: the worker no longer mounts `./samples` by default (use `docker-compose.samples.yml`); file responses carry `Content-Security-Policy: sandbox` (inline viewing checked in headless Chromium; check Safari/phones with B8); a re-upload of a trashed file is refused with a restore offer; duplicate race closed with a per-hash advisory lock (no unique index); review forms keep a local draft, ping the session while typing and warn before leaving; share dialog has copy-as-message, QR and version pin; Excel/CSV export of search results and the proposal report (audited). Open: S3 Cloudflare rule, B8 phone check, 9D F2–F7. Not done: a "session ends soon" warning (the API does not expose the expiry); category aliases are not in the search text.
 
 - 2026-11-11 — Share links: every file open (view or download) counts toward the limit; "view only" option removed from the share window.

@@ -415,6 +415,7 @@ class ProposalProject(Base):
         ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True
     )
     request_ref: Mapped[str | None]  # request memo no., e.g. อว 0603.09.02/674
+    received_no: Mapped[str | None]  # faculty's received no. (เลขรับ) stamped on the request
     research_area: Mapped[str | None]  # กรอบงานวิจัย, e.g. เทคโนโลยีพลังงาน
     kpi_target: Mapped[str | None]  # e.g. proposal for an outside grant + Impact Pathway
     kpi_due: Mapped[date | None]
@@ -442,6 +443,7 @@ class ProjectEvent(Base):
     )
     event_on: Mapped[date | None]  # date on the memo
     memo_ref: Mapped[str | None]
+    received_no: Mapped[str | None]  # faculty's received no. (เลขรับ) stamped on this paper
     # The paper itself (purpose 'paper', 'closure', or the main request).
     version_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("document_versions.id", ondelete="SET NULL")

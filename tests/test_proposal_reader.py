@@ -134,3 +134,15 @@ def test_programme_papers_and_unknown_pages():
     blank = proposal.extract(memo("รายงานการประชุมทั่วไป"))
     assert blank["kind"] is None and blank["warnings"] == [{"code": "unknown_paper_type"}]
     assert proposal.extract([]) == {"kind": None, "fields": {}, "warnings": []}
+
+
+def test_received_no_comes_from_the_file_name():
+    from dbresearch.autofill.proposal import received_no
+
+    assert received_no("10221 ขออนุมัติทุนพัฒนาข้อเสนอ 2569.pdf") == "10221"
+    assert received_no("268 ปิดโครงการ 2567..pdf") == "268"
+    assert received_no("5035(แก้ไข).pdf") == "5035"
+    assert received_no("0018_scan.pdf") == "0018"
+    assert received_no("ขออนุมัติทุน 2568.pdf") is None
+    assert received_no("2568ทุน.pdf") is None
+    assert received_no(None) is None

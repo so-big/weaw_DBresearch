@@ -117,6 +117,7 @@
       effective_from: toThaiInput(pick('effective_from', d.effective_from)),
       effective_to: toThaiInput(pick('effective_to', d.effective_to)),
       request_ref: p.request_ref || (first ? F.memo_ref?.value : '') || '',
+      received_no: p.received_no || (first ? F.received_no?.value : '') || '',
       research_area: p.research_area || (first ? F.research_area?.value : '') || '',
       kpi_target: p.kpi_target || (first ? F.kpi_target?.value : '') || '',
       kpi_due: toThaiInput(p.kpi_due || (first ? F.kpi_due?.value : '')),
@@ -245,6 +246,7 @@
         : [],
       proposal: {
         request_ref: form.request_ref.trim() || null,
+        received_no: form.received_no.trim() || null,
         research_area: form.research_area.trim() || null,
         kpi_target: form.kpi_target.trim() || null,
         kpi_due: parseThaiDate(form.kpi_due) || null,
@@ -412,6 +414,13 @@
             {@render hint('memo_ref')}
           </label>
           {@render dateField('document_date', 'วันที่บันทึก')}
+        </div>
+        <div class="two">
+          <label class="field">
+            <span>เลขรับ (ตราประทับของคณะ)</span>
+            <input id="p-received" bind:value={form.received_no} inputmode="numeric" placeholder="เช่น 10221" />
+            {@render hint('received_no')}
+          </label>
         </div>
         <div class="two">
           {@render dateField('effective_from', 'ระยะเวลาเบิกจ่าย ตั้งแต่')}

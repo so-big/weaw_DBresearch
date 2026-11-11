@@ -164,6 +164,16 @@ def _person(text: str) -> str | None:
     return f"{prefix} {name}" if prefix else name
 
 
+_RECEIVED_NO = re.compile(r"\s*(\d{2,6})(?=[\s_\-.(]|$)")
+
+
+def received_no(filename: str | None) -> str | None:
+    """The faculty's received no. (เลขรับ): the office names each scan '<no> <subject>.pdf'.
+    The stamp itself is handwritten, so the file name is the reliable source."""
+    m = _RECEIVED_NO.match(filename or "")
+    return m[1] if m else None
+
+
 def extract(pages: list[Page]) -> dict[str, Any]:
     """Paper type + field suggestions. Same shape as `closure.extract`."""
     if not pages:

@@ -57,9 +57,10 @@
           ['จำนวนเงิน', doc.budget_total && money(doc.budget_total)],
           ['ระยะเวลาเบิกจ่าย', doc.effective_from && `${thDate(doc.effective_from)} – ${thDate(doc.effective_to)}`],
           ['เลขที่บันทึกขออนุมัติ', p.request_ref],
+          ['เลขรับ', p.received_no],
           ['วันที่บันทึก', doc.document_date && thDate(doc.document_date)],
           ['กรอบงานวิจัย', p.research_area],
-        ].filter(([, v], i) => grant || i === 2 || i === 7)
+        ].filter(([, v], i) => grant || i === 2 || i === 8)
       : [],
   );
 
@@ -73,6 +74,7 @@
   // What the system read from an entry's memo (date, number), offered when the entry lacks it.
   const readDate = (e) => e.paper?.readings?.document_date;
   const readRef = (e) => e.paper?.readings?.memo_ref;
+  const readReceived = (e) => e.paper?.readings?.received_no;
   function detailLine(e) {
     const d = e.details || {};
     return [
@@ -186,14 +188,14 @@
   let editing = $state(null);
   function openEdit(e) {
     formError = '';
-    editing = { id: e.id, type: e.event_type, date: toThaiInput(e.event_on || readDate(e) || ''), ref: e.memo_ref || readRef(e) || '', note: e.details?.note || '' };
+    editing = { id: e.id, type: e.event_type, date: toThaiInput(e.event_on || readDate(e) || ''), ref: e.memo_ref || readRef(e) || '', received: e.received_no || readReceived(e) || '', note: e.details?.note || '' };
   }
   async function saveEdit() {
     const on = parseThaiDate(editing.date);
     if (on === null) return (formError = 'รูปแบบวันที่ไม่ถูกต้อง');
     busy = true;
     try {
-      doc = await patch(`/documents/${id}/events/${editing.id}`, { event_on: on || null, memo_ref: editing.ref || null, note: editing.note || null });
+      doc = await patch(`/documents/${id}/events/${editing.id}`, { event_on: on || null, memo_ref: editing.ref || null, received_no: editing.received?.trim() || null, note: editing.note || null });
       editing = null;
     } catch (err) {
       formError = errorText(err);
@@ -329,7 +331,7 @@
                   <div class="evbody">
                     <div class="evhead">
                       <b>{EVENT[e.event_type]}</b>
-                      <span class="muted">{e.event_on ? thDate(e.event_on) : 'ไม่ระบุวันที่'}{e.memo_ref ? ` · ที่ ${e.memo_ref}` : ''}</span>
+                      <span class="muted">{e.event_on ? thDate(e.event_on) : 'ไม่ระบุวันที่'}{e.memo_ref ? ` · ที่ ${e.memo_ref}` : ''}{e.received_no ? ` · เลขรับ ${e.received_no}` : ''}</span>
                       {#if doc.can_edit}<button class="link-btn edit" onclick={() => openEdit(e)}>แก้ไข</button>{/if}
                     </div>
                     {#each detailLine(e) as line, i (i)}<p class="evline">{line}</p>{/each}
@@ -342,8 +344,8 @@
                       </div>
                       {#if reading(e.paper)}
                         <small class="muted"><span class="spin"></span> ระบบกำลังอ่านบันทึกนี้</small>
-                      {:else if (!e.event_on && readDate(e)) || (!e.memo_ref && readRef(e))}
-                        <small class="read">ระบบอ่านได้: {[readDate(e) && `วันที่ ${thDate(readDate(e))}`, readRef(e) && `ที่ ${readRef(e)}`].filter(Boolean).join(' · ')} {#if doc.can_edit}<button class="link-btn" onclick={() => openEdit(e)}>ใช้ค่านี้</button>{/if}</small>
+                      {:else if (!e.event_on && readDate(e)) || (!e.memo_ref && readRef(e)) || (!e.received_no && readReceived(e))}
+                        <small class="read">ระบบอ่านได้: {[readDate(e) && `วันที่ ${thDate(readDate(e))}`, readRef(e) && `ที่ ${readRef(e)}`, !e.received_no && readReceived(e) && `เลขรับ ${readReceived(e)} (จากชื่อไฟล์)`].filter(Boolean).join(' · ')} {#if doc.can_edit}<button class="link-btn" onclick={() => openEdit(e)}>ใช้ค่านี้</button>{/if}</small>
                       {/if}
                     {/if}
                   </div>
@@ -461,6 +463,7 @@
             {#if parseThaiDate(editing.date)}<small>{thDate(parseThaiDate(editing.date))}</small>{/if}
           </label>
           <label class="field"><span>เลขที่บันทึก</span><input id="e-ref" bind:value={editing.ref} /></label>
+          <label class="field"><span>เลขรับ</span><input id="e-received" bind:value={editing.received} inputmode="numeric" /></label>
         </div>
         <label class="field"><span>หมายเหตุ</span><textarea id="e-note" rows="2" bind:value={editing.note}></textarea></label>
         {#if formError}<div class="notice bad">{formError}</div>{/if}

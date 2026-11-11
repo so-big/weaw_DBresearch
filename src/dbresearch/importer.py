@@ -416,6 +416,7 @@ def _apply_project(db, user, project: Project, root: Path, stored, counts) -> in
             ProposalProject(
                 document_id=document.id,
                 request_ref=lead.fields.get("memo_ref") if project.request else None,
+                received_no=proposal.received_no(Path(lead.file).name) if project.request else None,
                 research_area=lead.fields.get("research_area"),
                 kpi_target=lead.fields.get("kpi_target"),
                 kpi_due=_date(lead.fields.get("kpi_due")),
@@ -549,6 +550,7 @@ def _event(db, user, document, kind, paper: Paper, version) -> None:
             event_type=kind,
             event_on=_date(f.get("document_date")),
             memo_ref=f.get("memo_ref"),
+            received_no=proposal.received_no(Path(paper.file).name),
             version_id=version.id,
             details=details,
             created_by=user.id,

@@ -156,6 +156,7 @@ class ProposalIn(BaseModel):
     """The fields only a proposal-development grant has (DESIGN §11)."""
 
     request_ref: str | None = Field(None, max_length=200)
+    received_no: str | None = Field(None, max_length=50)  # เลขรับ on the request
     research_area: str | None = Field(None, max_length=300)
     kpi_target: str | None = Field(None, max_length=2000)
     kpi_due: date | None = None
@@ -177,6 +178,7 @@ class EventOut(BaseModel):
     event_type: ProjectEventType
     event_on: date | None
     memo_ref: str | None
+    received_no: str | None = None
     details: dict
     created_at: datetime
     created_by_name: str | None = None
@@ -195,6 +197,7 @@ class CancelIn(BaseModel):
 class EventPatch(BaseModel):
     event_on: date | None = None
     memo_ref: str | None = Field(None, max_length=200)
+    received_no: str | None = Field(None, max_length=50)
     note: str | None = Field(None, max_length=2000)
 
 
@@ -306,6 +309,7 @@ class DocumentSummary(BaseModel):
     kpi_due: date | None = None
     department: str | None = None
     request_ref: str | None = None  # request memo no. (proposal grants)
+    received_no: str | None = None  # the request's เลขรับ
     owners: list[str] = []
     snippet: str | None = None  # match wrapped in [[ ]] for highlighting
 

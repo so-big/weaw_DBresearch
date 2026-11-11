@@ -55,6 +55,17 @@ def build(db: Session, document: Document, extra: str = "") -> str:
             ProposalProject.document_id == document.id, ProposalProject.request_ref.is_not(None)
         )
     ).all()
+    # Received numbers (เลขรับ) of the request and of each paper.
+    parts += db.scalars(
+        select(ProposalProject.received_no).where(
+            ProposalProject.document_id == document.id, ProposalProject.received_no.is_not(None)
+        )
+    ).all()
+    parts += db.scalars(
+        select(ProjectEvent.received_no).where(
+            ProjectEvent.document_id == document.id, ProjectEvent.received_no.is_not(None)
+        )
+    ).all()
     parts += db.scalars(
         select(ProjectEvent.memo_ref).where(
             ProjectEvent.document_id == document.id, ProjectEvent.memo_ref.is_not(None)

@@ -187,6 +187,7 @@ def _proposal_detail(db: Session, document: Document, out: DocumentDetail, versi
             event_type=event.event_type,
             event_on=event.event_on,
             memo_ref=event.memo_ref,
+            received_no=event.received_no,
             details=event.details or {},
             created_at=event.created_at,
             created_by_name=names.get(event.created_by),

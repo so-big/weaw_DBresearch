@@ -460,6 +460,8 @@ def process_version(db: Session, version_id: uuid.UUID) -> None:
         if memo:
             pages, sections = analyse_pdf(path), []
             payload = proposal.extract(pages)
+            if number := proposal.received_no(version.original_filename):
+                payload["fields"].setdefault("received_no", {"value": number, "page": 1})
         elif side_paper:
             pages, sections = analyse_pdf(path), []
             payload = closure.extract(pages)

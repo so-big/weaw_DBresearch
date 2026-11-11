@@ -39,6 +39,7 @@ def review(**overrides) -> dict:
         ],
         "proposal": {
             "request_ref": "อว 0000.00/1",
+            "received_no": "10221",
             "research_area": "เทคโนโลยีสมมติ",
             "kpi_target": "ข้อเสนอโครงการสำหรับทุนภายนอก",
             "kpi_due": "2099-09-01",  # not overdue
@@ -86,10 +87,19 @@ def test_review_saves_funding_source_and_project_fields(client, login):
     assert ids(client, section="proposals", q="0000.00 / 1") == {grant}
     row = client.get("/documents", params={"section": "proposals"}).json()["items"][0]
     assert row["request_ref"] == "อว 0000.00/1"
+    # So is the faculty's received no. (เลขรับ): the request's, and each paper's.
+    assert row["received_no"] == "10221" and doc["proposal"]["received_no"] == "10221"
+    assert doc["events"][0]["received_no"] == "10221"
+    assert ids(client, section="proposals", q="10221") == {grant}
     assert ids(client, section="proposals", q="อว 9999.99/9") == set()
     event = doc["events"][0]["id"]
-    edited = client.patch(f"/documents/{grant}/events/{event}", json={"memo_ref": "อว 9999.99/9"})
+    edited = client.patch(
+        f"/documents/{grant}/events/{event}",
+        json={"memo_ref": "อว 9999.99/9", "received_no": "5035"},
+    )
     assert edited.status_code == 200, edited.text
+    assert edited.json()["events"][0]["received_no"] == "5035"
+    assert ids(client, section="proposals", q="5035") == {grant}
     assert ids(client, section="proposals", q="อว 9999.99/9") == {grant}
     # FF counts as internal; an outside funder is external.
     ff = client.put(f"/documents/{grant}/metadata", json=review(funding_source="ff")).json()

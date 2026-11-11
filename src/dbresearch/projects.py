@@ -85,6 +85,7 @@ def apply_proposal(db: Session, document: Document, data: Any) -> None:
                 event_type=ProjectEventType.APPROVED,
                 event_on=document.document_date,
                 memo_ref=details.request_ref,
+                received_no=details.received_no,
                 version_id=document.current_version_id,
             )
         )
@@ -99,6 +100,7 @@ def add_event(
     version: DocumentVersion | None = None,
     event_on: date | None = None,
     memo_ref: str | None = None,
+    received_no: str | None = None,
     details: dict | None = None,
 ) -> ProjectEvent:
     event = ProjectEvent(
@@ -106,6 +108,7 @@ def add_event(
         event_type=event_type,
         event_on=event_on,
         memo_ref=(memo_ref or "").strip() or None,
+        received_no=(received_no or "").strip() or None,
         version_id=version.id if version else None,
         details=details or {},
         created_by=user.id,
@@ -204,6 +207,7 @@ def update_event(
         raise ProjectError("Event not found")
     event.event_on = data.event_on
     event.memo_ref = (data.memo_ref or "").strip() or None
+    event.received_no = (data.received_no or "").strip() or None
     note = (data.note or "").strip()
     details = dict(event.details or {})
     if note:

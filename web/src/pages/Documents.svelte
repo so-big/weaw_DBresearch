@@ -510,6 +510,7 @@
                 {#if d.owners?.length}<span>{d.owners.join(', ')}</span>{/if}
                 {#if d.fiscal_year_be}<span>ปีงบ {d.fiscal_year_be}</span>{/if}
                 {#if grants && d.budget_total}<span>{money(d.budget_total)}</span>{/if}
+                {#if d.received_no}<span>เลขรับ {d.received_no}</span>{/if}
                 {#if d.request_ref}<span>ที่ {d.request_ref}</span>{/if}
                 {#if grants && d.kpi_due && (d.state === 'active' || d.state === 'overdue')}<span>ส่งผลงานภายใน {thDate(d.kpi_due)}</span>{/if}
                 {#if !grants && d.funding_type}<span>{FUNDING[d.funding_type]}</span>{/if}

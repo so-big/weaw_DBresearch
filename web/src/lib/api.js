@@ -168,6 +168,9 @@ export function thai(detail) {
 export function errorText(err) {
   if (!(err instanceof ApiError)) return 'เกิดข้อผิดพลาด ลองอีกครั้ง';
   if (err.status === 0) return err.detail;
+  // A specific Thai message we know beats the generic one for the status.
+  const known = typeof err.detail === 'string' ? thai(err.detail) : null;
+  if (known && known !== err.detail) return known;
   if (err.status === 403) return 'คุณไม่มีสิทธิ์ทำรายการนี้';
   if (err.status === 404) return 'ไม่พบข้อมูลนี้ อาจถูกลบไปแล้ว';
   if (err.status === 413) return 'ไฟล์ใหญ่เกินกำหนด';

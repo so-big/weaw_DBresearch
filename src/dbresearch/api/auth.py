@@ -104,6 +104,27 @@ def too_many_failures(db, username: str, ip: str | None) -> str | None:
     return None
 
 
+def already_blocked(db, locked: str, username: str, ip: str | None) -> bool:
+    """Whether this lock already has its `auth.login_blocked` row: one row per lock, not one
+    per request (unauthenticated visitors must not grow the append-only log forever).
+    No failures are written while locked, so a block after the key's latest failure belongs
+    to the current lock."""
+    match = [AuditEvent.ip == ip]
+    if locked == "username":
+        match.append(failed_username() == lock_key(username))
+    last_failure = db.scalar(
+        select(func.max(AuditEvent.at)).where(AuditEvent.action == "auth.login_failed", *match)
+    )
+    blocked = select(AuditEvent.id).where(
+        AuditEvent.action == "auth.login_blocked",
+        AuditEvent.details["locked"].astext == locked,
+        *match,
+    )
+    if last_failure is not None:
+        blocked = blocked.where(AuditEvent.at > last_failure)
+    return db.execute(blocked.limit(1)).first() is not None
+
+
 @router.post("/login", response_model=UserOut)
 def login(
     body: LoginIn,
@@ -118,16 +139,17 @@ def login(
     username = body.username[:100]
     locked = too_many_failures(db, body.username, ip)
     if locked:
-        audit.record(
-            db,
-            "auth.login_blocked",
-            "user",
-            ip=ip,
-            username=username,
-            locked=locked,
-            user_agent=agent,
-        )
-        db.commit()
+        if not already_blocked(db, locked, body.username, ip):
+            audit.record(
+                db,
+                "auth.login_blocked",
+                "user",
+                ip=ip,
+                username=username,
+                locked=locked,
+                user_agent=agent,
+            )
+            db.commit()
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "Too many failed logins. Try again later.",

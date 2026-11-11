@@ -128,7 +128,8 @@ def test_failed_and_blocked_logins_record_why(client, make_user):
 
     for _ in range(4):
         sign_in(client, username, "wrong")
-    assert sign_in(client, username, "wrong").status_code == 429
+    for _ in range(3):  # one row per lock, not one per request
+        assert sign_in(client, username, "wrong").status_code == 429
     (blocked,) = audit_rows("auth.login_blocked")
     assert blocked.details["locked"] == "username"
 
@@ -192,6 +193,9 @@ def test_admin_unlocks_a_username(client, login, make_user):
     for _ in range(5):  # failures after the unlock count again
         sign_in(new_client(), username, "wrong")
     assert sign_in(new_client(), username, password).status_code == 429
+    assert sign_in(new_client(), username, password).status_code == 429
+    assert len(audit_rows("auth.login_blocked")) == 2  # one per lock
+    assert client.get("/admin/security").json()["blocked"] == 2
 
 
 def test_admin_unlocks_an_ip(client, login, make_user, from_ip):

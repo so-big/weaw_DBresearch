@@ -346,7 +346,7 @@ def snippets(db: Session, documents: list[Document], q: str | None) -> dict[uuid
             ),
             squashed.ilike(_like(needle)),
         )
-        .distinct(Document.id)
+        .distinct(Document.id)  # DISTINCT ON: first matching page per document
         .order_by(Document.id, case((current, 0), else_=1), DocumentPage.page_no)
     ).all()
     found = {}

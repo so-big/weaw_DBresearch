@@ -409,15 +409,17 @@ class ShareLogOut(BaseModel):
 
 
 class GuestInfo(BaseModel):
-    title: str
-    filename: str
-    pages: int | None
-    size_bytes: int
+    """Until a password link is unlocked only the first three fields are filled in."""
+
     expires_at: datetime
     requires_password: bool
     unlocked: bool
-    allow_download: bool
-    downloads_left: int | None
+    title: str | None = None
+    filename: str | None = None
+    pages: int | None = None
+    size_bytes: int | None = None
+    allow_download: bool | None = None
+    downloads_left: int | None = None
 
 
 class UnlockIn(BaseModel):

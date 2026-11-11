@@ -54,6 +54,7 @@ def test_download_roundtrip_with_thai_filename(client, login):
     assert response.headers["cache-control"] == "no-store"
     inline = client.get(f"/documents/{doc_id}/file?inline=true")
     assert inline.headers["content-disposition"].startswith("inline;")
+    assert inline.headers["content-security-policy"] == "sandbox"
     with new_session() as db:
         actions = db.scalars(select(AuditEvent.action)).all()
     assert {"document.download", "document.view"} <= set(actions)

@@ -181,10 +181,15 @@ def guest_info(
     dbr_grant: Annotated[str | None, Cookie()] = None,
 ):
     link, document = _guest_link(db, token, request, viewer)
-    version = _version(db, link, document)
     agent = request.headers.get("user-agent")
     shares.log(db, link, ShareEvent.OPEN, client_ip(request), agent, user=viewer)
     db.commit()
+    requires_password = link.access == ShareAccess.PASSWORD
+    if not _unlocked(link, dbr_grant):  # nothing about the document before the password
+        return GuestInfo(
+            expires_at=link.expires_at, requires_password=requires_password, unlocked=False
+        )
+    version = _version(db, link, document)
     left = None if link.max_downloads is None else link.max_downloads - link.download_count
     return GuestInfo(
         title=document.title,
@@ -192,8 +197,8 @@ def guest_info(
         pages=version.page_count,
         size_bytes=version.size_bytes,
         expires_at=link.expires_at,
-        requires_password=link.access == ShareAccess.PASSWORD,
-        unlocked=_unlocked(link, dbr_grant),
+        requires_password=requires_password,
+        unlocked=True,
         allow_download=link.allow_download,
         downloads_left=left,
     )

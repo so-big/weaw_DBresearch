@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --extra worker
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+      # DB tests skip themselves without DATABASE_URL.
+      - run: uv run pytest -q
+      - name: Dependency audit
+        run: |
+          uv export --extra worker --no-emit-project --format requirements-txt > req.txt
+          uvx pip-audit -r req.txt --no-deps --disable-pip
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm audit --omit=dev

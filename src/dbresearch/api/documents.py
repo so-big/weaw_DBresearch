@@ -211,9 +211,10 @@ def closure_file(version: DocumentVersion, document: Document) -> ClosureFileOut
 
 def _upload_errors(exc: UploadError) -> JSONResponse:
     if isinstance(exc, DuplicateUpload):
-        return JSONResponse(
-            {"detail": str(exc), "document_id": str(exc.document_id)}, status_code=409
-        )
+        body = {"detail": str(exc), "document_id": str(exc.document_id)}
+        if exc.trashed:
+            body |= {"trashed": True, "can_restore": exc.can_restore}
+        return JSONResponse(body, status_code=409)
     return JSONResponse({"detail": str(exc)}, status_code=400)
 
 

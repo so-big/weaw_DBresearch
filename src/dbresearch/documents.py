@@ -37,9 +37,15 @@ class UploadError(ValueError):
 
 
 class DuplicateUpload(UploadError):
-    def __init__(self, document_id: uuid.UUID) -> None:
-        super().__init__("This exact file is already stored")
+    def __init__(
+        self, document_id: uuid.UUID, *, trashed: bool = False, can_restore: bool = False
+    ) -> None:
+        super().__init__(
+            "This exact file is in the trash" if trashed else "This exact file is already stored"
+        )
         self.document_id = document_id
+        self.trashed = trashed
+        self.can_restore = can_restore
 
 
 def can_edit(user: User, document: Document) -> bool:
@@ -122,14 +128,22 @@ def store_version(
     size, sha = measured.size, measured.digest.digest()
 
     try:
+        # Two uploads of the same file at once: the second waits here until the first commits,
+        # then sees it below. Released automatically at commit/rollback.
+        db.execute(select(func.pg_advisory_xact_lock(int.from_bytes(sha[:8], "big", signed=True))))
+        # A live copy wins over a trashed one (purged documents have no rows left).
         duplicate = db.scalar(
-            select(Document.id)
+            select(Document)
             .join(DocumentVersion, DocumentVersion.document_id == Document.id)
-            .where(DocumentVersion.sha256_plain == sha, Document.deleted_at.is_(None))
+            .where(DocumentVersion.sha256_plain == sha)
+            .order_by(Document.deleted_at.is_not(None))
             .limit(1)
         )
         if duplicate is not None:
-            raise DuplicateUpload(duplicate)
+            trashed = duplicate.deleted_at is not None
+            raise DuplicateUpload(
+                duplicate.id, trashed=trashed, can_restore=trashed and can_restore(user, duplicate)
+            )
 
         safe_name = PurePath(filename or "document.pdf").name[:200] or "document.pdf"
         if document is None:

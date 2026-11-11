@@ -83,9 +83,6 @@
           enterkeyhint="search"
         />
       </form>
-      {#if screen.wide}
-        <button class="btn" onclick={() => openUpload()}><Icon name="upload" size={16} />อัปโหลด</button>
-      {/if}
     </div>
   </header>
 
@@ -111,6 +108,7 @@
   </dl>
 
   <div class="grid">
+    <div class="col">
     <section class="card tasks" aria-labelledby="h-tasks">
       <div class="sec-head">
         <h2 id="h-tasks">งานที่ต้องทำ</h2>
@@ -185,6 +183,9 @@
       {/if}
     </section>
 
+    {@render shortcuts()}
+    </div>
+    <div class="col">
     <section class="card recent" aria-labelledby="h-recent">
       <div class="sec-head">
         <h2 id="h-recent">เพิ่งเข้าคลัง</h2>
@@ -226,6 +227,11 @@
       {/if}
     </section>
 
+    </div>
+  </div>
+</div>
+
+{#snippet shortcuts()}
     <nav class="card shortcuts" aria-label="ทางลัด">
       <a href="/proposals"><Icon name="bulb" size={18} /><span>ทุนพัฒนาข้อเสนอ</span><Icon name="chevron" size={16} /></a>
       <a href="/shares"><Icon name="link" size={18} /><span>ลิงก์แชร์ของฉัน</span><Icon name="chevron" size={16} /></a>
@@ -234,8 +240,7 @@
         <a href="/overview"><Icon name="server" size={18} /><span>ภาพรวมระบบ</span><Icon name="chevron" size={16} /></a>
       {/if}
     </nav>
-  </div>
-</div>
+{/snippet}
 
 {#snippet docRow(d, withStatus = false)}
   <li class="row doc">
@@ -267,20 +272,19 @@
   }
   .search:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
   .search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 15px; color: var(--text); }
-  .actions .btn { height: 44px; }
 
   /* four figures: a label and a number, each a way into its list */
   .figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
   .fig { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; text-decoration: none; color: inherit; border-left: 1px solid var(--border); transition: background var(--t-fast); }
   .fig:first-child { border-left: 0; border-radius: var(--radius) 0 0 var(--radius); }
   .fig:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
-  .fig:hover { background: var(--subtle); }
+  @media (hover: hover) { .fig:hover { background: var(--subtle); } }
   .fig dt { font-size: 13px; color: var(--muted); }
   .fig dd { margin: 0; font-family: var(--f-display); font-weight: 500; font-size: 32px; line-height: 1.1; }
   .fig dd.hot { color: var(--primary-text); }
 
   .grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
-  .tasks { grid-row: span 2; }
+  .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
   .card { min-width: 0; }
   .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 20px 8px; }
   .sec-head h2 { font-size: 16px; }
@@ -293,7 +297,7 @@
   .list .row:first-child { border-top: 0; }
   .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .t { color: var(--text); text-decoration: none; font-size: 14px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .t:hover { color: var(--primary-text); }
+  @media (hover: hover) { .t:hover { color: var(--primary-text); } }
   .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; color: var(--muted); }
   .meta .cno { font-size: 12px; }
   .meta .badge { font-size: 12px; }
@@ -324,7 +328,6 @@
   @media (max-width: 1080px) {
     .head { grid-template-columns: 1fr; }
     .grid { grid-template-columns: minmax(0, 1fr); }
-    .tasks { grid-row: auto; }
   }
 
   /* phone: figures in a 2×2 block, everything in one column */

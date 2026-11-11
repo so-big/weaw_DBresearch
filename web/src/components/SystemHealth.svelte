@@ -59,7 +59,7 @@
   });
   const queue = $derived.by(() => {
     if (!h) return null;
-    const wait = age(h.oldest_queued_at);
+    const wait = h.oldest_queued_at ? age(h.oldest_queued_at) : 0;
     const level = h.jobs.failed ? 'bad' : wait > 15 * MIN ? 'warn' : 'ok';
     return {
       level,

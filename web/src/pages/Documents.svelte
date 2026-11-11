@@ -516,7 +516,7 @@
                 <a class="hit" href={hitUrl(d)} target="_blank" rel="noopener">หน้า {d.snippet_page}{#if d.snippet_file.kind !== 'main'} · {d.snippet_file.kind === 'closure' ? 'เอกสารปิดโครงการ' : 'เอกสารแนบ'}{/if}</a>
               {/if}
               <div class="meta">
-                {#if d.owners?.length}<span>{d.owners.join(', ')}</span>{/if}
+                {#if d.owner_people?.length}<span class="owners">{#each d.owner_people as o, i (o.id)}{i ? ', ' : ''}<a class="plink" href="/people/{o.id}">{o.name}</a>{/each}</span>{:else if d.owners?.length}<span>{d.owners.join(', ')}</span>{/if}
                 {#if d.fiscal_year_be}<span>ปีงบ {d.fiscal_year_be}</span>{/if}
                 {#if grants && d.budget_total}<span>{money(d.budget_total)}</span>{/if}
                 {#if d.received_no}<span>เลขรับ {d.received_no}</span>{/if}
@@ -672,6 +672,8 @@
   .hit:hover { text-decoration: underline; }
   .snip { font-size: 13px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .plink { position: relative; z-index: 2; color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+  .plink:hover { color: var(--primary); text-decoration-style: solid; }
   .side-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12px; }
   .date { white-space: nowrap; }
   .skeleton { pointer-events: none; }

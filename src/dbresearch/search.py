@@ -324,18 +324,33 @@ def proposal_rows(db: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID,
     }
 
 
-def owners(db: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
+def owner_people(db: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[dict]]:
+    """Each document's owners as {id, name}: names for the list, ids to link to their page."""
     rows = db.execute(
-        select(DocumentPerson.document_id, Person.prefix_th, Person.name_th, Person.name_en)
+        select(
+            DocumentPerson.document_id,
+            Person.id,
+            Person.prefix_th,
+            Person.name_th,
+            Person.name_en,
+        )
         .join(Person, Person.id == DocumentPerson.person_id)
         .where(
             DocumentPerson.document_id.in_(document_ids), DocumentPerson.role == PersonRole.OWNER
         )
     ).all()
-    result: dict[uuid.UUID, list[str]] = {}
-    for doc_id, prefix, name_th, name_en in rows:
-        result.setdefault(doc_id, []).append(f"{prefix or ''}{name_th or name_en}")
+    result: dict[uuid.UUID, list[dict]] = {}
+    for doc_id, person_id, prefix, name_th, name_en in rows:
+        name = f"{prefix or ''}{name_th or name_en}"
+        result.setdefault(doc_id, []).append({"id": person_id, "name": name})
     return result
+
+
+def owners(db: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
+    return {
+        doc_id: [p["name"] for p in people]
+        for doc_id, people in owner_people(db, document_ids).items()
+    }
 
 
 def snippets(db: Session, documents: list[Document], q: str | None) -> dict[uuid.UUID, dict]:

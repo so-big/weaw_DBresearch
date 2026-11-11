@@ -230,7 +230,7 @@
           <ul class="people">
             {#each doc.people as p (p.id + p.role)}
               <li>
-                <span>{personName(p)}{#if p.name_en && p.name_th}<small class="muted"> · {p.name_en}</small>{/if}</span>
+                <span><a href="/people/{p.id}">{personName(p)}</a>{#if p.name_en && p.name_th}<small class="muted"> · {p.name_en}</small>{/if}</span>
                 <small class="muted">{ROLE[p.role]}{p.share_pct ? ` · ${Number(p.share_pct)}%` : ''}{p.unit ? ` · ${p.unit}` : ''}</small>
               </li>
             {/each}

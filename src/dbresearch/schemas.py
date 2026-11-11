@@ -294,6 +294,11 @@ class SnippetFile(BaseModel):
     version_no: int
 
 
+class PersonRef(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
 class DocumentSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -319,6 +324,7 @@ class DocumentSummary(BaseModel):
     request_ref: str | None = None  # request memo no. (proposal grants)
     received_no: str | None = None  # the request's เลขรับ
     owners: list[str] = []
+    owner_people: list[PersonRef] = []  # the same owners with ids, to link to their page
     snippet: str | None = None  # match wrapped in [[ ]] for highlighting
     snippet_page: int | None = None  # 1-based page of the snippet
     snippet_file: SnippetFile | None = None  # the file that page is in
@@ -448,3 +454,49 @@ class PasswordOut(BaseModel):
 
 MetadataIn.model_rebuild()
 EventOut.model_rebuild()
+
+
+# ───────────── Researcher page ─────────────
+class PersonDocOut(BaseModel):
+    id: uuid.UUID
+    kind: DocKind | None
+    title: str
+    reference_no: str | None
+    request_ref: str | None = None  # request memo no. (proposal grants)
+    fiscal_year: int | None
+    fiscal_year_be: int | None
+    funding_source: FundingSource | None
+    funding_type: FundingType | None
+    budget_total: Decimal | None
+    role: PersonRole  # the person's main role on it (owner first)
+    share_pct: Decimal | None
+    status: DocStatus
+    project: Literal["open", "closed"] | None = None  # contracts
+    state: str | None = None  # proposal grants: active / overdue / closed / cancelled
+
+
+class PersonTotal(BaseModel):
+    count: int
+    budget: Decimal
+
+
+class PersonYearTotal(PersonTotal):
+    fiscal_year: int | None
+    fiscal_year_be: int | None
+
+
+class PersonSourceTotal(PersonTotal):
+    funding_source: FundingSource | None
+
+
+class PersonPageOut(BaseModel):
+    person: PersonBrief
+    units: list[str]
+    contracts: list[PersonDocOut]
+    proposals: list[PersonDocOut]
+    total: PersonTotal
+    as_owner: int
+    as_member: int
+    by_year: list[PersonYearTotal]
+    by_source: list[PersonSourceTotal]
+    similar: list[PersonBrief]  # other rows that may be the same person

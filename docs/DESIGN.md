@@ -41,7 +41,7 @@ Status: design agreed 2026-10-27 (grill session). Internal-funding sample review
 | Delete | Soft delete → trash (share links die right away). ADMIN purge removes it from the **live** system only. Because backups are kept forever, a purged document can still be restored from a backup. |
 | Backups | **Kept forever**: documents may be needed years later, and no data may be lost. Nightly, deduplicated, stored **off the server**. The KEK is backed up separately. See §2. |
 | Sharing rights | Any USER can share a document they can read; the link's creator or an ADMIN manages it. |
-| Share links | One document per link. Default 24h; USER max 7 days, ADMIN max 30 days (values in `settings`). Public or password (auto-generated). Optional download limit, view-only mode, full access log. |
+| Share links | One document per link. Default 24h; USER max 7 days, ADMIN max 30 days (values in `settings`). Public or password (auto-generated). Optional open limit (every view or download counts), full access log. |
 | Scale | Small: < 10k docs, < 30 users. One server. OCR runs in a background worker. |
 | Job queue | PostgreSQL-backed (`SELECT … FOR UPDATE SKIP LOCKED`), so no Redis is needed. |
 
@@ -496,7 +496,7 @@ documents 1─* budget_lines   (manual: items or installments)
 - Increment `download_count` with `UPDATE … SET download_count = download_count + 1 WHERE … AND download_count < max_downloads RETURNING` (atomic, no race).
 - Soft-deleting a document marks its live share links revoked in the same transaction.
 - Share tokens and passwords are **shown once** and never stored in plaintext. If a password is lost, the user regenerates it.
-- View-only links stream the PDF inline or as rendered page images, without a download button. This is best effort (screenshots can't be blocked).
+- Every open of a shared file (view or download) counts toward the link's limit. The "view only" option was dropped 2026-11-11 (the viewer can save or print anyway); old view-only links still hide the download button.
 - `multi = false` category groups allow at most one category per document.
 - Closing a project: uploader or admin, like other edits. Closing papers never replace the current version and don't change the review status; a purge removes them with the document.
 - Edit/delete/new version: `uploaded_by = me OR role = admin`. Purge: admin only.

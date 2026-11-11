@@ -1,4 +1,4 @@
-3# plan.md — Task Tracker
+# plan.md — Task Tracker
 
 Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `[~]` in progress · `[x]` done · `[?]` needs decision.
 
@@ -62,8 +62,7 @@ Design reference: [docs/DESIGN.md](docs/DESIGN.md). Status keys: `[ ]` todo · `
 ## Decisions still open
 
 - [?] **Backup target** (IT team): **assumed college NAS**; access method still unknown (`RESTIC_REPOSITORY` is configurable).
-- [?] **University login API spec** (IT team): URL, fields, account-type names, API key → fill in `HttpUniversityClient.verify`.
-- [⏸] **Login system PAUSED (2026-11-10)**: waiting for the real university login API or the department's user-ID server; the IT team continues it. Until then the app uses local login only. Ready for it: `HttpUniversityClient` (fill in once the spec arrives), student usernames refused up front, approval queue, test-only `UNIVERSITY_CLIENT=php_ldap_test` (IT's RealLogin.php worked against the real AD on 2026-11-10).
+- [⏸] **Login system PAUSED (2026-11-10)**: waiting for the real university login API spec (URL, fields, account-type names, API key) or the department's user-ID server; the IT team continues it. Until then the app uses local login only. Ready for it: `HttpUniversityClient` (fill in once the spec arrives), student usernames refused up front, approval queue, test-only `UNIVERSITY_CLIENT=php_ldap_test` (IT's RealLogin.php worked against the real AD on 2026-11-10).
 - [?] **Login source**: `samples/RealLogin.php` (LDAP to `ldap.nu.local`) is for testing and comparing only (it is unsafe: empty password logs anyone in). The department deployment will use a database of user IDs. Username formats are in DESIGN §9. Students can be refused by username format; staff and teachers look the same, so we still need AD groups or the database to tell them apart.
 - [?] **Does the university API return the staff member's department/faculty?** Ask IT with the spec. If yes: auto-approve our department's staff, queue the rest.
 
@@ -291,7 +290,7 @@ backup script). "Confirmed" = traced in the code; "check" = needs a test on a re
 - [ ] **B6 Slow result list** (confirmed by reading): `search.snippet` loads every page's text of
       each result in Python (up to 100 results × hundreds of pages for proposal bundles). Find the
       match in SQL, or only for the first page of results.
-- [ ] **B7 Docs drift**: DESIGN §1 still lists share-link "view-only mode" (dropped 2026-11-11);
+- [x] **B7 Docs drift** (2026-11-12): DESIGN §1 still lists share-link "view-only mode" (dropped 2026-11-11);
       plan.md has two open items for the university API spec (lines "Decisions still open").
 - [ ] **B8 (check)** "Every open counts": test on Android/iOS that opening or downloading once
       uses only one count (some mobile viewers fetch twice).

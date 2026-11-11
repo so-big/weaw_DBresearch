@@ -467,6 +467,8 @@ def close(document_id: uuid.UUID, body: CloseIn, request: Request, db: DB, user:
                 memo_ref=body.closure_ref,
                 details={"kpi_result": details.kpi_result} if details.kpi_result else {},
             )
+    db.flush()
+    document.search_text = build_search_text(db, document)  # memo numbers are searchable
     db.commit()
     return document_detail(db, document, user)
 
@@ -500,6 +502,8 @@ def cancel(document_id: uuid.UUID, body: CancelIn, request: Request, db: DB, use
             memo_ref=body.cancel_ref,
             details={"reason": document.cancel_reason} if document.cancel_reason else {},
         )
+    db.flush()
+    document.search_text = build_search_text(db, document)  # memo numbers are searchable
     db.commit()
     return document_detail(db, document, user)
 
@@ -525,6 +529,8 @@ def reopen(document_id: uuid.UUID, request: Request, db: DB, user: CurrentUser):
         projects.clear_cancel(document)
     if projects.is_proposal(document):
         projects.add_event(db, user, document, ProjectEventType.REOPEN)
+    db.flush()
+    document.search_text = build_search_text(db, document)  # memo numbers are searchable
     db.commit()
     return document_detail(db, document, user)
 
@@ -588,6 +594,8 @@ def edit_event(
         projects.update_event(db, user, document, event_id, body, client_ip(request))
     except projects.ProjectError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    db.flush()
+    document.search_text = build_search_text(db, document)  # memo numbers are searchable
     db.commit()
     return document_detail(db, document, user)
 

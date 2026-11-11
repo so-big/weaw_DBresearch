@@ -16,6 +16,7 @@ from dbresearch.models import (
     DocumentVersion,
     Person,
     ProjectEvent,
+    ProposalProject,
     Tag,
     VersionPurpose,
 )
@@ -45,6 +46,19 @@ def build(db: Session, document: Document, extra: str = "") -> str:
     ).all()
     parts += db.scalars(
         select(Tag.name).join(DocumentTag).where(DocumentTag.document_id == document.id)
+    ).all()
+    # Memo numbers (ที่ อว 0603.09.05/108): the request, each timeline paper, closing, cancelling.
+    # Often handwritten, so OCR text alone rarely carries them.
+    parts += [document.closure_ref or "", document.cancel_ref or ""]
+    parts += db.scalars(
+        select(ProposalProject.request_ref).where(
+            ProposalProject.document_id == document.id, ProposalProject.request_ref.is_not(None)
+        )
+    ).all()
+    parts += db.scalars(
+        select(ProjectEvent.memo_ref).where(
+            ProjectEvent.document_id == document.id, ProjectEvent.memo_ref.is_not(None)
+        )
     ).all()
     # Earlier titles of a project (title changes keep the old one findable).
     parts += db.scalars(

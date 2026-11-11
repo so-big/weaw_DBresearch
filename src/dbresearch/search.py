@@ -299,14 +299,21 @@ def facets(db: Session, f: Filters) -> dict[str, list[dict]]:
 
 
 def proposal_rows(db: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
-    """List-row extras for proposal grants: state, KPI due date, department."""
+    """List-row extras for proposal grants: state, KPI due date, department, request memo no."""
+    request_ref = (
+        select(ProposalProject.request_ref)
+        .where(ProposalProject.document_id == Document.id)
+        .correlate(Document)
+        .scalar_subquery()
+    )
     rows = db.execute(
-        select(Document.id, state_expression(), _kpi_due(), _owner_unit()).where(
+        select(Document.id, state_expression(), _kpi_due(), _owner_unit(), request_ref).where(
             Document.id.in_(document_ids), Document.kind == DocKind.PROPOSAL_DEV
         )
     ).all()
     return {
-        doc_id: {"state": st, "kpi_due": due, "department": unit} for doc_id, st, due, unit in rows
+        doc_id: {"state": st, "kpi_due": due, "department": unit, "request_ref": ref}
+        for doc_id, st, due, unit, ref in rows
     }
 
 

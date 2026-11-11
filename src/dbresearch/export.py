@@ -88,6 +88,7 @@ CONTRACT_HEADERS = [
     "อัปโหลดเมื่อ (พ.ศ.)",
 ]
 PROPOSAL_HEADERS = [
+    "เลขที่บันทึกขออนุมัติ",
     "ผู้วิจัย",
     "หน่วยงาน",
     "ชื่อโครงการ",
@@ -236,6 +237,7 @@ def _proposal_rows(
         left = d.budget_total - spent if d.budget_total is not None and spent is not None else None
         rows.append(
             [
+                extra.get("request_ref"),
                 ", ".join(owners.get(d.id, [])),
                 extra.get("department"),
                 d.title,

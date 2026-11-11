@@ -81,6 +81,16 @@ def test_review_saves_funding_source_and_project_fields(client, login):
     assert doc["proposal"]["research_area"] == "เทคโนโลยีสมมติ"
     assert [e["event_type"] for e in doc["events"]] == ["approved"]
     assert doc["events"][0]["memo_ref"] == "อว 0000.00/1"
+    # The memo number is searchable (spaces ignored) and shown on the list row.
+    assert ids(client, section="proposals", q="อว0000.00/1") == {grant}
+    assert ids(client, section="proposals", q="0000.00 / 1") == {grant}
+    row = client.get("/documents", params={"section": "proposals"}).json()["items"][0]
+    assert row["request_ref"] == "อว 0000.00/1"
+    assert ids(client, section="proposals", q="อว 9999.99/9") == set()
+    event = doc["events"][0]["id"]
+    edited = client.patch(f"/documents/{grant}/events/{event}", json={"memo_ref": "อว 9999.99/9"})
+    assert edited.status_code == 200, edited.text
+    assert ids(client, section="proposals", q="อว 9999.99/9") == {grant}
     # FF counts as internal; an outside funder is external.
     ff = client.put(f"/documents/{grant}/metadata", json=review(funding_source="ff")).json()
     assert ff["funding_type"] == "internal" and len(ff["events"]) == 1

@@ -305,6 +305,7 @@ class DocumentSummary(BaseModel):
     state: str | None = None
     kpi_due: date | None = None
     department: str | None = None
+    request_ref: str | None = None  # request memo no. (proposal grants)
     owners: list[str] = []
     snippet: str | None = None  # match wrapped in [[ ]] for highlighting
 

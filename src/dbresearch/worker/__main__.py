@@ -11,11 +11,14 @@ import logging
 import signal
 import time
 import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy.dialects.postgresql import insert
 
 from dbresearch import jobs, search_text
 from dbresearch.config import get_settings
 from dbresearch.db import new_session
-from dbresearch.models import DocStatus, Document, DocumentVersion, Job, OcrStatus
+from dbresearch.models import DocStatus, Document, DocumentVersion, Job, OcrStatus, Setting
 
 log = logging.getLogger("dbresearch.worker")
 _running = True
@@ -79,13 +82,36 @@ def run_once() -> bool:
         return True
 
 
+HEARTBEAT_KEY = "worker.heartbeat"  # read by GET /admin/health
+HEARTBEAT_EVERY = 30.0  # seconds
+
+
+def heartbeat() -> None:
+    """Tell the admin overview this worker is alive (one upserted settings row)."""
+    value = {"at": datetime.now(UTC).isoformat()}
+    try:
+        with new_session() as db:
+            db.execute(
+                insert(Setting)
+                .values(key=HEARTBEAT_KEY, value=value)
+                .on_conflict_do_update(index_elements=[Setting.key], set_={"value": value})
+            )
+            db.commit()
+    except Exception:  # never let monitoring stop the job loop
+        log.exception("heartbeat failed")
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
     idle = get_settings().worker_idle_seconds
     log.info("worker started")
+    beat = 0.0
     while _running:
+        if time.monotonic() - beat >= HEARTBEAT_EVERY:
+            heartbeat()
+            beat = time.monotonic()
         if not run_once():
             time.sleep(idle)
 

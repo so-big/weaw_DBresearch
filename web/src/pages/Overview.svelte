@@ -1,10 +1,11 @@
 <script>
-  // Overview for everyone: library figures and charts. Admins also get the system figures
-  // (users, all share links, the whole trash, storage); the API only sends those to them.
+  // System overview (admins only; App.svelte sends users to the home page): server health
+  // first, then the library figures and charts.
   import { get, errorText, exportUrl, downloadUrl } from '../lib/api.js';
   import Icon from '../components/Icon.svelte';
   import { bytes, STATUS, FACULTY } from '../lib/format.js';
-  import { isAdmin, screen } from '../lib/state.svelte.js';
+  import { screen } from '../lib/state.svelte.js';
+  import SystemHealth from '../components/SystemHealth.svelte';
   import ChartCard from '../components/charts/ChartCard.svelte';
   import Columns from '../components/charts/Columns.svelte';
   import Trend from '../components/charts/Trend.svelte';
@@ -56,6 +57,8 @@
   const phone = $derived(!screen.wide);
   const H = $derived(phone ? { col: 180, line: 160 } : { col: 220, line: 200 });
   const SECTIONS = [
+    ['ov-health', 'เซิร์ฟเวอร์'],
+    ['ov-library', 'คลังเอกสาร'],
     ['ov-years', 'ปีงบ'],
     ['ov-budget', 'งบประมาณ'],
     ['ov-grants', 'ทุนพัฒนา'],
@@ -73,8 +76,21 @@
 </script>
 
 <div class="overview" class:phone>
-<h1 class="title">ภาพรวม</h1>
+<h1 class="title">ภาพรวมระบบ</h1>
 {#if error}<div class="notice bad">{error}</div>{/if}
+{#if phone}
+  <nav class="jump" aria-label="ไปยังหัวข้อ">
+    {#each SECTIONS as [id, label] (id)}
+      <button class="chip" aria-pressed={active === id} onclick={(e) => jump(id, e)}>{label}</button>
+    {/each}
+  </nav>
+{/if}
+
+<div id="ov-health" class="block">
+  <SystemHealth links={data?.active_share_links ?? null} />
+</div>
+
+<h2 id="ov-library" class="sec">คลังเอกสาร</h2>
 
 {#if !data || !charts}
   <div class="grid">
@@ -86,6 +102,7 @@
       <span class="muted">เอกสารในคลังทั้งหมด</span>
       <b class="big num">{total.toLocaleString('th-TH')}</b>
       <span class="muted sub">งบประมาณที่บันทึกไว้รวม {short(budgetAll)} บาท</span>
+      <span class="muted sub">เปิดดูและดาวน์โหลด {views30.toLocaleString('th-TH')} ครั้งใน 30 วัน</span>
     </div>
     <div class="meter">
       <StatusMeter
@@ -97,25 +114,8 @@
         ]}
       />
     </div>
-    <dl class="facts">
-      <div><dt>เปิดดูและดาวน์โหลด 30 วัน</dt><dd class="num">{views30.toLocaleString('th-TH')}</dd></div>
-      <div><dt><a href="/trash">ในถังขยะของฉัน</a></dt><dd class="num">{data.my_trash}</dd></div>
-      {#if isAdmin() && data.users !== undefined}
-        <div><dt><a href="/admin/shares">ลิงก์แชร์ที่ใช้งานอยู่</a></dt><dd class="num">{data.active_share_links}</dd></div>
-        <div><dt><a href="/admin/users">ผู้ใช้</a></dt><dd class="num">{data.users}</dd></div>
-        <div><dt><a href="/admin/trash">ในถังขยะทั้งระบบ</a></dt><dd class="num">{data.in_trash}</dd></div>
-        <div><dt>พื้นที่ไฟล์ (เข้ารหัส)</dt><dd class="num">{bytes(data.stored_bytes)}</dd></div>
-      {/if}
-    </dl>
   </section>
 
-  {#if phone}
-    <nav class="jump" aria-label="ไปยังหัวข้อ">
-      {#each SECTIONS as [id, label] (id)}
-        <button class="chip" aria-pressed={active === id} onclick={(e) => jump(id, e)}>{label}</button>
-      {/each}
-    </nav>
-  {/if}
 
   <div class="grid">
     <ChartCard
@@ -217,26 +217,17 @@
 <style>
   .overview { max-width: 1240px; margin: 0 auto; min-width: 0; overflow-x: clip; }
   .cno.wraps { white-space: normal; overflow-wrap: anywhere; }
-  .title { font-size: 24px; margin-bottom: 14px; }
+  .title { font-size: 24px; margin-bottom: 16px; }
+  .block { margin-bottom: 32px; scroll-margin-top: calc(var(--header-h) + 16px); }
+  .sec { font-size: 20px; margin-bottom: 12px; scroll-margin-top: calc(var(--header-h) + 16px); }
   .hero {
-    display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr); gap: 14px 32px; align-items: center;
-    padding: 22px 24px; margin-bottom: 16px; position: relative; overflow: hidden;
+    display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr); gap: 16px 32px; align-items: center;
+    padding: 20px 24px; margin-bottom: 16px;
   }
-  .hero::after {
-    /* the faculty site's soft circle, kept to one corner */
-    content: ''; position: absolute; right: -60px; top: -80px; width: 220px; height: 220px; border-radius: 50%;
-    background: var(--primary-soft); z-index: 0; pointer-events: none;
-  }
-  .hero > * { position: relative; z-index: 1; }
   .lead { display: flex; flex-direction: column; }
-  .lead span { font-size: 13.5px; }
-  .big { font-family: var(--f-display); font-weight: 600; font-size: 56px; line-height: 1.05; color: var(--primary-text); font-variant-numeric: proportional-nums; }
-  .sub { font-size: 12.5px !important; }
-  .facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 4px 0 0; padding-top: 14px; border-top: 1px solid var(--border); }
-  .facts div { display: flex; flex-direction: column; }
-  .facts dt { font-size: 12.5px; color: var(--muted); }
-  .facts dt a { color: var(--muted); }
-  .facts dd { margin: 0; font-family: var(--f-display); font-weight: 500; font-size: 20px; }
+  .lead span { font-size: 13px; }
+  .big { font-family: var(--f-display); font-weight: 500; font-size: 48px; line-height: 1.1; color: var(--text); }
+  .sub { font-size: 12px !important; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; }
   .skeleton-card { padding: 18px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
@@ -248,20 +239,16 @@
   }
 
   /* ── phone: compact hero, figure tiles, sticky section chips, one chart per row ── */
-  .phone .title { font-size: 21px; margin: 2px 2px 10px; }
-  .phone .hero { padding: 16px; gap: 12px; margin-bottom: 12px; border-radius: 14px; }
-  .phone .hero::after { width: 150px; height: 150px; right: -50px; top: -60px; }
-  .phone .lead { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 10px; }
-  .phone .lead > span:first-child { flex-basis: 100%; }
-  .phone .big { font-size: 42px; }
-  .phone .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 12px; }
-  .phone .facts div { background: var(--subtle); border-radius: 10px; padding: 8px 10px; min-width: 0; }
-  .phone .facts dt { font-size: 12px; line-height: 1.35; }
-  .phone .facts dd { font-size: 19px; }
+  .phone .title { font-size: 20px; margin: 0 0 12px; }
+  .phone .block { margin-bottom: 24px; }
+  .phone .hero { padding: 16px; gap: 12px; margin-bottom: 12px; }
+  .phone .lead { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
+  .phone .lead > span { flex-basis: 100%; }
+  .phone .big { font-size: 40px; }
   .jump {
-    position: sticky; top: calc(53px + env(safe-area-inset-top)); z-index: 5;
+    position: sticky; top: calc(55px + env(safe-area-inset-top)); z-index: 5;
     display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
-    margin: 0 -12px 12px; padding: 8px 12px; background: var(--bg); border-bottom: 1px solid var(--border);
+    margin: 0 -16px 12px; padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--border);
   }
   .jump::-webkit-scrollbar { display: none; }
   .jump .chip { flex: none; }

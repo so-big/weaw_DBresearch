@@ -152,7 +152,6 @@
       })
       .catch(() => {});
   });
-  const firstName = $derived((session.user?.display_name || '').split(' ')[0]);
   function onlyFilter(key, value) {
     const on = filters[key].length === 1 && filters[key][0] === String(value);
     update({ ...filters, [key]: on ? [] : [String(value)] });
@@ -358,7 +357,6 @@
 
 <header class="mast" class:wide={screen.wide}>
   <div class="mast-in">
-    {#if screen.wide}<p class="hello">สวัสดี {firstName}</p>{/if}
     <h1>{other ? 'เอกสารประกอบโครงการทุนพัฒนาข้อเสนอ' : grants ? 'ทุนพัฒนาข้อเสนอโครงการวิจัย' : 'ค้นหาสัญญาและเอกสารทุนวิจัย'}</h1>
     <div class="mrow">
       <form class="msearch" role="search" onsubmit={submitQ}>
@@ -683,44 +681,37 @@
 
   /* phone */
   .phone-head { display: flex; flex-direction: column; gap: 10px; }
-  /* ── masthead: the page's one bold element, echoing the faculty site's maroon hero ── */
-  .mast {
-    position: relative; overflow: hidden; color: #fff; border-radius: 18px; margin-bottom: 18px;
-    background:
-      radial-gradient(circle at 92% -20%, rgba(255, 255, 255, 0.12) 0 150px, transparent 151px),
-      radial-gradient(circle at 4% 130%, rgba(255, 255, 255, 0.08) 0 120px, transparent 121px),
-      linear-gradient(118deg, var(--band-1), var(--band-2) 60%, var(--band-3));
-  }
-  .mast-in { position: relative; padding: 26px 28px 22px; display: flex; flex-direction: column; gap: 12px; max-width: 860px; }
-  .hello { font-size: 14px; opacity: 0.85; }
-  .mast h1 { font-size: 30px; font-weight: 600; color: #fff; line-height: 1.25; margin-top: -6px; }
+  /* ── masthead: page title, the big search box and a few figures that act as quick filters ── */
+  .mast { margin-bottom: 24px; }
+  .mast-in { display: flex; flex-direction: column; gap: 12px; max-width: 880px; }
+  .mast h1 { font-size: 24px; }
   .mrow { display: flex; gap: 8px; }
   .msearch {
-    flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; height: 52px; padding: 0 8px 0 16px;
-    background: var(--surface); color: var(--muted); border-radius: 14px; box-shadow: 0 10px 26px -14px rgba(0, 0, 0, 0.55);
+    flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; height: 48px; padding: 0 8px 0 16px;
+    background: var(--surface); color: var(--muted); border: 1px solid var(--border-strong); border-radius: 12px;
+    transition: border-color var(--t-fast);
   }
-  .msearch:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
-  .msearch input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 16.5px; color: var(--text); }
+  .msearch:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+  .msearch input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 16px; color: var(--text); }
   .msearch input::-webkit-search-cancel-button { display: none; }
   .clear { border: 0; background: var(--subtle); color: var(--muted); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; }
   .figs { display: flex; flex-wrap: wrap; gap: 8px; }
   .fig {
-    display: inline-flex; align-items: baseline; gap: 8px; padding: 5px 14px; border-radius: 999px; font-size: 13.5px; color: #fff;
-    background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.2);
-    transition: background var(--t-fast), color var(--t-fast);
+    display: inline-flex; align-items: baseline; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border); align-items: center;
+    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
   }
-  .fig b { font-family: var(--f-display); font-weight: 500; font-size: 16px; }
-  button.fig:hover { background: rgba(255, 255, 255, 0.22); }
-  button.fig[aria-pressed='true'] { background: #fff; color: var(--m-600); border-color: #fff; }
-  .viewlink { align-self: flex-start; color: #fff; opacity: 0.88; font-size: 13.5px; text-decoration: underline; text-underline-offset: 3px; }
-  .viewlink:hover { opacity: 1; }
-  .fbtn { position: relative; flex: none; width: 52px; display: grid; place-items: center; border: 0; border-radius: 14px; background: rgba(255, 255, 255, 0.16); color: #fff; }
-  .fbtn .n { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; border-radius: 999px; background: var(--accent); color: #2b1d00; font-size: 11px; font-weight: 700; display: grid; place-items: center; padding: 0 5px; }
-  .mast:not(.wide) { margin: -14px -12px 12px; border-radius: 0 0 20px 20px; }
-  .mast:not(.wide) .mast-in { padding: 16px 14px 18px; gap: 10px; }
-  .mast:not(.wide) h1 { font-size: 19px; margin: 0; }
-  .mast:not(.wide) .msearch { height: 48px; }
-  .quick { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px 2px; }
+  .fig b { font-family: var(--f-display); font-weight: 500; font-size: 15px; color: var(--text); }
+  button.fig:hover { background: var(--subtle); }
+  button.fig[aria-pressed='true'] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-text); }
+  button.fig[aria-pressed='true'] b { color: var(--primary-text); }
+  .viewlink { align-self: flex-start; font-size: 13px; text-underline-offset: 3px; }
+  .fbtn { position: relative; flex: none; width: 48px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text); }
+  .fbtn .n { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--primary); color: var(--on-primary); font-size: 11px; font-weight: 500; display: grid; place-items: center; padding: 0 6px; }
+  .mast:not(.wide) { margin-bottom: 12px; }
+  .mast:not(.wide) .mast-in { gap: 8px; }
+  .mast:not(.wide) h1 { font-size: 18px; }
+  .quick { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px 2px; }
   .quick::-webkit-scrollbar { display: none; }
   .quick .chip { flex: none; }
   .noref { font-size: 12px; color: var(--faint); }

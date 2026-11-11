@@ -239,12 +239,15 @@ dependencies (npm audit + pip-audit: 0 known vulnerabilities).
 - [?] Hide `/api/docs` and the `/health` details from the public internet in production (low risk)
 - [ ] Biggest remaining risks are availability, not attackers: KEK custody and backups (Phase 2 items above)
 
-## Phase 8 — New front-end design (on hold, added 2026-11-11)
+## Phase 8 — New front-end design (started 2026-11-12)
 
-- [?] **Decide again when the remaining tasks are almost done**: whether to redesign the web app, and how far
-  (new look only, or new layout and screens too). Not started; no design work until then.
-- [ ] When it starts: brainstorm the direction, make mocks (`docs/ui/`), agree on them, then update DESIGN §10
-  (current UI rules) and CLAUDE.md before building
+- [x] Direction agreed with the user (keep maroon brand + Kanit/Plex Thai; quiet chrome; DESIGN §10)
+- [x] Home page `/` for everyone (my tasks, my uploads, recent library); ภาพรวม admin-only with server health
+- [x] Phone: bottom bar หน้าแรก · สัญญา · upload (center) · ทุนพัฒนา · รอตรวจ; search + account avatar in the top bar
+- [x] Admin: cleaner users page (manage window), delete/restore accounts (`deleted` status, migration `e1f3a5c7d9b2`)
+- [x] `GET /api/admin/health`, worker heartbeat, backup.sh writes `backup.done`/`backup.failed` audit rows
+- [ ] Install the updated `scripts/backup.sh` on the server so the overview shows backups (it is the same file; next timer run)
+- [ ] Remaining pages (document detail, review forms, proposals, login/guest bands): same polish pass later
 
 ## Phase 9 — Review round 2026-11-10: security, bugs, QoL, features (9A–9C + F1 done 2026-11-12; 224 tests pass on the server)
 
@@ -337,6 +340,8 @@ backup script). "Confirmed" = traced in the code; "check" = needs a test on a re
 - **RealLogin test (2026-11-10)**: done and removed (containers on 8121/8122 deleted). To repeat it, run IT's script in a `php:8.3-apache` container with the `ldap` extension on `dbresearch_default`, and a second app instance with `UNIVERSITY_CLIENT=php_ldap_test`, bound to `127.0.0.1` only (never on the public demo).
 
 ## Log
+
+- 2026-11-12 — Phase 8 front-end redesign, round 1: home page, admin-only system overview with server health, new phone bars, admin users page with delete/restore. See DESIGN §1 Accounts and §10.
 
 - 2026-11-12 — F3 researcher page and the cheap F7 (search hit → PDF at the page) built by `claude-work` workers, merged and deployed; 232 tests pass on the server, headless check on PC + phone clean. Real-data import (step 4b) prepared but parked: decide first who may log in to the demo (it has a shared `demo` account); the re-checked plan is `samples/proposal_dev/plan.new.json` on the server.
 

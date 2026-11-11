@@ -65,7 +65,7 @@ are gone.
 
 `scripts/backup.sh` streams `pg_dump` straight into restic (no dump file on disk), then backs
 up the encrypted `blobs` volume. It never runs `forget`/`prune`. On Sundays it also runs
-`restic check --read-data-subset=5%`.
+`restic check --read-data-subset=5%`. Each run writes a `backup.done` or `backup.failed` row to the audit log; the admin overview (ภาพรวม) shows the last one and warns when the last good backup is more than 2 days old.
 
 Setup:
 

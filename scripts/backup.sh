@@ -7,7 +7,7 @@
 # - Blobs are already ciphertext; restic encrypts everything again with its own password.
 # - Snapshots are NEVER forgotten or pruned: data must not be lost (CLAUDE.md).
 # - The KEK is NOT backed up here, on purpose: it lives in separate custody (docs/OPERATIONS.md).
-set -euo pipefail
+set -Eeuo pipefail  # -E: the ERR trap also fires inside functions (restic)
 cd "$(dirname "$0")/.."
 
 ENV_FILE=${ENV_FILE:-backup.env}
@@ -37,6 +37,18 @@ if [ "${1:-}" = "init" ]; then
 fi
 
 stamp=$(date -u +%Y-%m-%dT%H%M%SZ)
+checked=false
+
+# Each run leaves an audit row (backup.done / backup.failed); the admin overview shows the
+# last one and warns when the last good backup is old. Failing to record never fails a backup.
+record() {
+  docker compose -p "$PROJECT" exec -T db psql -q -U dbresearch -d dbresearch -v ON_ERROR_STOP=1 \
+    -c "INSERT INTO audit_events (action, entity_type, details) VALUES ('backup.$1', 'system',
+        jsonb_build_object('stamp', '$stamp', 'integrity_check', $checked))" \
+    || echo "[$stamp] could not record the backup result in the audit log" >&2
+}
+trap 'record failed' ERR
+
 echo "[$stamp] dumping database → restic"
 docker compose -p "$PROJECT" exec -T db pg_dump -U dbresearch -d dbresearch -Fc \
   | restic backup --stdin --stdin-filename dbresearch.dump --tag db --tag "$stamp"
@@ -49,5 +61,8 @@ EXTRA_DOCKER_ARGS=()
 if [ "$(date -u +%u)" = "7" ]; then  # Sundays: verify a slice of the stored data
   echo "[$stamp] weekly integrity check"
   restic check --read-data-subset=5%
+  checked=true
 fi
+trap - ERR
+record done
 echo "[$stamp] done"

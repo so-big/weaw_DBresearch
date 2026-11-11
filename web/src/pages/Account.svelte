@@ -1,5 +1,5 @@
 <script>
-  // Phone "บัญชี" tab: who am I, overview, my bin, admin entry, theme, log out.
+  // Account page (phone: the avatar in the top bar): who am I, my links, my bin, admin pages, theme, log out.
   import Icon from '../components/Icon.svelte';
   import { session, isAdmin, theme, setTheme } from '../lib/state.svelte.js';
   import { logout } from '../lib/auth.js';
@@ -18,13 +18,16 @@
   </section>
 
   <nav class="card links">
-    <a class="rowlink" href="/overview"><Icon name="chart" /><span>ภาพรวม</span><Icon name="chevron" size={18} /></a>
     <a class="rowlink" href="/shares"><Icon name="link" /><span>ลิงก์แชร์ของฉัน</span><Icon name="chevron" size={18} /></a>
     <a class="rowlink" href="/trash"><Icon name="trash" /><span>ถังขยะของฉัน</span><Icon name="chevron" size={18} /></a>
-    {#if isAdmin()}
-      <a class="rowlink" href="/admin"><Icon name="shield" /><span>ผู้ดูแลระบบ</span><Icon name="chevron" size={18} /></a>
-    {/if}
   </nav>
+
+  {#if isAdmin()}
+    <nav class="card links" aria-label="ผู้ดูแลระบบ">
+      <a class="rowlink" href="/overview"><Icon name="server" /><span>ภาพรวมระบบ</span><Icon name="chevron" size={18} /></a>
+      <a class="rowlink" href="/admin"><Icon name="shield" /><span>ผู้ดูแลระบบ</span><Icon name="chevron" size={18} /></a>
+    </nav>
+  {/if}
 
   <section class="card pad stack">
     <span class="label">ธีม</span>
@@ -51,13 +54,14 @@
 
 <style>
   .page { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
-  .who { display: flex; gap: 14px; align-items: center; }
+  .who { display: flex; gap: 16px; align-items: center; }
   .who p { font-size: 13px; overflow-wrap: anywhere; }
   .avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-text); display: grid; place-items: center; font-family: var(--f-display); font-size: 20px; flex: none; }
   .links { overflow: hidden; }
-  .rowlink { display: flex; align-items: center; gap: 12px; padding: 14px 16px; min-height: 52px; color: var(--text); text-decoration: none; border-top: 1px solid var(--border); }
+  .rowlink { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 52px; color: var(--text); text-decoration: none; border-top: 1px solid var(--border); }
   .rowlink:first-child { border-top: 0; }
   .rowlink:active { background: var(--subtle); }
-  .rowlink span { flex: 1; font-weight: 500; }
+  .rowlink span { flex: 1; }
+  .rowlink :global(svg) { color: var(--muted); flex: none; }
   .all { align-self: center; padding: 8px; }
 </style>

@@ -2,8 +2,10 @@
 Every change writes an audit row. Reports (open to every user) live in api/reports.py."""
 
 import ipaddress
+import platform
+import shutil
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -31,14 +33,20 @@ from dbresearch.auth import (
     revoke_all_sessions,
 )
 from dbresearch.autofill.rules import validate_rules
+from dbresearch.config import get_settings
 from dbresearch.models import (
     AuditEvent,
     AuthIdentity,
     Category,
     CategoryGroup,
+    DocStatus,
     Document,
     DocumentCategory,
+    DocumentVersion,
     ExtractionTemplate,
+    Job,
+    JobState,
+    OcrStatus,
     Setting,
     ShareLink,
     User,
@@ -102,7 +110,13 @@ class PasswordIn(BaseModel):
 
 
 @router.get("/users", response_model=list[AdminUserOut])
-def list_users(db: DB, admin: AdminUser):
+def list_users(db: DB, admin: AdminUser, deleted: bool = False):
+    """Accounts in use (active + disabled), or with `deleted=true` the deleted ones."""
+    shown = (
+        User.status == UserStatus.DELETED
+        if deleted
+        else User.status.in_([UserStatus.ACTIVE, UserStatus.DISABLED])
+    )
     sessions = count_active_sessions(db)
     logins: dict[uuid.UUID, list[str]] = {}
     university: dict[uuid.UUID, str] = {}
@@ -122,9 +136,7 @@ def list_users(db: DB, admin: AdminUser):
                 "university_id": university.get(u.id),
             }
         )
-        for u in db.scalars(
-            select(User).where(User.status != UserStatus.PENDING).order_by(User.display_name)
-        )
+        for u in db.scalars(select(User).where(shown).order_by(User.display_name))
     ]
 
 
@@ -258,6 +270,8 @@ def update_user(user_id: uuid.UUID, body: UserPatch, request: Request, db: DB, a
         body.status is not None and user.status == UserStatus.PENDING
     ):
         raise HTTPException(409, "Use approve or reject for a pending request")
+    if body.status == UserStatus.DELETED or user.status == UserStatus.DELETED:
+        raise HTTPException(409, "Use delete or restore for deleted accounts")
     changes = body.model_dump(exclude_none=True)
     for name, value in changes.items():
         setattr(user, name, value)
@@ -275,6 +289,76 @@ def update_user(user_id: uuid.UUID, body: UserPatch, request: Request, db: DB, a
     )
     db.commit()
     return user
+
+
+class DeleteOut(BaseModel):
+    removed: bool  # True: the row is gone; False: kept as 'deleted' (it has history)
+    revoked_links: int
+
+
+@router.delete("/users/{user_id}", response_model=DeleteOut)
+def delete_user(user_id: uuid.UUID, request: Request, db: DB, admin: AdminUser) -> DeleteOut:
+    """Remove an account. A never-used account is deleted for real. One with history
+    (uploads, share links, audit rows as actor) can't be: the append-only audit log points
+    at it. It becomes 'deleted' instead: hidden, no login, sessions and its live share links
+    end, its name stays on its history, and ADMIN can restore it."""
+    user = db.get(User, user_id)
+    if user is None or user.status == UserStatus.DELETED:
+        raise HTTPException(404, "User not found")
+    if user.id == admin.id:
+        raise HTTPException(422, "You can't delete your own account")
+    who = {"email": user.email, "display_name": user.display_name, "role": user.role.value}
+    try:
+        with db.begin_nested():
+            db.delete(user)
+            db.flush()
+        removed = True
+    except IntegrityError:
+        removed = False
+    revoked = 0
+    if not removed:
+        db.refresh(user)
+        user.status = UserStatus.DELETED
+        user.updated_at = func.now()
+        revoke_all_sessions(db, user.id)
+        revoked = len(
+            db.execute(
+                update(ShareLink)
+                .where(ShareLink.created_by == user.id, ShareLink.revoked_at.is_(None))
+                .values(revoked_at=func.now(), revoked_by=admin.id)
+                .returning(ShareLink.id)
+            ).all()
+        )
+    audit.record(
+        db,
+        "user.delete",
+        "user",
+        user_id,
+        actor_id=admin.id,
+        ip=client_ip(request),
+        removed=removed,
+        revoked_links=revoked,
+        **who,
+    )
+    db.commit()
+    return DeleteOut(removed=removed, revoked_links=revoked)
+
+
+@router.post("/users/{user_id}/restore", response_model=UserOut)
+def restore_user(user_id: uuid.UUID, request: Request, db: DB, admin: AdminUser):
+    """Bring a deleted account back as *disabled*; ADMIN turns it on when it is needed.
+    Revoked share links stay revoked."""
+    restored = db.execute(
+        update(User)
+        .where(User.id == user_id, User.status == UserStatus.DELETED)
+        .values(status=UserStatus.DISABLED, updated_at=func.now())
+        .returning(User.id)
+    ).scalar_one_or_none()
+    if restored is None:
+        raise HTTPException(404, "No deleted account with this id")
+    audit.record(db, "user.restore", "user", user_id, actor_id=admin.id, ip=client_ip(request))
+    db.commit()
+    return db.get(User, user_id)
 
 
 @router.post("/users/{user_id}/password", status_code=204)
@@ -395,6 +479,157 @@ def audit_log(
         )
         for e, name in rows
     ]
+
+
+# ───────────── System health (admin overview) ─────────────
+STARTED_AT = datetime.now(UTC)
+WORKER_HEARTBEAT = "worker.heartbeat"  # settings row the worker refreshes (dbresearch.worker)
+
+
+class DiskOut(BaseModel):
+    total: int
+    used: int
+    free: int
+
+
+class FailedJobOut(BaseModel):
+    id: int
+    kind: str
+    attempts: int
+    at: datetime  # error text is left out: it may quote document content
+
+
+class BackupOut(BaseModel):
+    at: datetime
+    ok: bool
+    details: dict[str, Any]
+
+
+class HealthOut(BaseModel):
+    checked_at: datetime
+    started_at: datetime
+    python: str
+    postgres: str
+    database_bytes: int
+    disk: DiskOut | None  # the volume that holds the encrypted files
+    files: int
+    file_bytes: int
+    jobs: dict[str, int]  # queued / running / failed / done_24h
+    oldest_queued_at: datetime | None
+    failed_jobs: list[FailedJobOut]
+    worker_seen_at: datetime | None
+    backup: BackupOut | None  # last run of scripts/backup.sh
+    last_backup_ok_at: datetime | None
+    sessions: int
+    logins_24h: dict[str, int]  # ok / failed / blocked
+    documents: dict[str, int]  # processing / needs_review / failed / ocr_failed / in_trash
+    access_requests: int
+    warnings: list[str]
+
+
+@router.get("/health", response_model=HealthOut)
+def health(db: DB, admin: AdminUser) -> HealthOut:
+    """Is the server healthy: storage, database, job queue, worker, backups, logins."""
+    from dbresearch.main import unsafe_settings  # main imports this module
+
+    now = datetime.now(UTC)
+    day = now - timedelta(hours=24)
+    try:
+        usage = shutil.disk_usage(get_settings().blob_dir)
+        disk = DiskOut(total=usage.total, used=usage.used, free=usage.free)
+    except OSError:
+        disk = None
+    by_state = dict(db.execute(select(Job.state, func.count()).group_by(Job.state)).all())
+    heartbeat = db.get(Setting, WORKER_HEARTBEAT)
+    backups = select(AuditEvent).where(AuditEvent.action.in_(["backup.done", "backup.failed"]))
+    last_backup = db.scalar(backups.order_by(AuditEvent.id.desc()).limit(1))
+    last_ok = db.scalar(select(func.max(AuditEvent.at)).where(AuditEvent.action == "backup.done"))
+
+    def events(action: str) -> int:
+        return db.scalar(
+            select(func.count())
+            .select_from(AuditEvent)
+            .where(AuditEvent.action == action, AuditEvent.at >= day)
+        )
+
+    live = Document.deleted_at.is_(None)
+    by_status = dict(
+        db.execute(
+            select(Document.status, func.count()).where(live).group_by(Document.status)
+        ).all()
+    )
+    return HealthOut(
+        checked_at=now,
+        started_at=STARTED_AT,
+        python=platform.python_version(),
+        postgres=db.scalar(select(func.current_setting("server_version"))),
+        database_bytes=db.scalar(select(func.pg_database_size(func.current_database()))),
+        disk=disk,
+        files=db.scalar(select(func.count()).select_from(DocumentVersion)),
+        file_bytes=int(db.scalar(select(func.coalesce(func.sum(DocumentVersion.size_bytes), 0)))),
+        jobs={
+            "queued": by_state.get(JobState.QUEUED, 0),
+            "running": by_state.get(JobState.RUNNING, 0),
+            "failed": by_state.get(JobState.FAILED, 0),
+            "done_24h": db.scalar(
+                select(func.count())
+                .select_from(Job)
+                .where(Job.state == JobState.DONE, Job.updated_at >= day)
+            ),
+        },
+        oldest_queued_at=db.scalar(
+            select(func.min(Job.created_at)).where(Job.state == JobState.QUEUED)
+        ),
+        failed_jobs=[
+            FailedJobOut(id=j.id, kind=j.kind, attempts=j.attempts, at=j.updated_at)
+            for j in db.scalars(
+                select(Job)
+                .where(Job.state == JobState.FAILED)
+                .order_by(Job.updated_at.desc())
+                .limit(5)
+            )
+        ],
+        worker_seen_at=_parse_time(heartbeat.value.get("at")) if heartbeat else None,
+        backup=BackupOut(
+            at=last_backup.at,
+            ok=last_backup.action == "backup.done",
+            details=last_backup.details,
+        )
+        if last_backup
+        else None,
+        last_backup_ok_at=last_ok,
+        sessions=sum(count_active_sessions(db).values()),
+        logins_24h={
+            "ok": events("auth.login"),
+            "failed": events("auth.login_failed"),
+            "blocked": events("auth.login_blocked"),
+        },
+        documents={
+            "processing": by_status.get(DocStatus.PROCESSING, 0),
+            "needs_review": by_status.get(DocStatus.NEEDS_REVIEW, 0),
+            "failed": by_status.get(DocStatus.FAILED, 0),
+            "ocr_failed": db.scalar(
+                select(func.count())
+                .select_from(DocumentVersion)
+                .join(Document, Document.id == DocumentVersion.document_id)
+                .where(live, DocumentVersion.ocr_status == OcrStatus.FAILED)
+            ),
+            "in_trash": db.scalar(
+                select(func.count()).select_from(Document).where(Document.deleted_at.is_not(None))
+            ),
+        },
+        access_requests=db.scalar(
+            select(func.count()).select_from(User).where(User.status == UserStatus.PENDING)
+        ),
+        warnings=unsafe_settings(),
+    )
+
+
+def _parse_time(value: Any) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value) if value else None
+    except (TypeError, ValueError):
+        return None
 
 
 # ───────────── Login security summary ─────────────

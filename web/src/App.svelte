@@ -18,6 +18,7 @@
   import Account from './pages/Account.svelte';
   import Admin from './pages/admin/Admin.svelte';
   import Overview from './pages/Overview.svelte';
+  import Home from './pages/Home.svelte';
   import ProposalDetail from './pages/ProposalDetail.svelte';
   import ProposalReview from './pages/ProposalReview.svelte';
   import Person from './pages/Person.svelte';
@@ -52,15 +53,18 @@
     if (!session.user && route.path !== '/login') {
       const next = route.path === '/' ? '' : `?next=${encodeURIComponent(route.path + location.search)}`;
       navigate(`/login${next}`, { replace: true, force: true });
-    } else if (session.user && (route.path === '/' || route.path === '/login')) {
-      navigate(route.query.get('next') || '/documents', { replace: true });
+    } else if (session.user && route.path === '/login') {
+      navigate(route.query.get('next') || '/', { replace: true });
     } else if (session.user && route.path === '/admin/overview') {
-      navigate('/overview', { replace: true }); // the overview is open to everyone now
+      navigate('/overview', { replace: true });
+    } else if (session.user && route.path === '/overview' && session.user.role !== 'admin') {
+      navigate('/', { replace: true }); // the system overview is for admins; users get the home page
     }
   });
 
   const page = $derived.by(() => {
     const p = route.path;
+    if (p === '/') return { C: Home };
     if (p === '/documents') return { C: Documents, props: { section: 'contracts' }, key: 'contracts' };
     if (p === '/proposals') return { C: Documents, props: { section: 'proposals' }, key: 'proposals' };
     if (p === '/review') return { C: ReviewQueue };
@@ -148,10 +152,10 @@
   .boot { min-height: 100vh; display: grid; place-items: center; }
   main {
     max-width: 1440px; margin: 0 auto;
-    padding: 20px max(20px, env(safe-area-inset-right)) 48px max(20px, env(safe-area-inset-left));
+    padding: 24px max(24px, env(safe-area-inset-right)) 48px max(24px, env(safe-area-inset-left));
   }
   main.phone {
-    padding: 14px max(12px, env(safe-area-inset-right)) calc(var(--bottom-h) + env(safe-area-inset-bottom) + 24px) max(12px, env(safe-area-inset-left));
+    padding: 16px max(16px, env(safe-area-inset-right)) calc(var(--bottom-h) + env(safe-area-inset-bottom) + 24px) max(16px, env(safe-area-inset-left));
   }
   .page { min-width: 0; }
 </style>

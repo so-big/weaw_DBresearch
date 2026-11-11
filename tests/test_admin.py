@@ -266,3 +266,74 @@ def test_reports_are_open_to_users_without_system_figures(client, login):
     assert not {"users", "in_trash", "stored_bytes", "active_share_links"} & set(data)
     assert client.get("/reports/charts").status_code == 200
     assert client.get("/reports/missing-numbers").status_code == 200
+
+
+def test_delete_unused_account_removes_it(client, login):
+    login(UserRole.ADMIN)
+    user_id = client.post(
+        "/admin/users", json={"email": "gone@example.test", "display_name": "Gone"}
+    ).json()["id"]
+    deleted = client.delete(f"/admin/users/{user_id}")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"removed": True, "revoked_links": 0}
+    assert user_id not in [u["id"] for u in client.get("/admin/users").json()]
+    assert client.post(f"/admin/users/{user_id}/restore").status_code == 404
+    with new_session() as db:
+        row = db.scalar(select(AuditEvent).where(AuditEvent.action == "user.delete"))
+        assert row.details["email"] == "gone@example.test"
+
+
+def test_delete_used_account_keeps_history(client, login, make_user):
+    login(UserRole.ADMIN)
+    user_id, username, password = make_user(UserRole.USER)
+    with TestClient(app, headers=CSRF, base_url=API) as other:
+        assert (
+            other.post("/auth/login", json={"username": username, "password": password}).status_code
+            == 200
+        )
+        doc_id = upload(other)
+        link = other.post(f"/documents/{doc_id}/shares", json={}).json()
+
+        deleted = client.delete(f"/admin/users/{user_id}")
+        assert deleted.json() == {"removed": False, "revoked_links": 1}
+        assert other.get("/auth/me").status_code == 401  # sessions ended
+        assert (
+            other.post("/auth/login", json={"username": username, "password": password}).status_code
+            == 401
+        )
+    with TestClient(app, headers=CSRF, base_url=API) as guest:
+        assert guest.get(link["path"]).status_code == 404  # their links died with the account
+
+    listed = client.get("/admin/users").json()
+    assert str(user_id) not in [u["id"] for u in listed]
+    gone = client.get("/admin/users", params={"deleted": True}).json()
+    assert [u["id"] for u in gone] == [str(user_id)]
+    assert client.get(f"/documents/{doc_id}").json()["id"] == doc_id  # the document stays
+    # PATCH can't bring it back; restore makes it a disabled account
+    assert client.patch(f"/admin/users/{user_id}", json={"status": "active"}).status_code == 409
+    restored = client.post(f"/admin/users/{user_id}/restore")
+    assert restored.status_code == 200 and restored.json()["status"] == "disabled"
+    assert client.delete(f"/admin/users/{user_id}").status_code == 200
+
+
+def test_admin_cannot_delete_self(client, login):
+    admin_id = login(UserRole.ADMIN)
+    assert client.delete(f"/admin/users/{admin_id}").status_code == 422
+
+
+def test_health(client, login):
+    login(UserRole.USER)
+    assert client.get("/admin/health").status_code == 403
+    login(UserRole.ADMIN)
+    with new_session() as db:
+        db.execute(
+            AuditEvent.__table__.insert().values(
+                action="backup.done", entity_type="system", details={"stamp": "x"}
+            )
+        )
+        db.commit()
+    body = client.get("/admin/health").json()
+    assert body["database_bytes"] > 0
+    assert set(body["jobs"]) == {"queued", "running", "failed", "done_24h"}
+    assert body["backup"]["ok"] is True and body["last_backup_ok_at"]
+    assert body["logins_24h"]["ok"] >= 1

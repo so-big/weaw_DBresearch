@@ -72,9 +72,9 @@ def run(p, tag, viewport, mobile, scheme):
         shot(page, f"{tag}-03-filter-sheet")
         page.mouse.click(viewport["width"] // 2, 40)  # tap the scrim to close
         page.wait_for_timeout(300)
-        page.click(".mtop .up")
+        page.click(".bottom .fab")
     else:
-        page.click("header.top button.btn")
+        page.click("header.top button.btn.up")
     shot(page, f"{tag}-04-upload")
     page.keyboard.press("Escape")
     page.wait_for_timeout(300)
@@ -92,6 +92,7 @@ def run(p, tag, viewport, mobile, scheme):
         page.wait_for_timeout(300)
 
     for path, name in [
+        ("/", "04c-home"),
         ("/overview", "04d-overview"),
         ("/trash", "04e-my-trash"),
         ("/review", "05-review-queue"),
@@ -161,7 +162,7 @@ def run(p, tag, viewport, mobile, scheme):
     page.goto(f"{BASE}/proposals")
     page.wait_for_load_state("networkidle")
     shot(page, f"{tag}-20-proposals")
-    page.click(".mtop .up" if mobile else "header.top button.btn")
+    page.click(".bottom .fab" if mobile else "header.top button.btn.up")
     shot(page, f"{tag}-21-upload-from-proposals")
     page.keyboard.press("Escape")
     page.wait_for_timeout(300)

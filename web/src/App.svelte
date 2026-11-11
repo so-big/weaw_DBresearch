@@ -28,7 +28,7 @@
   setUnauthorizedHandler(() => {
     if (guestToken || !session.user) return;
     session.user = null;
-    navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`, { replace: true });
+    navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`, { replace: true, force: true });
   });
 
   onMount(async () => {
@@ -50,7 +50,7 @@
     if (!session.checked || guestToken) return;
     if (!session.user && route.path !== '/login') {
       const next = route.path === '/' ? '' : `?next=${encodeURIComponent(route.path + location.search)}`;
-      navigate(`/login${next}`, { replace: true });
+      navigate(`/login${next}`, { replace: true, force: true });
     } else if (session.user && (route.path === '/' || route.path === '/login')) {
       navigate(route.query.get('next') || '/documents', { replace: true });
     } else if (session.user && route.path === '/admin/overview') {

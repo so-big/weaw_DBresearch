@@ -3,8 +3,9 @@
   // the memo reader found; later edits: the saved values, with the readings as hints.
   import { onDestroy } from 'svelte';
   import { get, put, post, errorText, fileUrl } from '../lib/api.js';
-  import { navigate } from '../lib/router.svelte.js';
-  import { toast, screen, bumpReviewCount, isAdmin } from '../lib/state.svelte.js';
+  import { navigate, setLeaveGuard } from '../lib/router.svelte.js';
+  import { createDraft } from '../lib/draft.js';
+  import { toast, screen, session, bumpReviewCount, isAdmin } from '../lib/state.svelte.js';
   import { FUNDING_SOURCE, OUTCOME, BE, thDate, money, toThaiInput, parseThaiDate, docPath } from '../lib/format.js';
   import Icon from '../components/Icon.svelte';
 
@@ -42,7 +43,7 @@
       sug = a.suggestions || {};
       waiting = d.status === 'processing' && !skipWait;
       if (waiting) timer = setTimeout(load, 4000);
-      else if (!form) form = buildForm(d, sug);
+      else if (!form) openForm(d);
     } catch (err) {
       loadError = errorText(err);
     }
@@ -54,7 +55,38 @@
     skipWait = true;
     waiting = false;
     clearTimeout(timer);
-    form = buildForm(doc, sug);
+    openForm(doc);
+  }
+
+  // ───────── Draft and leave guard (lib/draft.js) ─────────
+  let draft = null;
+  let draftOffer = $state(null); // a stored, different draft waiting for restore / discard
+  const snapshot = (f) => JSON.stringify(f);
+  function openForm(d) {
+    form = buildForm(d, sug);
+    draft = createDraft(session.user.id, id, d.updated_at);
+    draftOffer = draft.init(snapshot(form));
+  }
+  function restoreDraft() {
+    form = { ...form, ...JSON.parse(draftOffer) };
+    draft.resolve(draftOffer);
+    draftOffer = null;
+  }
+  function discardDraft() {
+    draft.resolve(null);
+    draftOffer = null;
+  }
+  $effect(() => {
+    if (form && draft) draft.update(snapshot(form)); // reads the whole form, so any edit re-runs it
+  });
+  const dirty = () => !!form && !!draft?.isDirty(snapshot(form));
+  const offLeave = setLeaveGuard(() => !dirty() || confirm('มีการแก้ไขที่ยังไม่ได้บันทึก ออกจากหน้านี้หรือไม่'));
+  onDestroy(() => {
+    offLeave();
+    draft?.flush();
+  });
+  function warnUnload(e) {
+    if (dirty()) e.preventDefault();
   }
 
   function splitOwner(text) {
@@ -225,6 +257,7 @@
     saving = true;
     try {
       await put(`/documents/${id}/metadata`, body);
+      draft.finish();
       bumpReviewCount();
       toast('บันทึกข้อมูลแล้ว');
       if (next) {
@@ -256,7 +289,7 @@
   const pdfSrc = $derived(`${fileUrl(id, { inline: true })}${pdfPage ? `#page=${pdfPage}` : ''}`);
 </script>
 
-<svelte:window bind:innerWidth />
+<svelte:window bind:innerWidth onbeforeunload={warnUnload} />
 
 {#snippet hint(name)}
   {@const f = hintFor(name)}
@@ -313,6 +346,13 @@
         </div>
       </div>
 
+      {#if draftOffer}
+        <div class="notice warn" role="alert">
+          <Icon name="warn" size={18} /><span>พบแบบร่างที่ยังไม่ได้บันทึก</span><span class="spacer"></span>
+          <button class="btn small" onclick={restoreDraft}>กู้คืน</button>
+          <button class="btn ghost small" onclick={discardDraft}>ทิ้ง</button>
+        </div>
+      {/if}
       {#if fresh}
         <div class="notice info"><Icon name="info" size={18} /><span>ระบบเติมข้อมูลจากบันทึกขออนุมัติทุนให้แล้ว ตรวจและแก้ให้ถูกต้องก่อนบันทึก ค่าที่ระบบอ่านได้จะแสดงใต้ช่อง กดเพื่อใช้ค่านั้น</span></div>
       {/if}

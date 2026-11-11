@@ -14,10 +14,23 @@ function apply() {
   route.query = next.query;
 }
 
-/** Go to a page. `replace` keeps history clean for filter changes. */
-export function navigate(url, { replace = false, scroll = true } = {}) {
+// A page with unsaved edits can register a guard: it returns false to stay (it asks the user).
+let leaveGuard = null;
+/** Returns an unregister function. */
+export function setLeaveGuard(fn) {
+  leaveGuard = fn;
+  return () => {
+    if (leaveGuard === fn) leaveGuard = null;
+  };
+}
+/** True when it is fine to leave the current page. */
+export const canLeave = () => !leaveGuard || leaveGuard();
+
+/** Go to a page. `replace` keeps history clean for filter changes. `force` skips the leave guard. */
+export function navigate(url, { replace = false, scroll = true, force = false } = {}) {
   const target = new URL(url, location.origin);
   const same = target.pathname === location.pathname;
+  if (!same && !force && !canLeave()) return;
   const change = () => {
     history[replace ? 'replaceState' : 'pushState'](null, '', target.pathname + target.search + target.hash);
     apply();
@@ -42,7 +55,14 @@ export function setQuery(params) {
 }
 
 export function startRouter() {
-  addEventListener('popstate', apply);
+  addEventListener('popstate', () => {
+    if (location.pathname !== route.path && !canLeave()) {
+      // Back/forward already moved the URL: put it back (costs one extra history entry).
+      history.pushState(null, '', route.path + (route.query.size ? `?${route.query}` : ''));
+      return;
+    }
+    apply();
+  });
   document.addEventListener('click', (e) => {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     const a = e.target.closest('a');

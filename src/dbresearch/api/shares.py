@@ -10,6 +10,7 @@ from dbresearch import audit, shares
 from dbresearch.api.documents import live_document, stream_version
 from dbresearch.auth import DB, CurrentUser, MaybeUser, client_ip
 from dbresearch.config import get_settings
+from dbresearch.documents import can_edit
 from dbresearch.models import (
     Document,
     DocumentVersion,
@@ -37,6 +38,7 @@ GRANT_COOKIE = "dbr_grant"
 
 def share_out(db, link: ShareLink, document: Document | None = None) -> ShareOut:
     document = document or db.get(Document, link.document_id)
+    creator = db.get(User, link.created_by)
     return ShareOut(
         id=link.id,
         document_id=link.document_id,
@@ -49,6 +51,7 @@ def share_out(db, link: ShareLink, document: Document | None = None) -> ShareOut
         expires_at=link.expires_at,
         created_at=link.created_at,
         created_by=link.created_by,
+        created_by_name=creator.display_name if creator else None,
         revoked_at=link.revoked_at,
         note=link.note,
         state=shares.state(db, link, document).value,
@@ -92,6 +95,18 @@ def create_share(
     )
 
 
+@router.get("/documents/{document_id}/shares", response_model=list[ShareOut])
+def document_shares(document_id: uuid.UUID, db: DB, user: CurrentUser):
+    """Active links on a document: all of them for its uploader and admins, else only mine."""
+    document = live_document(db, document_id)
+    query = select(ShareLink).where(ShareLink.document_id == document.id)
+    if not can_edit(user, document):
+        query = query.where(ShareLink.created_by == user.id)
+    links = db.scalars(query.order_by(ShareLink.created_at.desc())).all()
+    out = [share_out(db, link, document) for link in links]
+    return [s for s in out if s.state == "active"]
+
+
 @router.get("/shares", response_model=list[ShareOut])
 def my_shares(db: DB, user: CurrentUser, active_only: bool = False):
     links = db.scalars(
@@ -120,7 +135,15 @@ def share_log(link_id: uuid.UUID, db: DB, user: CurrentUser):
 
 @router.delete("/shares/{link_id}", status_code=204)
 def revoke_share(link_id: uuid.UUID, request: Request, db: DB, user: CurrentUser) -> None:
-    shares.revoke(db, user, managed_link(db, link_id, user), client_ip(request))
+    link = db.get(ShareLink, link_id)
+    # The link's creator and admins manage it; the document's uploader may also revoke it.
+    if link is None or not (
+        link.created_by == user.id
+        or user.role == UserRole.ADMIN
+        or db.get(Document, link.document_id).uploaded_by == user.id
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found")
+    shares.revoke(db, user, link, client_ip(request))
     db.commit()
 
 

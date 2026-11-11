@@ -384,6 +384,7 @@ class ShareOut(BaseModel):
     expires_at: datetime
     created_at: datetime
     created_by: uuid.UUID
+    created_by_name: str | None = None
     revoked_at: datetime | None
     note: str | None
     state: str

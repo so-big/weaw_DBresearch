@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 
 from dbresearch.db import new_session
 from dbresearch.main import app
-from dbresearch.models import AuditEvent, ShareLink, UserRole
+from dbresearch.models import AuditEvent, ShareLink, User, UserRole
 from dbresearch.security import token_hash
 from tests.conftest import API, CSRF, make_pdf, needs_db
 
@@ -202,3 +202,58 @@ def test_new_password_ends_open_grants(client, login):
         assert g.get(f"{link['path']}/file").status_code == 200
         assert client.post(f"/shares/{link['id']}/password").status_code == 200
         assert g.get(f"{link['path']}/file").status_code == 401
+
+
+def log_in(client, name, password):
+    assert client.post("/auth/login", json={"username": name, "password": password}).is_success
+
+
+def test_uploader_sees_and_revokes_colleagues_links(client, make_user):
+    _, owner, owner_pw = make_user()
+    _, colleague, colleague_pw = make_user()
+    log_in(client, owner, owner_pw)
+    doc_id, _ = setup_doc(client)
+    mine = share(client, doc_id)
+
+    log_in(client, colleague, colleague_pw)
+    theirs = share(client, doc_id, access="password", max_downloads=5)
+    # A colleague sees only their own links; no token or password is ever listed.
+    listed = client.get(f"/documents/{doc_id}/shares").json()
+    assert [s["id"] for s in listed] == [theirs["id"]]
+    assert listed[0]["created_by_name"] == colleague
+    assert not {"token", "password", "path"} & set(listed[0])
+    assert client.delete(f"/shares/{mine['id']}").status_code == 404  # not theirs, not uploader
+
+    # The uploader sees both and may revoke the colleague's link, audited with the actor.
+    log_in(client, owner, owner_pw)
+    both = {s["id"] for s in client.get(f"/documents/{doc_id}/shares").json()}
+    assert both == {mine["id"], theirs["id"]}
+    assert client.delete(f"/shares/{theirs['id']}").status_code == 204
+    assert [s["id"] for s in client.get(f"/documents/{doc_id}/shares").json()] == [mine["id"]]
+    with guest() as g:
+        assert g.get(theirs["path"]).status_code == 404
+    with new_session() as db:
+        event = db.scalar(select(AuditEvent).where(AuditEvent.action == "share.revoke"))
+        owner_id = db.scalar(select(User.id).where(User.display_name == owner))
+    assert event.actor_id == owner_id and str(event.entity_id) == theirs["id"]
+    # Editing (a new password) stays with the creator.
+    assert client.post(f"/shares/{mine['id']}/password").status_code == 422  # public link
+    assert client.post(f"/shares/{theirs['id']}/password").status_code == 404
+
+    # A stranger sees none and cannot revoke.
+    _, stranger, stranger_pw = make_user()
+    log_in(client, stranger, stranger_pw)
+    assert client.get(f"/documents/{doc_id}/shares").json() == []
+    assert client.delete(f"/shares/{mine['id']}").status_code == 404
+
+
+def test_trash_restore_reports_links_the_deletion_revoked(client, login):
+    login()
+    doc_id, _ = setup_doc(client)
+    by_hand = share(client, doc_id)
+    share(client, doc_id)
+    assert client.delete(f"/shares/{by_hand['id']}").status_code == 204  # before the delete
+    assert client.post("/documents/trash", json={"ids": [doc_id]}).json()["revoked_links"] == 1
+    restored = client.post("/documents/trash/restore", json={"ids": [doc_id]})
+    assert restored.json() == {"restored": 1, "revoked_links": 1}
+    assert client.get(f"/documents/{doc_id}/shares").json() == []

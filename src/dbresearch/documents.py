@@ -24,6 +24,7 @@ from dbresearch.models import (
     DocumentVersion,
     FundingType,
     OcrStatus,
+    ShareLink,
     User,
     UserRole,
     VersionPurpose,
@@ -312,7 +313,8 @@ def soft_delete(db: Session, user: User, document: Document, ip: str | None) -> 
     return revoked
 
 
-def restore(db: Session, user: User, document: Document, ip: str | None) -> None:
+def restore(db: Session, user: User, document: Document, ip: str | None) -> int:
+    """Back from the trash. Returns how many links the deletion had revoked (they stay dead)."""
     if document.deleted_at is None:
         raise TrashError("Document is not in the trash")
     if document.reference_no and db.scalar(
@@ -325,9 +327,30 @@ def restore(db: Session, user: User, document: Document, ip: str | None) -> None
         raise TrashError(
             f"Another live document has the same contract number ({document.reference_no})"
         )
+    # soft_delete revokes the links in its own transaction, right after stamping deleted_at;
+    # a link revoked by hand earlier has an older revoked_at.
+    revoked = (
+        db.scalar(
+            select(func.count())
+            .select_from(ShareLink)
+            .where(
+                ShareLink.document_id == document.id, ShareLink.revoked_at >= document.deleted_at
+            )
+        )
+        or 0
+    )
     document.deleted_at = None
     document.deleted_by = None
-    audit.record(db, "document.restore", "document", document.id, actor_id=user.id, ip=ip)
+    audit.record(
+        db,
+        "document.restore",
+        "document",
+        document.id,
+        actor_id=user.id,
+        ip=ip,
+        revoked_links=revoked,
+    )
+    return revoked
 
 
 def purge(db: Session, user: User, document: Document, ip: str | None) -> list[str]:

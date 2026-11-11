@@ -148,7 +148,8 @@ def test_my_bin_and_restore(client, login, make_user):
     assert client.post("/documents/trash/restore", json=both).status_code == 403
     assert client.get(f"/documents/{kept}").status_code == 404  # all or nothing
 
-    assert client.post("/documents/trash/restore", json={"ids": [kept]}).json() == {"restored": 1}
+    restored = client.post("/documents/trash/restore", json={"ids": [kept]})
+    assert restored.json() == {"restored": 1, "revoked_links": 0}
     assert client.get(f"/documents/{kept}").status_code == 200
     assert client.post("/documents/trash/restore", json={"ids": [kept]}).status_code == 404
 

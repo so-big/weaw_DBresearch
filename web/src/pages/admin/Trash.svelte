@@ -3,6 +3,7 @@
   import { get, post, del, errorText } from '../../lib/api.js';
   import { toast } from '../../lib/state.svelte.js';
   import { thDate } from '../../lib/format.js';
+  import { restoredToast } from '../../lib/trash.js';
   import Modal from '../../components/Modal.svelte';
 
   let items = $state(null);
@@ -21,8 +22,8 @@
 
   async function restore(d) {
     try {
-      await post(`/admin/trash/${d.id}/restore`);
-      toast('กู้คืนเอกสารแล้ว (ลิงก์แชร์เดิมยังใช้ไม่ได้)');
+      const res = await post(`/admin/trash/${d.id}/restore`);
+      restoredToast([d.id], res);
       load();
     } catch (err) {
       toast(errorText(err), 'bad');

@@ -324,13 +324,14 @@ def _trashed(db, document_id: uuid.UUID) -> Document:
     return document
 
 
-@router.post("/trash/{document_id}/restore", status_code=204)
-def restore(document_id: uuid.UUID, request: Request, db: DB, admin: AdminUser) -> None:
+@router.post("/trash/{document_id}/restore")
+def restore(document_id: uuid.UUID, request: Request, db: DB, admin: AdminUser) -> dict:
     try:
-        documents.restore(db, admin, _trashed(db, document_id), client_ip(request))
+        revoked = documents.restore(db, admin, _trashed(db, document_id), client_ip(request))
     except documents.TrashError as exc:
         raise HTTPException(409, str(exc)) from exc
     db.commit()
+    return {"restored": 1, "revoked_links": revoked}
 
 
 @router.delete("/trash/{document_id}", status_code=204)

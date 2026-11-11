@@ -78,7 +78,9 @@ def test_trash_restore_and_purge(client, login, make_user):
         assert guest.get(link["path"]).status_code == 404  # its link died with it
     assert [d["id"] for d in client.get("/admin/trash").json()] == [doc_id]
 
-    assert client.post(f"/admin/trash/{doc_id}/restore").status_code == 204
+    restored = client.post(f"/admin/trash/{doc_id}/restore")
+    assert restored.status_code == 200
+    assert restored.json() == {"restored": 1, "revoked_links": 1}
     assert client.get(f"/documents/{doc_id}").status_code == 200
     with TestClient(app, headers=CSRF, base_url=API) as guest:
         assert guest.get(link["path"]).status_code == 404  # restoring doesn't revive links

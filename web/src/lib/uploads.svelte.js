@@ -124,9 +124,9 @@ export async function restoreTrashed(id) {
   if (!row?.trashed || !row.docId) return;
   row.restoring = true;
   try {
-    await post('/documents/trash/restore', { ids: [row.docId] });
+    const res = await post('/documents/trash/restore', { ids: [row.docId] });
     row.trashed = false;
-    row.message = 'กู้คืนเอกสารเดิมแล้ว';
+    row.message = `กู้คืนเอกสารเดิมแล้ว${res?.revoked_links ? ' ลิงก์แชร์เดิมถูกยกเลิกแล้ว ต้องสร้างใหม่' : ''}`;
   } catch (err) {
     row.message = errorText(err);
   }

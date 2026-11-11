@@ -17,13 +17,16 @@ from dbresearch.models import (
     DocStatus,
     FundingSource,
     FundingType,
+    Person,
 )
+from dbresearch.people import person_page as load_person_page
 from dbresearch.schemas import (
     CategoryGroupOut,
     CategoryNew,
     CategoryOption,
     DocumentSummary,
     PersonBrief,
+    PersonPageOut,
     SearchOut,
 )
 from dbresearch.search_text import compact
@@ -95,13 +98,14 @@ def list_documents(
     filters, sort, q = params.filters, params.sort, params.filters.q
     documents, total = search.search(db, filters, sort, page, page_size)
     ids = [d.id for d in documents]
-    owners = search.owners(db, ids)
+    people = search.owner_people(db, ids)
     extras = search.proposal_rows(db, ids)
     found = search.snippets(db, documents, q)
     items = []
     for document in documents:
         item = DocumentSummary.model_validate(document)
-        item.owners = owners.get(document.id, [])
+        item.owner_people = people.get(document.id, [])
+        item.owners = [p["name"] for p in item.owner_people]
         for name, value in extras.get(document.id, {}).items():
             setattr(item, name, value)
         item.snippet = found.get(document.id)
@@ -231,3 +235,12 @@ def add_category(
 @router.get("/people", response_model=list[PersonBrief])
 def find_people(db: DB, user: CurrentUser, q: Annotated[str, Query(min_length=1, max_length=100)]):
     return search.search_people(db, q)
+
+
+@router.get("/people/{person_id}", response_model=PersonPageOut)
+def person_page(db: DB, user: CurrentUser, person_id: uuid.UUID):
+    """Everything one person has: live documents in both sections, with totals."""
+    person = db.get(Person, person_id)
+    if person is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Person not found")
+    return load_person_page(db, person)

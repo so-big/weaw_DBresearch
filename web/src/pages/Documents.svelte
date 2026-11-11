@@ -15,6 +15,7 @@
   import { openUpload } from '../lib/uploads.svelte.js';
   import { categoryGroups } from '../lib/catalog.js';
   import { STATUS, KIND, FUNDING, FUNDING_SOURCE, PROJECT_STATE, BE, thDate, money, snippetHtml } from '../lib/format.js';
+  import { highlightSegments } from '../lib/highlight.js';
   import FilterPanel from '../components/FilterPanel.svelte';
   import { sheet as sheetGesture } from '../lib/sheet.js';
   import Icon from '../components/Icon.svelte';
@@ -488,7 +489,7 @@
                   {#if d.kind}<span class="kind">{KIND[d.kind]}</span>{/if}
                 {/if}
               </div>
-              <div class="t">{@html snippetHtml(filters.q && d.title.includes(filters.q) ? d.title.replaceAll(filters.q, `[[${filters.q}]]`) : d.title)}</div>
+              <div class="t">{#each highlightSegments(d.title, filters.q) as s}{#if s.hit}<mark>{s.text}</mark>{:else}{s.text}{/if}{/each}</div>
               {#if d.snippet}<div class="snip">{@html snippetHtml(d.snippet)}</div>{/if}
               <div class="meta">
                 {#if d.owners?.length}<span>{d.owners.join(', ')}</span>{/if}

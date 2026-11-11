@@ -78,6 +78,80 @@ def test_duplicate_upload_points_to_existing_document(client, login):
     assert len(blob_files()) == before
 
 
+def test_trashed_duplicate_is_refused_with_restore_hint(client, login):
+    login()
+    pdf = make_pdf()
+    first = upload(client, pdf).json()["id"]
+    assert client.delete(f"/documents/{first}").status_code == 204
+    before = len(blob_files())
+
+    response = upload(client, pdf)
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "This exact file is in the trash",
+        "document_id": first,
+        "trashed": True,
+        "can_restore": True,
+    }
+    assert len(blob_files()) == before
+
+    # Restoring brings the one document back; the same file is then a plain live duplicate.
+    assert client.post("/documents/trash/restore", json={"ids": [first]}).status_code == 200
+    again = upload(client, pdf)
+    assert again.status_code == 409 and "trashed" not in again.json()
+
+
+def test_trashed_duplicate_restore_hint_follows_restore_rule(client, login):
+    login()
+    pdf = make_pdf()
+    first = upload(client, pdf).json()["id"]
+    client.delete(f"/documents/{first}")
+    login(UserRole.USER)  # a different user: may not restore it
+    body = upload(client, pdf).json()
+    assert body["trashed"] is True and body["can_restore"] is False
+    login(UserRole.ADMIN)
+    assert upload(client, pdf).json()["can_restore"] is True
+
+
+def test_same_file_uploaded_at_once_is_stored_once(make_user):
+    import io
+    import threading
+    import time
+
+    from dbresearch.documents import DuplicateUpload, store_version
+    from dbresearch.models import User
+
+    user_id, _, _ = make_user()
+    pdf = make_pdf()
+    before = len(blob_files())
+    outcome: dict = {}
+
+    def second_upload():
+        with new_session() as db:
+            try:
+                store_version(db, db.get(User, user_id), io.BytesIO(pdf), "b.pdf")
+                db.commit()
+                outcome["result"] = "stored"
+            except DuplicateUpload:
+                db.rollback()
+                outcome["result"] = "duplicate"
+
+    with new_session() as first:
+        store_version(first, first.get(User, user_id), io.BytesIO(pdf), "a.pdf")
+        # Flushed but not committed: the second upload must wait for it.
+        thread = threading.Thread(target=second_upload)
+        thread.start()
+        time.sleep(1)
+        assert thread.is_alive() and not outcome
+        first.commit()
+    thread.join(timeout=20)
+
+    assert outcome == {"result": "duplicate"}
+    assert len(blob_files()) == before + 1  # the loser's ciphertext was removed
+    with new_session() as db:
+        assert len(db.scalars(select(DocumentVersion)).all()) == 1
+
+
 def test_upload_size_limit(client, login, monkeypatch):
     login()
     monkeypatch.setattr(get_settings(), "max_upload_mb", 0)

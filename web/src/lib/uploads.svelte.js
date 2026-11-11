@@ -1,7 +1,7 @@
 // Upload queue shared by the whole app: survives closing the window and changing pages.
 // Every row can be cancelled: waiting rows leave the queue, running ones are aborted, and a
 // finished upload is undone by moving its new document to the trash.
-import { uploadFile, thai, del } from './api.js';
+import { uploadFile, thai, del, post, errorText } from './api.js';
 import { bumpReviewCount } from './state.svelte.js';
 
 const PARALLEL = 2;
@@ -93,7 +93,9 @@ function finish(row, status, data) {
   } else if (status === 409) {
     row.state = 'dup';
     row.docId = data?.document_id ?? null;
-    row.message = 'มีไฟล์นี้ในระบบแล้ว';
+    row.trashed = !!data?.trashed;
+    row.canRestore = !!data?.can_restore;
+    row.message = row.trashed ? 'ไฟล์นี้อยู่ในถังขยะ' : 'มีไฟล์นี้ในระบบแล้ว';
   } else {
     row.state = 'bad';
     row.retryable = status === 0 || status >= 500;
@@ -114,6 +116,21 @@ export function retry(id) {
     row.progress = 0;
     pump();
   }
+}
+
+/** The file matched a document in the trash: take that document back out (no second copy). */
+export async function restoreTrashed(id) {
+  const row = rowOf(id);
+  if (!row?.trashed || !row.docId) return;
+  row.restoring = true;
+  try {
+    await post('/documents/trash/restore', { ids: [row.docId] });
+    row.trashed = false;
+    row.message = 'กู้คืนเอกสารเดิมแล้ว';
+  } catch (err) {
+    row.message = errorText(err);
+  }
+  row.restoring = false;
 }
 
 /** Cancel one row, whatever stage it is in. */

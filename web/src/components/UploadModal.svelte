@@ -2,7 +2,7 @@
   import { fade, fly, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import Icon from './Icon.svelte';
-  import { uploads, addFiles, closeUpload, clearFinished, busyCount, doneOk, retry, cancel, cancelAll } from '../lib/uploads.svelte.js';
+  import { uploads, addFiles, closeUpload, clearFinished, busyCount, doneOk, retry, cancel, cancelAll, restoreTrashed } from '../lib/uploads.svelte.js';
   import { screen, ms } from '../lib/state.svelte.js';
   import { sheet } from '../lib/sheet.js';
   import { navigate } from '../lib/router.svelte.js';
@@ -125,7 +125,13 @@
                 <span class="muted">{it.message}</span>
               {:else if it.state === 'dup'}
                 <span class="badge needs_review">{it.message}</span>
-                {#if it.docId}<a href="/{it.kind === 'proposal_dev' ? 'proposals' : 'documents'}/{it.docId}" onclick={closeUpload}>เปิดเอกสารเดิม</a>{/if}
+                {#if it.trashed}
+                  {#if it.canRestore}
+                    <button class="link-btn" disabled={it.restoring} onclick={() => restoreTrashed(it.id)}>กู้คืน</button>
+                  {:else}
+                    <span class="muted">ให้ผู้อัปโหลดหรือผู้ดูแลระบบกู้คืน</span>
+                  {/if}
+                {:else if it.docId}<a href="/{it.kind === 'proposal_dev' ? 'proposals' : 'documents'}/{it.docId}" onclick={closeUpload}>เปิดเอกสารเดิม</a>{/if}
               {:else}
                 <span class="badge failed">{it.message}</span>
                 {#if it.retryable}<button class="link-btn" onclick={() => retry(it.id)}>ลองใหม่</button>{/if}

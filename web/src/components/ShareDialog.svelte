@@ -5,6 +5,7 @@
   import { post, errorText } from '../lib/api.js';
   import { toast, isAdmin } from '../lib/state.svelte.js';
   import { thDateTime } from '../lib/format.js';
+  import qrcode from 'qrcode-generator';
 
   let { doc, onclose, oncreated } = $props();
 
@@ -22,6 +23,12 @@
   let busy = $state(false);
   let error = $state('');
   let created = $state(null);
+  let pin = $state(false); // pin to the newest version instead of "always the latest"
+  let showQr = $state(false);
+
+  // versions[0] is the newest; the choice only exists when there is more than one
+  const latestNo = $derived(doc.versions?.[0]?.version_no);
+  const hasVersions = $derived((doc.versions?.length || 0) > 1);
 
   const url = $derived(created ? `${location.origin}${created.path}` : '');
 
@@ -33,6 +40,7 @@
         access,
         ttl_hours: ttl,
         max_downloads: limit ? Number(limit) : null,
+        version_no: hasVersions && pin ? latestNo : null,
         note: note.trim() || null,
       });
       oncreated?.();
@@ -42,6 +50,29 @@
       busy = false;
     }
   }
+
+  // QR of the link only (never the password): one dark path on a white quiet zone.
+  const qr = $derived.by(() => {
+    if (!url) return null;
+    const code = qrcode(0, 'M');
+    code.addData(url);
+    code.make();
+    const n = code.getModuleCount();
+    let d = '';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (code.isDark(r, c)) d += `M${c + 4} ${r + 4}h1v1h-1z`;
+    return { size: n + 8, d };
+  });
+
+  const message = $derived(
+    created
+      ? [
+          `เอกสาร: ${doc.title}`,
+          `ลิงก์: ${url}`,
+          `ใช้ได้ถึง ${thDateTime(created.expires_at)}`,
+          ...(created.password ? [`รหัสผ่าน: ${created.password}`] : []),
+        ].join('\n')
+      : '',
+  );
 
   async function copy(text, what) {
     try {
@@ -63,6 +94,15 @@
         <button aria-pressed={access === 'password'} onclick={() => (access = 'password')}><Icon name="lock" size={14} /> ต้องใส่รหัสผ่าน</button>
       </div>
     </div>
+    {#if hasVersions}
+      <div class="field">
+        <span>เวอร์ชันที่ผู้รับเปิดได้</span>
+        <div class="seg">
+          <button aria-pressed={!pin} onclick={() => (pin = false)}>เวอร์ชันล่าสุดเสมอ</button>
+          <button aria-pressed={pin} onclick={() => (pin = true)}>เฉพาะเวอร์ชันนี้ (v{latestNo})</button>
+        </div>
+      </div>
+    {/if}
     <div class="field">
       <span>ใช้ได้นาน</span>
       <div class="seg">
@@ -97,6 +137,22 @@
         </div>
       </div>
     {/if}
+    <div class="field">
+      <button class="btn" onclick={() => copy(message, 'ข้อความ')}><Icon name="copy" size={16} />คัดลอกข้อความพร้อมลิงก์</button>
+      <small>ข้อความพร้อมส่งทาง LINE หรืออีเมล{created.password ? ' รวมรหัสผ่านไว้ด้วย ถ้าจะส่งรหัสผ่านแยกให้คัดลอกรหัสผ่านด้านบนแทน' : ''}</small>
+    </div>
+    <div class="field">
+      <button class="btn ghost" aria-expanded={showQr} onclick={() => (showQr = !showQr)}>{showQr ? 'ซ่อน QR' : 'แสดง QR'}</button>
+      {#if showQr && qr}
+        <div class="qr">
+          <svg viewBox="0 0 {qr.size} {qr.size}" role="img" aria-label="คิวอาร์โค้ดของลิงก์ (ไม่รวมรหัสผ่าน)" shape-rendering="crispEdges">
+            <rect width={qr.size} height={qr.size} fill="#fff" />
+            <path d={qr.d} fill="#000" />
+          </svg>
+          <small>สแกนเพื่อเปิดลิงก์ (ไม่รวมรหัสผ่าน)</small>
+        </div>
+      {/if}
+    </div>
     <p class="muted small">หมดอายุ {thDateTime(created.expires_at)}{created.max_downloads ? ` · เปิดไฟล์ได้ ${created.max_downloads} ครั้ง` : ''}</p>
   {/if}
 
@@ -115,4 +171,8 @@
   .copyrow { display: flex; gap: 8px; }
   .copyrow input { flex: 1; min-width: 0; font-size: 13px; }
   .small { font-size: 13px; }
+  .qr { display: flex; flex-direction: column; align-items: center; gap: 6px; animation: qr-in 0.18s ease-out; }
+  .qr svg { width: 220px; height: 220px; background: #fff; border-radius: 6px; } /* white even in dark mode */
+  @keyframes qr-in { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .qr { animation: none; } }
 </style>

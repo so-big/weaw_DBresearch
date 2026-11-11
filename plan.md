@@ -316,8 +316,6 @@ backup script). "Confirmed" = traced in the code; "check" = needs a test on a re
 - [ ] **F2 Reminders**: weekly digest for overdue KPIs, projects near their end date, and documents
       waiting for review (email, if the university gives SMTP; else an in-app "due soon" page).
 - [x] **F3 Researcher page** (2026-11-12: `/people/:id`, `GET /api/people/{id}`; names link to it from the lists and document pages; possible duplicate people are listed, not merged)
-      : all projects of one person (from `people`), totals per year and
-      funding source; link from every name.~~
 - [ ] **F4 Backup status on the admin page**: last successful backup time; warn after 26 h.
       Needs the backup timer (Phase 2) to write a status row/file.
 - [ ] **F5 Saved searches / pinned filters** per user.

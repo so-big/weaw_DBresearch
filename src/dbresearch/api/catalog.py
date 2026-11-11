@@ -2,12 +2,13 @@
 
 import re
 import uuid
+from dataclasses import asdict, dataclass
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 
-from dbresearch import audit, search
+from dbresearch import audit, export, search
 from dbresearch.auth import DB, CurrentUser, client_ip
 from dbresearch.models import (
     Category,
@@ -31,9 +32,13 @@ from dbresearch.textnorm import normalize
 router = APIRouter(tags=["search"])
 
 
-@router.get("/documents", response_model=SearchOut)
-def list_documents(
-    db: DB,
+@dataclass
+class SearchParams:
+    filters: search.Filters
+    sort: str
+
+
+def search_params(
     user: CurrentUser,
     q: Annotated[str | None, Query(max_length=200)] = None,
     kind: Annotated[list[DocKind], Query()] = [],  # noqa: B006 (FastAPI query list)
@@ -55,10 +60,8 @@ def list_documents(
     department: Annotated[list[str], Query(max_length=300)] = [],  # noqa: B006
     research_area: Annotated[list[str], Query(max_length=300)] = [],  # noqa: B006
     sort: Annotated[str, Query(pattern="^(" + "|".join(search.SORTS) + ")$")] = "relevance",
-    page: Annotated[int, Query(ge=1)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
-    with_facets: bool = False,
-):
+) -> SearchParams:
+    """The filter and sort query parameters shared by the list and the export."""
     filters = search.Filters(
         q=q,
         kind=kind,
@@ -78,6 +81,18 @@ def list_documents(
         department=department,
         research_area=research_area,
     )
+    return SearchParams(filters, sort)
+
+
+@router.get("/documents", response_model=SearchOut)
+def list_documents(
+    db: DB,
+    params: Annotated[SearchParams, Depends(search_params)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    with_facets: bool = False,
+):
+    filters, sort, q = params.filters, params.sort, params.filters.q
     documents, total = search.search(db, filters, sort, page, page_size)
     ids = [d.id for d in documents]
     owners = search.owners(db, ids)
@@ -97,6 +112,59 @@ def list_documents(
         page=page,
         page_size=page_size,
         facets=search.facets(db, filters) if with_facets else None,
+    )
+
+
+def filter_summary(filters: search.Filters) -> dict:
+    """The filters in use, for the audit row (search words and picked values; no document text)."""
+    return {
+        k: [str(x) for x in v] if isinstance(v, list) else str(v)
+        for k, v in asdict(filters).items()
+        if v not in (None, [], "")
+    }
+
+
+# Declared before the documents router's /{document_id} (main.py includes this router first).
+@router.get("/documents/export")
+def export_documents(
+    request: Request,
+    db: DB,
+    user: CurrentUser,
+    params: Annotated[SearchParams, Depends(search_params)],
+    format: Annotated[Literal["xlsx", "csv"], Query()] = "xlsx",
+):
+    """Every match of the list's filters as a spreadsheet (metadata only, no OCR text)."""
+    filters = params.filters
+    documents, total = search.search(db, filters, params.sort, 1, export.MAX_ROWS)
+    if total > export.MAX_ROWS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Too many results to export ({total}; at most {export.MAX_ROWS}). Narrow the filters.",
+        )
+    sheet, headers, rows = export.document_table(db, documents, filters.section)
+    data = export.build(format, sheet, headers, rows)
+    audit.record(
+        db,
+        "export.documents",
+        "document",
+        actor_id=user.id,
+        ip=client_ip(request),
+        format=format,
+        rows=len(rows),
+        filters=filter_summary(filters),
+        sort=params.sort,
+    )
+    db.commit()
+    return Response(
+        data,
+        media_type=export.FORMATS[format],
+        headers={
+            "Content-Disposition": export.content_disposition(
+                export.filename(filters.section, format)
+            ),
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

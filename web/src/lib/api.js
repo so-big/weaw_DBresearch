@@ -87,6 +87,9 @@ export const fileUrl = (id, { inline = false, version, closure, paper } = {}) =>
 /** Several documents as one zip, built by the server. */
 export const zipUrl = (ids) => `/api/documents/zip${query({ id: ids })}`;
 
+/** A spreadsheet of what a list or report shows, e.g. exportUrl('/documents/export', params, 'csv'). */
+export const exportUrl = (path, params, format = 'xlsx') => `/api${path}${query({ ...params, format })}`;
+
 /** Start a download without leaving the page (the browser streams it to disk). */
 export function downloadUrl(url) {
   const a = document.createElement('a');

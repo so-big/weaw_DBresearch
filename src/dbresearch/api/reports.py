@@ -2,14 +2,14 @@
 document anyway); figures about the system itself are for admins only."""
 
 from datetime import date, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request, Response
 from sqlalchemy import func, or_, select
 
-from dbresearch import search, shares
-from dbresearch.auth import DB, CurrentUser
+from dbresearch import audit, export, search, shares
+from dbresearch.auth import DB, CurrentUser, client_ip
 from dbresearch.models import (
     AuditEvent,
     Category,
@@ -293,3 +293,37 @@ def proposals_report(db: DB, user: CurrentUser) -> dict:
         years.values(), key=lambda r: (r["fiscal_year"] is None, r["fiscal_year"] or 0)
     )
     return {"by_year": ordered, "by_department": departments}
+
+
+@router.get("/proposals/export")
+def export_proposals_report(
+    request: Request,
+    db: DB,
+    user: CurrentUser,
+    format: Annotated[Literal["xlsx", "csv"], Query()] = "xlsx",
+):
+    """The yearly proposal report (the overview page's table) as a spreadsheet."""
+    rows = export.report_rows(proposals_report(db, user))
+    data = export.build(format, "ทุนพัฒนาข้อเสนอรายปี", export.REPORT_HEADERS, rows)
+    audit.record(
+        db,
+        "export.proposals",
+        "report",
+        actor_id=user.id,
+        ip=client_ip(request),
+        format=format,
+        rows=len(rows),
+        filters={},
+    )
+    db.commit()
+    return Response(
+        data,
+        media_type=export.FORMATS[format],
+        headers={
+            "Content-Disposition": export.content_disposition(
+                export.filename("proposals-report", format)
+            ),
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

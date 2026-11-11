@@ -1,6 +1,6 @@
 <script>
   // Frame for one chart: title, short note, legend, and a table view for screen readers / exact numbers.
-  let { title, note = '', legend = [], children, table, wide = false, id = undefined } = $props();
+  let { title, note = '', legend = [], children, table, actions, wide = false, id = undefined } = $props();
   let showTable = $state(false);
 </script>
 
@@ -10,8 +10,13 @@
       <h3>{title}</h3>
       {#if note}<p class="muted">{note}</p>{/if}
     </div>
-    {#if table}
-      <button class="link-btn" onclick={() => (showTable = !showTable)} aria-pressed={showTable}>{showTable ? 'ดูกราฟ' : 'ดูเป็นตาราง'}</button>
+    {#if table || actions}
+      <div class="head-actions">
+        {#if actions}{@render actions()}{/if}
+        {#if table}
+          <button class="link-btn" onclick={() => (showTable = !showTable)} aria-pressed={showTable}>{showTable ? 'ดูกราฟ' : 'ดูเป็นตาราง'}</button>
+        {/if}
+      </div>
     {/if}
   </header>
   {#if legend.length > 1 && !showTable}
@@ -35,6 +40,7 @@
   .sw { width: 10px; height: 10px; border-radius: 3px; }
   .body { min-width: 0; position: relative; }
   header .link-btn { flex: none; white-space: nowrap; }
+  .head-actions { display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
   .table-wrap { overflow-x: auto; margin: 0 -4px; }
   .chart-card { scroll-margin-top: calc(var(--header-h) + 60px); }
   @media (max-width: 767px) {

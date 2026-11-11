@@ -7,7 +7,7 @@
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { SvelteMap } from 'svelte/reactivity';
-  import { get, errorText, fileUrl, zipUrl, downloadUrl } from '../lib/api.js';
+  import { get, errorText, fileUrl, zipUrl, exportUrl, downloadUrl } from '../lib/api.js';
   import { route, setQuery } from '../lib/router.svelte.js';
   import { screen, ui, ms, session, isAdmin, toast } from '../lib/state.svelte.js';
   import { trashDocs } from '../lib/trash.js';
@@ -303,6 +303,15 @@
       picked.set(d.id, d);
     }
   }
+  // Spreadsheet of every match of the current filters (the server caps it).
+  const EXPORT_MAX = 5000;
+  const exportable = $derived(!loading && total > 0 && total <= EXPORT_MAX);
+  const exportHint = $derived(
+    loading ? '' : total === 0 ? 'ไม่มีรายการให้ส่งออก' : total > EXPORT_MAX ? `ส่งออกได้ไม่เกิน ${EXPORT_MAX.toLocaleString('th-TH')} รายการ กรุณากรองให้แคบลง` : 'ส่งออกรายการที่พบทั้งหมดเป็นไฟล์ตาราง'
+  );
+  function exportList(format) {
+    downloadUrl(exportUrl('/documents/export', apiParams(filters), format));
+  }
   function downloadPicked() {
     const ids = [...picked.keys()];
     if (ids.length === 1) {
@@ -421,6 +430,12 @@
           <Icon name="select" size={16} />{selecting ? 'เลิกเลือก' : 'เลือก'}
         </button>
       {/if}
+      <span class="export">
+        <button class="btn small ghost" disabled={!exportable} title={exportHint} onclick={() => exportList('xlsx')}>
+          <Icon name="download" size={16} />ส่งออก Excel
+        </button>
+        <button class="link-btn" disabled={!exportable} title={exportHint} onclick={() => exportList('csv')}>CSV</button>
+      </span>
       <label class="sort">
         <span class="muted">เรียงตาม</span>
         <select id="sort" value={filters.sort} onchange={(e) => update({ ...filters, sort: e.currentTarget.value })}>
@@ -614,6 +629,7 @@
   .results { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
   .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .total { font-size: 14px; }
+  .export { display: inline-flex; align-items: center; gap: 2px; }
   .sort { display: flex; align-items: center; gap: 6px; font-size: 13px; }
   .sort select, .sheet-head select { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 5px 8px; font-size: 14px; }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

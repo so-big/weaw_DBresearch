@@ -1,7 +1,8 @@
 <script>
   // Overview for everyone: library figures and charts. Admins also get the system figures
   // (users, all share links, the whole trash, storage); the API only sends those to them.
-  import { get, errorText } from '../lib/api.js';
+  import { get, errorText, exportUrl, downloadUrl } from '../lib/api.js';
+  import Icon from '../components/Icon.svelte';
   import { bytes, STATUS, FACULTY } from '../lib/format.js';
   import { isAdmin, screen } from '../lib/state.svelte.js';
   import ChartCard from '../components/charts/ChartCard.svelte';
@@ -148,10 +149,16 @@
       {/snippet}
     </ChartCard>
 
-    <ChartCard id="ov-grants" title="ทุนพัฒนาข้อเสนอตามปีงบประมาณ" note="จำนวนโครงการ แยกตามสถานะ" legend={grantSeries}>
+    <ChartCard id="ov-grants" title="ทุนพัฒนาข้อเสนอตามปีงบประมาณ" note="จำนวนโครงการ แยกตามสถานะ" legend={grantSeries} actions={grantExport}>
       {#if grantYears.length}
         <Columns data={grantYears.map((y) => ({ label: `${y.fiscal_year_be}`, tip: `ปีงบ ${y.fiscal_year_be}`, values: y }))} series={grantSeries} unit=" โครงการ" height={H.col} />
       {:else}<p class="empty muted">ยังไม่มีโครงการทุนพัฒนาข้อเสนอ</p>{/if}
+      {#snippet grantExport()}
+        <button class="btn small ghost" disabled={!grantYears.length} title={grantYears.length ? 'ส่งออกตารางรายปีเป็นไฟล์ตาราง' : 'ไม่มีข้อมูลให้ส่งออก'} onclick={() => downloadUrl(exportUrl('/reports/proposals/export'))}>
+          <Icon name="download" size={16} />ส่งออก Excel
+        </button>
+        <button class="link-btn" disabled={!grantYears.length} onclick={() => downloadUrl(exportUrl('/reports/proposals/export', {}, 'csv'))}>CSV</button>
+      {/snippet}
       {#snippet table()}
         <table class="data"><thead><tr><th>ปีงบ</th><th class="r">โครงการ</th>{#each STATES as s (s.key)}<th class="r">{s.label}</th>{/each}<th class="r">งบประมาณ</th><th class="r">ใช้จ่ายจริง</th><th class="r">ได้รับทุนภายนอก</th></tr></thead>
           <tbody>{#each grantYears as y (y.fiscal_year)}<tr><td><a href="/proposals?fiscal_year={y.fiscal_year}&project=all">{y.fiscal_year_be}</a></td><td class="r num">{y.total}</td>{#each STATES as s (s.key)}<td class="r num">{y[s.key]}</td>{/each}<td class="r num">{baht(y.budget)}</td><td class="r num">{y.spent ? baht(y.spent) : '–'}</td><td class="r num">{y.won}</td></tr>{/each}</tbody></table>

@@ -217,6 +217,7 @@ CREATE TYPE proposal_outcome AS ENUM ('submitted', 'won', 'not_won');
 CREATE TABLE proposal_projects (
   document_id         uuid PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
   request_ref         text,               -- request memo no., e.g. อว 0603.09.02/674
+  received_no         text,               -- faculty's received no. (เลขรับ) stamped on the request; from the file-name prefix
   research_area       text,               -- กรอบงานวิจัย
   kpi_target          text,               -- e.g. proposal for an outside grant + Impact Pathway
   kpi_due             date,
@@ -236,6 +237,7 @@ CREATE TABLE project_events (
   event_type  project_event_type NOT NULL,
   event_on    date,                       -- date on the memo
   memo_ref    text,
+  received_no text,                       -- เลขรับ of this paper
   version_id  uuid REFERENCES document_versions(id) ON DELETE SET NULL,
   details     jsonb NOT NULL DEFAULT '{}',  -- e.g. {"old_title": …, "new_title": …}
   created_by  uuid REFERENCES users(id),
@@ -497,7 +499,7 @@ documents 1─* budget_lines   (manual: items or installments)
 - Soft-deleting a document marks its live share links revoked in the same transaction. Restoring it does not bring them back (the user is offered a new link).
 - Uploading a file that already exists is refused (`409`), also when the copy is in the trash (then the answer says so and offers a restore). The check and the insert run under a per-hash advisory lock, so two uploads at once can't both store it.
 - File responses carry `Content-Security-Policy: sandbox`.
-- Memo numbers of a proposal grant (request `request_ref`, each timeline event's `memo_ref`, `closure_ref`, `cancel_ref`) are part of `search_text`; most are handwritten on the scan, so they come from the review form, with the OCR reading as a suggestion.
+- Memo numbers of a proposal grant (request `request_ref`, each timeline event's `memo_ref`, `closure_ref`, `cancel_ref`) are part of `search_text`; most are handwritten on the scan, so they come from the review form, with the OCR reading as a suggestion. The faculty's received no. (เลขรับ: `proposal_projects.received_no` for the request, `project_events.received_no` per paper) is searchable too; the stamp is handwritten, so the suggestion comes from the file-name prefix (`10221 ….pdf`), which the bulk importer fills in directly.
 - Exports (`GET /api/documents/export`, `GET /api/reports/proposals/export`; xlsx or csv, at most 5,000 rows) hold metadata only, guard against formula injection, and write an audit row.
 - Share tokens and passwords are **shown once** and never stored in plaintext. If a password is lost, the user regenerates it.
 - Every open of a shared file (view or download) counts toward the link's limit. The "view only" option was dropped 2026-11-11 (the viewer can save or print anyway); old view-only links still hide the download button.

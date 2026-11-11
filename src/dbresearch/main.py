@@ -111,8 +111,8 @@ async def upload_size_limit(request: Request, call_next) -> Response:
 api = APIRouter(prefix="/api")
 for router in (
     auth_api.router,
+    catalog_api.router,  # before documents: /documents/export must not match /{document_id}
     documents_api.router,
-    catalog_api.router,
     shares_api.router,
     shares_api.guest,
     reports_api.router,

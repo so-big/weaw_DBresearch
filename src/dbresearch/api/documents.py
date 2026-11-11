@@ -674,6 +674,8 @@ def stream_version(version: DocumentVersion, inline: bool) -> StreamingResponse:
             ),
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
+            # A PDF opened on our origin must not run scripts with our cookies.
+            "Content-Security-Policy": "sandbox",
         },
     )
 

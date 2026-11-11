@@ -62,8 +62,8 @@
     {:else if info.requires_password && !info.unlocked}
       <form class="card box enter" onsubmit={unlock}>
         <span class="lock"><Icon name="lock" size={22} /></span>
-        <h1>{info.title}</h1>
-        <p class="muted">เอกสารนี้ป้องกันด้วยรหัสผ่าน ใส่รหัสที่ได้รับจากผู้ส่ง</p>
+        <h1>เอกสารนี้ป้องกันด้วยรหัสผ่าน</h1>
+        <p class="muted">ใส่รหัสผ่านที่ได้รับจากผู้ส่งเพื่อเปิดดูเอกสาร</p>
         <label class="field">
           <span>รหัสผ่าน</span>
           <input id="guest-pass" bind:value={password} autocomplete="off" autocapitalize="off" required />

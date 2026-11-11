@@ -93,12 +93,20 @@ def test_password_link_unlock_lockout_and_new_password(client, login):
     password = link["password"]
     assert len(password) == 10
     with guest() as g:
-        assert g.get(link["path"]).json()["unlocked"] is False
+        locked = g.get(link["path"]).json()
+        assert locked["unlocked"] is False and locked["requires_password"] is True
+        assert locked["expires_at"]
+        for hidden in ("title", "filename", "pages", "size_bytes", "allow_download"):
+            assert locked[hidden] is None
         assert g.get(f"{link['path']}/file").status_code == 401
         assert g.post(f"{link['path']}/unlock", json={"password": "nope"}).status_code == 403
         assert g.post(f"{link['path']}/unlock", json={"password": password}).status_code == 204
-        assert g.get(link["path"]).json()["unlocked"] is True
-        assert g.get(f"{link['path']}/file").content == pdf  # inline view
+        opened = g.get(link["path"]).json()
+        assert opened["unlocked"] is True and opened["filename"] == "ทดสอบ.pdf"
+        assert opened["title"] and opened["size_bytes"] == len(pdf)
+        file = g.get(f"{link['path']}/file")
+        assert file.content == pdf  # inline view
+        assert file.headers["content-security-policy"] == "sandbox"
 
     with new_session() as db:  # nine more wrong guesses → locked (limit 10)
         db.execute(update(ShareLink).values(failed_attempts=9))

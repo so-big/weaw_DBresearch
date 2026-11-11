@@ -1,9 +1,10 @@
 """ADMIN endpoints: users, all share links, trash, audit, settings, categories, templates.
 Every change writes an audit row. Reports (open to every user) live in api/reports.py."""
 
+import ipaddress
 import uuid
 from datetime import datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -11,7 +12,13 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from dbresearch import audit, documents, shares
-from dbresearch.api.auth import IP_LIMIT_FACTOR, failed_logins, failed_username
+from dbresearch.api.auth import (
+    UNLOCKED,
+    failed_username,
+    ip_locked,
+    lock_key,
+    username_locked_anywhere,
+)
 from dbresearch.api.documents import trash_items
 from dbresearch.api.shares import share_out
 from dbresearch.auth import (
@@ -24,7 +31,6 @@ from dbresearch.auth import (
     revoke_all_sessions,
 )
 from dbresearch.autofill.rules import validate_rules
-from dbresearch.config import get_settings as app_settings
 from dbresearch.models import (
     AuditEvent,
     AuthIdentity,
@@ -413,7 +419,6 @@ def security_summary(db: DB, admin: AdminUser, hours: Annotated[int, Query(ge=1,
     """Failed and blocked logins: the most active IPs and usernames, and which are locked."""
     from dbresearch.main import unsafe_settings  # main imports this module
 
-    settings = app_settings()
     since = func.now() - timedelta(hours=hours)
 
     def count(action: str) -> int:
@@ -423,7 +428,7 @@ def security_summary(db: DB, admin: AdminUser, hours: Annotated[int, Query(ge=1,
             .where(AuditEvent.action == action, AuditEvent.at >= since)
         )
 
-    def top(column, limit_now: int) -> list[LoginSource]:
+    def top(column, is_locked) -> list[LoginSource]:
         rows = db.execute(
             select(column, func.count())
             .where(
@@ -435,27 +440,40 @@ def security_summary(db: DB, admin: AdminUser, hours: Annotated[int, Query(ge=1,
             .order_by(func.count().desc())
             .limit(10)
         ).all()
-        window = failed_logins(settings.login_window_minutes)
         return [
-            LoginSource(
-                key=str(key),
-                failures=n,
-                locked=db.scalar(window.where(column == key)) >= limit_now,
-            )
-            for key, n in rows
+            LoginSource(key=str(key), failures=n, locked=is_locked(db, str(key))) for key, n in rows
         ]
 
-    limit = settings.login_max_failures
     return SecurityOut(
         hours=hours,
         failed=count("auth.login_failed"),
         blocked=count("auth.login_blocked"),
         provider_errors=count("auth.provider_error"),
         logins=count("auth.login"),
-        by_ip=top(AuditEvent.ip, IP_LIMIT_FACTOR * limit),
-        by_username=top(failed_username(), limit),
+        by_ip=top(AuditEvent.ip, ip_locked),
+        by_username=top(failed_username(), username_locked_anywhere),
         warnings=unsafe_settings(),
     )
+
+
+class UnlockIn(BaseModel):
+    kind: Literal["username", "ip"]
+    key: str = Field(min_length=1, max_length=200)  # as listed in the security summary
+
+
+@router.post("/security/unlock", status_code=204)
+def unlock_login(body: UnlockIn, request: Request, db: DB, admin: AdminUser) -> None:
+    """Clear a brute-force lock (testers lock themselves out). The audit log is append-only,
+    so this writes an unlock row and the guard only counts failures after it."""
+    if body.kind == "ip":
+        try:
+            target = {"ip": str(ipaddress.ip_address(body.key.strip()))}
+        except ValueError:
+            raise HTTPException(422, "Not an IP address") from None
+    else:
+        target = {"username": lock_key(body.key)}
+    audit.record(db, UNLOCKED, "user", actor_id=admin.id, ip=client_ip(request), **target)
+    db.commit()
 
 
 # ───────────── Settings ─────────────

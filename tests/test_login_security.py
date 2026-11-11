@@ -144,6 +144,84 @@ def test_security_summary(client, login, make_user):
     assert any("COOKIE_SECURE" in w for w in summary["warnings"])
 
 
+@pytest.fixture
+def from_ip(monkeypatch) -> Iterator:
+    """Requests carry a Cloudflare client IP: `client.post(..., headers=from_ip("…"))`."""
+    from dbresearch.config import get_settings
+
+    monkeypatch.setenv("TRUSTED_IP_HEADER", "CF-Connecting-IP")
+    get_settings.cache_clear()
+    yield lambda ip: {"CF-Connecting-IP": ip}
+    monkeypatch.delenv("TRUSTED_IP_HEADER")
+    get_settings.cache_clear()
+
+
+def sign_in_from(client, ip: dict, username: str, password: str):
+    body = {"username": username, "password": password}
+    return client.post("/auth/login", json=body, headers=ip)
+
+
+def test_a_stranger_elsewhere_cannot_lock_a_user_out(client, make_user, from_ip):
+    _, username, password = make_user()
+    stranger, office = from_ip("198.51.100.7"), from_ip("203.0.113.5")
+    for _ in range(5):
+        assert sign_in_from(client, stranger, username, "wrong").status_code == 401
+    assert sign_in_from(client, stranger, username, password).status_code == 429
+    assert sign_in_from(new_client(), office, username, password).status_code == 200
+    (blocked,) = audit_rows("auth.login_blocked")
+    assert (blocked.details["locked"], str(blocked.ip)) == ("username", "198.51.100.7")
+
+
+def test_admin_unlocks_a_username(client, login, make_user):
+    _, username, password = make_user()
+    for _ in range(5):
+        sign_in(client, username, "wrong")
+    assert sign_in(new_client(), username, password).status_code == 429
+
+    admin_id = login(UserRole.ADMIN)
+    (row,) = client.get("/admin/security").json()["by_username"]
+    assert row["locked"] is True
+    unlock = {"kind": "username", "key": f" {username.upper()} "}
+    assert client.post("/admin/security/unlock", json=unlock).status_code == 204
+    (row,) = client.get("/admin/security").json()["by_username"]
+    assert row == {"key": username, "failures": 5, "locked": False}  # history stays
+    (unlocked,) = audit_rows("auth.login_unlocked")
+    assert unlocked.details == {"username": username} and unlocked.actor_id == admin_id
+
+    assert sign_in(new_client(), username, password).status_code == 200
+    for _ in range(5):  # failures after the unlock count again
+        sign_in(new_client(), username, "wrong")
+    assert sign_in(new_client(), username, password).status_code == 429
+
+
+def test_admin_unlocks_an_ip(client, login, make_user, from_ip):
+    _, username, password = make_user()
+    shared = from_ip("192.0.2.44")
+    for i in range(20):  # 4 tries at each of 5 names: no name is locked, the IP is
+        sign_in_from(client, shared, f"guess{i % 5}", "wrong")
+    assert sign_in_from(new_client(), shared, username, password).status_code == 429
+    assert audit_rows("auth.login_blocked")[0].details["locked"] == "ip"
+
+    login(UserRole.ADMIN)
+    summary = client.get("/admin/security").json()
+    assert summary["by_ip"] == [{"key": "192.0.2.44", "failures": 20, "locked": True}]
+    assert not any(r["locked"] for r in summary["by_username"])
+    bad = client.post("/admin/security/unlock", json={"kind": "ip", "key": "not-an-ip"})
+    assert bad.status_code == 422
+    unlock = {"kind": "ip", "key": "192.0.2.44"}
+    assert client.post("/admin/security/unlock", json=unlock).status_code == 204
+    assert client.get("/admin/security").json()["by_ip"][0]["locked"] is False
+    assert audit_rows("auth.login_unlocked")[0].details == {"ip": "192.0.2.44"}
+    assert sign_in_from(new_client(), shared, username, password).status_code == 200
+
+
+def test_only_admins_unlock(client, login):
+    login()
+    unlock = {"kind": "username", "key": "someone"}
+    assert client.post("/admin/security/unlock", json=unlock).status_code == 403
+    assert audit_rows("auth.login_unlocked") == []
+
+
 def test_audit_log_is_append_only(client, make_user):
     _, username, _ = make_user()
     sign_in(client, username, "wrong")

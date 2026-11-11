@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.orm import aliased
 
 from dbresearch import audit
 from dbresearch.auth import (
@@ -26,15 +27,9 @@ from dbresearch.schemas import LoginIn, UserOut
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def failed_logins(minutes: int):
-    return (
-        select(func.count())
-        .select_from(AuditEvent)
-        .where(
-            AuditEvent.action == "auth.login_failed",
-            AuditEvent.at >= func.now() - timedelta(minutes=minutes),
-        )
-    )
+PENDING_DETAIL = "pending_approval"  # the web app shows "waiting for admin approval"
+IP_LIMIT_FACTOR = 4  # one IP may fail for several people (shared office NAT)
+UNLOCKED = "auth.login_unlocked"  # ADMIN cleared a lock: older failures stop counting
 
 
 def failed_username():
@@ -42,18 +37,69 @@ def failed_username():
     return func.lower(func.btrim(AuditEvent.details["username"].astext))
 
 
-PENDING_DETAIL = "pending_approval"  # the web app shows "waiting for admin approval"
-IP_LIMIT_FACTOR = 4  # one IP may fail for several people (shared office NAT)
+def lock_key(username: str) -> str:
+    """The username as the brute-force guard counts it (see `failed_username`)."""
+    return username[:100].strip().lower()
+
+
+def lock_start(**target: str):
+    """Start of the current lock window for `target` (username=… or ip=…): the window's
+    length ago, or the latest ADMIN unlock of that target if it came later."""
+    unlock = aliased(AuditEvent)
+    latest = (
+        select(func.max(unlock.at))
+        .where(
+            unlock.action == UNLOCKED,
+            *(unlock.details[key].astext == value for key, value in target.items()),
+        )
+        .scalar_subquery()
+    )
+    window = func.now() - timedelta(minutes=get_settings().login_window_minutes)
+    return func.greatest(window, latest)  # GREATEST skips NULL (never unlocked)
+
+
+def recent_failures(start):
+    return (
+        select(func.count())
+        .select_from(AuditEvent)
+        .where(AuditEvent.action == "auth.login_failed", AuditEvent.at > start)
+    )
+
+
+def username_failures(username: str):
+    """Failures for this username in its lock window, over every IP (add a filter)."""
+    key = lock_key(username)
+    return recent_failures(lock_start(username=key)).where(failed_username() == key)
+
+
+def username_locked(db, username: str, ip: str | None) -> bool:
+    """Locked per (username, IP): a stranger elsewhere cannot lock a staff member out."""
+    query = username_failures(username).where(AuditEvent.ip == ip)  # None: IS NULL
+    return db.scalar(query) >= get_settings().login_max_failures
+
+
+def username_locked_anywhere(db, username: str) -> bool:
+    query = (
+        username_failures(username)
+        .group_by(AuditEvent.ip)
+        .having(func.count() >= get_settings().login_max_failures)
+    )
+    return db.execute(query.limit(1)).first() is not None
+
+
+def ip_locked(db, ip: str | None) -> bool:
+    if not ip:
+        return False
+    query = recent_failures(lock_start(ip=ip)).where(AuditEvent.ip == ip)
+    return db.scalar(query) >= IP_LIMIT_FACTOR * get_settings().login_max_failures
 
 
 def too_many_failures(db, username: str, ip: str | None) -> str | None:
-    """Brute-force guard: recent failures per username, and per IP. Returns what is locked."""
-    settings = get_settings()
-    failed = failed_logins(settings.login_window_minutes)
-    limit = settings.login_max_failures
-    if db.scalar(failed.where(failed_username() == username[:100].strip().lower())) >= limit:
+    """Brute-force guard: recent failures per (username, IP), and per IP. Returns what is
+    locked."""
+    if username_locked(db, username, ip):
         return "username"
-    if ip and db.scalar(failed.where(AuditEvent.ip == ip)) >= IP_LIMIT_FACTOR * limit:
+    if ip_locked(db, ip):
         return "ip"
     return None
 

@@ -315,14 +315,15 @@ backup script). "Confirmed" = traced in the code; "check" = needs a test on a re
       works from spreadsheets today). High value, small.
 - [ ] **F2 Reminders**: weekly digest for overdue KPIs, projects near their end date, and documents
       waiting for review (email, if the university gives SMTP; else an in-app "due soon" page).
-- [ ] **F3 Researcher page**: all projects of one person (from `people`), totals per year and
-      funding source; link from every name.
+- [x] **F3 Researcher page** (2026-11-12: `/people/:id`, `GET /api/people/{id}`; names link to it from the lists and document pages; possible duplicate people are listed, not merged)
+      : all projects of one person (from `people`), totals per year and
+      funding source; link from every name.~~
 - [ ] **F4 Backup status on the admin page**: last successful backup time; warn after 26 h.
       Needs the backup timer (Phase 2) to write a status row/file.
 - [ ] **F5 Saved searches / pinned filters** per user.
 - [ ] **F6 Share several papers in one link** (a teacher's whole set). Changes the "one document
       per link" rule (DESIGN §1): decide first.
-- [ ] **F7 Find inside a document**: search box on the document page that jumps to the page.
+- [~] **F7 Find inside a document**: cheap version done 2026-11-12 (a search hit shows "หน้า N" and opens the PDF at that page, also for closing/attached papers; `snippet_page` + `snippet_file`). A search box on the document page itself: only if testers ask.
 
 ### Suggested order
 1. 9A S1–S3, S5, S6 (small, mostly one file each) → deploy → full tests on the server.
@@ -338,6 +339,8 @@ backup script). "Confirmed" = traced in the code; "check" = needs a test on a re
 - **RealLogin test (2026-11-10)**: done and removed (containers on 8121/8122 deleted). To repeat it, run IT's script in a `php:8.3-apache` container with the `ldap` extension on `dbresearch_default`, and a second app instance with `UNIVERSITY_CLIENT=php_ldap_test`, bound to `127.0.0.1` only (never on the public demo).
 
 ## Log
+
+- 2026-11-12 — F3 researcher page and the cheap F7 (search hit → PDF at the page) built by `claude-work` workers, merged and deployed; 232 tests pass on the server, headless check on PC + phone clean. Real-data import (step 4b) prepared but parked: decide first who may log in to the demo (it has a shared `demo` account); the re-checked plan is `samples/proposal_dev/plan.new.json` on the server.
 
 - 2026-11-12 — เลขรับ (the faculty's received-number stamp) is a second searchable number on proposal grants: `proposal_projects.received_no` + `project_events.received_no` (migrations `a7c4e2b9f6d3`, `c9d1f3a5b7e2`). Suggested from the file-name prefix on upload, filled in by the bulk importer, typed/corrected on the review form and on each timeline entry; shown on the list row, grant page and export.
 

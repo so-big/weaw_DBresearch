@@ -467,7 +467,7 @@ def unlock_login(body: UnlockIn, request: Request, db: DB, admin: AdminUser) -> 
     so this writes an unlock row and the guard only counts failures after it."""
     if body.kind == "ip":
         try:
-            target = {"ip": str(ipaddress.ip_address(body.key.strip()))}
+            target = {"target_ip": str(ipaddress.ip_address(body.key.strip()))}
         except ValueError:
             raise HTTPException(422, "Not an IP address") from None
     else:

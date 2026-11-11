@@ -215,7 +215,7 @@ def test_admin_unlocks_an_ip(client, login, make_user, from_ip):
     unlock = {"kind": "ip", "key": "192.0.2.44"}
     assert client.post("/admin/security/unlock", json=unlock).status_code == 204
     assert client.get("/admin/security").json()["by_ip"][0]["locked"] is False
-    assert audit_rows("auth.login_unlocked")[0].details == {"ip": "192.0.2.44"}
+    assert audit_rows("auth.login_unlocked")[0].details == {"target_ip": "192.0.2.44"}
     assert sign_in_from(new_client(), shared, username, password).status_code == 200
 
 

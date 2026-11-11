@@ -90,7 +90,7 @@ def username_locked_anywhere(db, username: str) -> bool:
 def ip_locked(db, ip: str | None) -> bool:
     if not ip:
         return False
-    query = recent_failures(lock_start(ip=ip)).where(AuditEvent.ip == ip)
+    query = recent_failures(lock_start(target_ip=ip)).where(AuditEvent.ip == ip)
     return db.scalar(query) >= IP_LIMIT_FACTOR * get_settings().login_max_failures
 
 

@@ -87,6 +87,7 @@
     draft?.flush();
   });
   function warnUnload(e) {
+    draft?.flush(); // the tab may close before the debounce fires
     if (dirty()) e.preventDefault();
   }
 

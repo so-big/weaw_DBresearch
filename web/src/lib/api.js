@@ -113,7 +113,50 @@ const THAI = [
   [/^Another live document has the same contract number \((.+)\).*$/s, 'กู้คืนไม่ได้: มีเอกสารเลขที่สัญญา $1 อยู่ในระบบแล้ว'],
   [/^Another live document has the same contract number.*$/s, 'กู้คืนไม่ได้: มีเอกสารเลขที่สัญญาเดียวกันอยู่ในระบบแล้ว'],
   [/^This link is invalid or has expired.*$/s, 'ลิงก์นี้ใช้ไม่ได้หรือหมดอายุแล้ว'],
-  [/^Not authenticated.*$|^Login required.*$/s, 'กรุณาเข้าสู่ระบบ'],
+  [/^Not authenticated.*$|^Login required.*$|^Not logged in.*$/s, 'กรุณาเข้าสู่ระบบ'],
+  [/^Login service unavailable.*$/s, 'ระบบเข้าสู่ระบบของมหาวิทยาลัยใช้งานไม่ได้ชั่วคราว ลองใหม่ภายหลัง'],
+  [/^This exact file is in the trash.*$/s, 'ไฟล์นี้อยู่ในถังขยะแล้ว กู้คืนได้จากถังขยะ'],
+  [/^This exact file is already stored.*$/s, 'ไฟล์นี้มีอยู่ในระบบแล้ว'],
+  [/^Links can last at most (\d+) hours.*$/s, 'ลิงก์อยู่ได้นานสุด $1 ชั่วโมง'],
+  [/^No such version.*$/s, 'ไม่พบเวอร์ชันนี้'],
+  [/^This link has no password.*$/s, 'ลิงก์นี้ไม่ได้ตั้งรหัสผ่าน'],
+  [/^Wrong password.*$/s, 'รหัสผ่านไม่ถูกต้อง'],
+  [/^Password required.*$/s, 'ลิงก์นี้ต้องใส่รหัสผ่าน'],
+  [/^This link is view-only.*$/s, 'ลิงก์นี้ดูได้อย่างเดียว ดาวน์โหลดไม่ได้'],
+  [/^Link not found.*$/s, 'ไม่พบลิงก์นี้'],
+  [/^Version not found.*$/s, 'ไม่พบเวอร์ชันนี้'],
+  [/^Admin only.*$/s, 'เฉพาะผู้ดูแลระบบเท่านั้น'],
+  [/^A cancelled project can't be closed.*$/s, 'โครงการที่ยกเลิกแล้วปิดโครงการไม่ได้'],
+  [/^A closed project can't be cancelled.*$/s, 'โครงการที่ปิดแล้วยกเลิกไม่ได้ ให้เปิดโครงการอีกครั้งก่อน'],
+  [/^Only proposal grants can be cancelled.*$/s, 'ยกเลิกได้เฉพาะทุนเสนอขอ'],
+  [/^Only proposal grants have a timeline.*$/s, 'เฉพาะทุนเสนอขอที่มีลำดับเหตุการณ์'],
+  [/^The project is not closed.*$/s, 'โครงการนี้ยังไม่ได้ปิด'],
+  [/^The linked contract doesn't exist.*$/s, 'ไม่พบสัญญาที่เชื่อมโยง'],
+  [/^Event not found.*$/s, 'ไม่พบเหตุการณ์นี้'],
+  [/^Document is not in the trash.*$|^Only documents in the trash can be purged.*$/s, 'เอกสารนี้ไม่อยู่ในถังขยะแล้ว'],
+  [/^Another document already has this contract number.*$/s, 'มีเอกสารอื่นใช้เลขที่สัญญานี้แล้ว'],
+  [/^Unknown category.*$/s, 'ไม่พบหมวดหมู่ที่เลือก'],
+  [/^Only one category can be chosen in group '(.+)'.*$/s, 'เลือกได้เพียงหมวดเดียวในกลุ่ม “$1”'],
+  [/^Unknown person.*$/s, 'ไม่พบบุคคลที่เลือก'],
+  [/^A person needs a Thai or English name.*$/s, 'บุคคลต้องมีชื่อภาษาไทยหรือภาษาอังกฤษ'],
+  [/^Choose the funding source or internal\/external funding.*$/s, 'เลือกแหล่งทุน หรือระบุว่าทุนภายใน/ภายนอก'],
+  [/^Proposal fields only apply to proposal-development grants.*$/s, 'ข้อมูลเสนอขอใช้ได้เฉพาะทุนพัฒนาข้อเสนอโครงการ'],
+  [/^Category group not found.*$/s, 'ไม่พบกลุ่มหมวดหมู่นี้'],
+  [/^Name is empty.*$/s, 'กรุณากรอกชื่อ'],
+  [/^User not found.*$/s, 'ไม่พบผู้ใช้นี้'],
+  [/^User has no local login.*$/s, 'ผู้ใช้นี้ไม่ได้ใช้การเข้าสู่ระบบในเครื่อง'],
+  [/^This request was already decided.*$/s, 'คำขอนี้ได้รับการตัดสินแล้ว'],
+  [/^Give both username and password, or neither.*$/s, 'ใส่ทั้งชื่อผู้ใช้และรหัสผ่าน หรือเว้นว่างทั้งคู่ (ผู้ใช้ SSO)'],
+  [/^Email, username or university ID already in use.*$/s, 'อีเมล ชื่อผู้ใช้ หรือรหัสมหาวิทยาลัยนี้มีในระบบแล้ว'],
+  [/^You can't remove your own admin access.*$/s, 'ถอนสิทธิ์ผู้ดูแลระบบของตัวเองไม่ได้'],
+  [/^Use approve or reject for a pending request.*$/s, 'คำขอที่รออนุมัติให้ใช้ปุ่มอนุมัติหรือปฏิเสธ'],
+  [/^Not an IP address.*$/s, 'ที่อยู่ IP ไม่ถูกต้อง'],
+  [/^Unknown setting.*$/s, 'ไม่พบการตั้งค่านี้'],
+  [/^Must be between (\S+) and (\S+).*$/s, 'ต้องอยู่ระหว่าง $1 ถึง $2'],
+  [/^Name or key already exists.*$/s, 'ชื่อหรือรหัสนี้มีอยู่แล้ว'],
+  [/^Used by (\d+) document\(s\).*$/s, 'ใช้อยู่ใน $1 เอกสาร ให้ปิดใช้งานแทนการลบ'],
+  [/^match_rules needs a non-empty 'keywords' list.*$/s, 'กฎการจับคู่ต้องมีรายการคำสำคัญอย่างน้อยหนึ่งคำ'],
+  [/^Not found.*$/s, 'ไม่พบข้อมูลนี้'],
 ];
 export function thai(detail) {
   if (typeof detail !== 'string') return detail;
@@ -129,7 +172,7 @@ export function errorText(err) {
   if (err.status === 404) return 'ไม่พบข้อมูลนี้ อาจถูกลบไปแล้ว';
   if (err.status === 413) return 'ไฟล์ใหญ่เกินกำหนด';
   if (Array.isArray(err.detail)) {
-    return err.detail.map((d) => `${(d.loc || []).slice(1).join('.')}: ${d.msg}`).join(' · ');
+    return 'ข้อมูลที่กรอกไม่ถูกต้อง';
   }
   if (err.status === 429) return thai(err.detail) || 'ลองใหม่อีกครั้งภายหลัง';
   return typeof err.detail === 'string' ? thai(err.detail) : 'เกิดข้อผิดพลาด ลองอีกครั้ง';

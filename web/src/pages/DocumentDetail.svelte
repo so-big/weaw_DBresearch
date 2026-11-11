@@ -3,7 +3,7 @@
   import { get, post, uploadFile, errorText, fileUrl, thai } from '../lib/api.js';
   import { trashDocs } from '../lib/trash.js';
   import { navigate } from '../lib/router.svelte.js';
-  import { toast, screen, bumpReviewCount } from '../lib/state.svelte.js';
+  import { toast, screen, bumpReviewCount, ui } from '../lib/state.svelte.js';
   import { STATUS, KIND, FUNDING, FUNDING_SOURCE, ROLE, thDate, thDateTime, money, bytes, personName, toThaiInput, parseThaiDate } from '../lib/format.js';
   import Icon from '../components/Icon.svelte';
   import Modal from '../components/Modal.svelte';
@@ -27,6 +27,10 @@
       if (d.kind === 'proposal_dev' || d.kind === 'other') return navigate(`/proposals/${id}`, { replace: true });
       doc = d;
       error = '';
+      if (ui.shareDoc === d.id) {
+        ui.shareDoc = null; // arrived from "create a new link" after a restore
+        sharing = true;
+      }
       // While the scan (or a closing paper) is being read, check back every few seconds.
       const reading = doc.closure_files.some((f) => f.ocr_status === 'pending' || f.ocr_status === 'running');
       if (doc.status === 'processing' || reading) timer = setTimeout(load, 4000);

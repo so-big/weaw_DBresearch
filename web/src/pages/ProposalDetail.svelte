@@ -6,7 +6,7 @@
   import { get, post, patch, uploadFile, errorText, fileUrl, thai } from '../lib/api.js';
   import { trashDocs } from '../lib/trash.js';
   import { navigate } from '../lib/router.svelte.js';
-  import { toast, bumpReviewCount } from '../lib/state.svelte.js';
+  import { toast, bumpReviewCount, ui } from '../lib/state.svelte.js';
   import { STATUS, FUNDING_SOURCE, PROJECT_STATE, EVENT, OUTCOME, thDate, thDateTime, money, bytes, personName, toThaiInput, parseThaiDate } from '../lib/format.js';
   import Icon from '../components/Icon.svelte';
   import Modal from '../components/Modal.svelte';
@@ -30,6 +30,10 @@
       if (d.kind !== 'proposal_dev' && d.kind !== 'other') return navigate(`/documents/${id}`, { replace: true });
       doc = d;
       error = '';
+      if (ui.shareDoc === d.id) {
+        ui.shareDoc = null; // arrived from "create a new link" after a restore
+        sharing = true;
+      }
       // While a memo is being read, check back every few seconds.
       if (d.status === 'processing' || d.events.some((e) => reading(e.paper)) || d.papers.some(reading)) timer = setTimeout(load, 4000);
     } catch (err) {

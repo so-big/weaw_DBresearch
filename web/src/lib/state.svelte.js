@@ -90,4 +90,5 @@ export const ms = (n) => (reduced() ? 0 : n);
 
 // Phone: the center search button asks the documents page to focus its search box.
 // `bar`: a bottom action bar is showing (select mode), so toasts sit above it.
-export const ui = $state({ searchFocus: 0, bar: false });
+// `shareDoc`: a document id whose share dialog its page should open on arrival (after a restore).
+export const ui = $state({ searchFocus: 0, bar: false, shareDoc: null });

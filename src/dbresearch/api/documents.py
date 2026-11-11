@@ -370,15 +370,16 @@ def restore_many(body: DocumentIds, request: Request, db: DB, user: CurrentUser)
             status.HTTP_403_FORBIDDEN, "Only the person who deleted it or an admin can restore it"
         )
     ip = client_ip(request)
+    revoked = 0
     try:
         for document in documents:
-            restore(db, user, document, ip)
+            revoked += restore(db, user, document, ip)
             db.flush()  # the next restore's contract-number check must see this one
     except TrashError as exc:
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     db.commit()
-    return {"restored": len(documents)}
+    return {"restored": len(documents), "revoked_links": revoked}
 
 
 @router.post(

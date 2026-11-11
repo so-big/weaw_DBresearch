@@ -131,6 +131,7 @@ def test_ocr_that_keeps_failing_falls_back_to_manual_review(client, login):
     assert version.ocr_status == OcrStatus.FAILED
     assert document.status == DocStatus.NEEDS_REVIEW
     assert version.extracted_fields["warnings"][0]["code"] == "ocr_failed"
+    assert "x.pdf" in document.search_text  # findable by file name even without OCR
 
 
 @needs_tesseract

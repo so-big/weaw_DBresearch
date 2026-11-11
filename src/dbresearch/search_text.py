@@ -1,6 +1,7 @@
 """Space-insensitive search text (DESIGN §5): normalise, then drop ALL whitespace."""
 
 import re
+import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -28,9 +29,9 @@ def compact(text: str) -> str:
     return _SPACE.sub("", normalize(text)).lower()
 
 
-def build(db: Session, document: Document) -> str:
+def build(db: Session, document: Document, extra: str = "") -> str:
     """Metadata + people + labels + OCR text of the current version and closing papers."""
-    parts = [document.title, document.title_en or "", document.reference_no or ""]
+    parts = [document.title, document.title_en or "", document.reference_no or "", extra]
     parts += db.scalars(
         select(Person.name_th).join(DocumentPerson).where(DocumentPerson.document_id == document.id)
     ).all()
@@ -65,3 +66,26 @@ def build(db: Session, document: Document) -> str:
         .order_by(DocumentPage.version_id != document.current_version_id, DocumentPage.page_no)
     ).all()
     return compact(" ".join(p for p in parts if p))
+
+
+def rebuild_for_category(db: Session, category_id: uuid.UUID, batch: int = 200) -> int:
+    """Rebuild search_text of every document tagged with the category, a batch per commit."""
+    done, last = 0, None
+    while True:
+        query = (
+            select(Document)
+            .join(DocumentCategory, DocumentCategory.document_id == Document.id)
+            .where(DocumentCategory.category_id == category_id)
+            .order_by(Document.id)
+            .limit(batch)
+        )
+        if last is not None:
+            query = query.where(Document.id > last)
+        documents = db.scalars(query).all()
+        if not documents:
+            return done
+        for document in documents:
+            document.search_text = build(db, document)
+        last = documents[-1].id
+        done += len(documents)
+        db.commit()

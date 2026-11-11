@@ -1,12 +1,14 @@
 """Admin: users, trash/restore/purge, settings, categories, templates, reports, audit."""
 
+import uuid
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from dbresearch.config import get_settings
 from dbresearch.db import new_session
 from dbresearch.main import app
-from dbresearch.models import AuditEvent, Document, DocumentVersion, UserRole
+from dbresearch.models import AuditEvent, Document, DocumentVersion, Job, UserRole
 from tests.conftest import API, CSRF, make_pdf, needs_db
 from tests.test_review import category, metadata
 
@@ -147,6 +149,39 @@ def test_categories_admin(client, login):
     groups = {g["key"]: g for g in client.get("/categories").json()}
     assert "บุคลากร" not in [o["name_th"] for o in groups["research_group"]["options"]]
     client.patch(f"/admin/categories/{used}", json={"active": True})
+
+
+def test_renaming_a_category_rebuilds_search_text_in_the_worker(client, login):
+    from dbresearch.worker.__main__ import run_job
+
+    login(UserRole.ADMIN)
+    group_id = client.post(
+        "/admin/category-groups",
+        json={"key": f"g_{uuid.uuid4().hex[:8]}", "name_th": "ก", "multi": True},
+    ).json()["id"]
+    old, new = f"เดิม{uuid.uuid4().hex[:6]}", f"ใหม่{uuid.uuid4().hex[:6]}"
+    cat_id = client.post("/admin/categories", json={"group_id": group_id, "name_th": old}).json()[
+        "id"
+    ]
+    doc_id = upload(client, categories=[{"category_id": cat_id}], people=[], tags=[])
+
+    def stored() -> str:
+        with new_session() as db:
+            return db.get(Document, uuid.UUID(doc_id)).search_text
+
+    assert old in stored()
+
+    def queued() -> list[Job]:
+        with new_session() as db:
+            return db.scalars(select(Job).where(Job.kind == "search_text")).all()
+
+    client.patch(f"/admin/categories/{cat_id}", json={"active": False})  # not a rename
+    assert queued() == []
+    client.patch(f"/admin/categories/{cat_id}", json={"active": True, "name_th": new})
+    assert new not in stored()  # the worker does the rebuild
+    (job,) = queued()
+    run_job(job)
+    assert new in stored() and old not in stored()
 
 
 def test_template_rules_are_validated(client, login):

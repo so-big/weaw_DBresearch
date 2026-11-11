@@ -2,6 +2,7 @@
 
 Job kinds:
 - ocr   {version_id}: auto-fill a stored version (dbresearch.autofill.pipeline)
+- search_text {category_id}: rebuild search_text of the documents tagged with a category
 
 Logs never contain document text, only ids and counts (CLAUDE.md).
 """
@@ -11,7 +12,7 @@ import signal
 import time
 import uuid
 
-from dbresearch import jobs
+from dbresearch import jobs, search_text
 from dbresearch.config import get_settings
 from dbresearch.db import new_session
 from dbresearch.models import DocStatus, Document, DocumentVersion, Job, OcrStatus
@@ -32,6 +33,9 @@ def run_job(job: Job) -> None:
 
         with new_session() as db:
             process_version(db, uuid.UUID(job.payload["version_id"]))
+    elif job.kind == "search_text":
+        with new_session() as db:
+            search_text.rebuild_for_category(db, uuid.UUID(job.payload["category_id"]))
     else:
         raise ValueError(f"unknown job kind {job.kind!r}")
 
@@ -49,6 +53,9 @@ def give_up(job: Job, error: str) -> None:
         document = db.get(Document, version.document_id)
         if document.current_version_id == version.id and document.status == DocStatus.PROCESSING:
             document.status = DocStatus.NEEDS_REVIEW
+        if document.current_version_id == version.id:
+            # Nothing was read: keep the upload findable by its metadata and file name.
+            document.search_text = search_text.build(db, document, extra=version.original_filename)
         db.commit()
 
 

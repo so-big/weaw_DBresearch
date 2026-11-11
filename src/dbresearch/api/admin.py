@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
-from dbresearch import audit, documents, shares
+from dbresearch import audit, documents, jobs, shares
 from dbresearch.api.auth import IP_LIMIT_FACTOR, failed_logins, failed_username
 from dbresearch.api.documents import trash_items
 from dbresearch.api.shares import share_out
@@ -586,8 +586,12 @@ def update_category(
     category_id: uuid.UUID, body: CategoryPatch, request: Request, db: DB, admin: AdminUser
 ) -> dict:
     category = db.get(Category, category_id) or _missing()
+    renamed = False
     for name, value in body.model_dump(exclude_none=True).items():
+        renamed |= name in ("name_th", "aliases") and getattr(category, name) != value
         setattr(category, name, value)
+    if renamed:  # documents carry the old name in search_text: rebuild in the worker
+        jobs.enqueue(db, "search_text", category_id=category.id)
     return _save(
         db,
         request,

@@ -20,6 +20,7 @@
   import Overview from './pages/Overview.svelte';
   import ProposalDetail from './pages/ProposalDetail.svelte';
   import ProposalReview from './pages/ProposalReview.svelte';
+  import Person from './pages/Person.svelte';
   import Trash from './pages/Trash.svelte';
   import NotFound from './pages/NotFound.svelte';
 
@@ -71,6 +72,7 @@
     let m;
     if ((m = match('/proposals/:id/review'))) return { C: ProposalReview, props: { id: m.id }, key: `pr${m.id}` };
     if ((m = match('/proposals/:id'))) return { C: ProposalDetail, props: { id: m.id }, key: `p${m.id}` };
+    if ((m = match('/people/:id'))) return { C: Person, props: { id: m.id }, key: `u${m.id}` };
     if ((m = match('/documents/:id/review'))) return { C: ReviewForm, props: { id: m.id }, key: `r${m.id}` };
     if ((m = match('/documents/:id'))) return { C: DocumentDetail, props: { id: m.id }, key: `d${m.id}` };
     return { C: NotFound };

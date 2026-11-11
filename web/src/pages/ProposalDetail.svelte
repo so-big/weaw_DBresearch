@@ -279,7 +279,9 @@
         <dl class="facts">
           {#each facts as [label, value] (label)}
             <dt>{label}</dt>
-            <dd class={value ? '' : 'muted'}>{value || '–'}</dd>
+            <dd class={value ? '' : 'muted'}>
+              {#if label === 'นักวิจัย' && owner}<a href="/people/{owner.id}">{value}</a>{:else}{value || '–'}{/if}
+            </dd>
           {/each}
         </dl>
       </section>

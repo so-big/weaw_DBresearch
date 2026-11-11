@@ -324,33 +324,48 @@ def owners(db: Session, document_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[s
     return result
 
 
-def snippet(db: Session, document: Document, q: str | None) -> str | None:
-    """Text around the first match in the current version's pages (spaces ignored)."""
+def snippets(db: Session, documents: list[Document], q: str | None) -> dict[uuid.UUID, str]:
+    """Text around the first match in each document's current version and closing papers
+    (spaces ignored). One query for the whole result page loads only each document's first
+    matching page; documents with no page hit (e.g. a metadata-only hit) are left out."""
     needle = compact(q) if q else ""
-    if len(needle) < 2 or document.current_version_id is None:
-        return None
-    closing = select(DocumentVersion.id).where(
-        DocumentVersion.document_id == document.id,
-        DocumentVersion.purpose.in_((VersionPurpose.CLOSURE, VersionPurpose.PAPER)),
-    )
-    for text in db.scalars(
-        select(DocumentPage.text)
+    ids = [d.id for d in documents if d.current_version_id is not None]
+    if len(needle) < 2 or not ids:
+        return {}
+    current = DocumentVersion.id == Document.current_version_id
+    squashed = func.regexp_replace(DocumentPage.text, r"\s+", "", "g")
+    rows = db.execute(
+        select(Document.id, DocumentPage.text)
+        .select_from(Document)
+        .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+        .join(DocumentPage, DocumentPage.version_id == DocumentVersion.id)
         .where(
-            (DocumentPage.version_id == document.current_version_id)
-            | DocumentPage.version_id.in_(closing)
+            Document.id.in_(ids),
+            or_(
+                current, DocumentVersion.purpose.in_((VersionPurpose.CLOSURE, VersionPurpose.PAPER))
+            ),
+            squashed.ilike(_like(needle)),
         )
-        .order_by(DocumentPage.version_id != document.current_version_id, DocumentPage.page_no)
-    ):
-        positions = [i for i, ch in enumerate(text) if not ch.isspace()]
-        squashed = "".join(text[i] for i in positions).lower()
-        at = squashed.find(needle)
-        if at < 0:
-            continue
-        start, end = positions[at], positions[at + len(needle) - 1] + 1
-        before = text[max(0, start - SNIPPET_RADIUS) : start].replace("\n", " ")
-        after = text[end : end + SNIPPET_RADIUS].replace("\n", " ")
-        return f"{'…' if start > SNIPPET_RADIUS else ''}{before}[[{text[start:end]}]]{after}…"
-    return None
+        .distinct(Document.id)
+        .order_by(Document.id, case((current, 0), else_=1), DocumentPage.page_no)
+    ).all()
+    found = {}
+    for doc_id, text in rows:
+        if hit := _snippet_in(text, needle):
+            found[doc_id] = hit
+    return found
+
+
+def _snippet_in(text: str, needle: str) -> str | None:
+    positions = [i for i, ch in enumerate(text) if not ch.isspace()]
+    squashed = "".join(text[i] for i in positions).lower()
+    at = squashed.find(needle)
+    if at < 0:
+        return None
+    start, end = positions[at], positions[at + len(needle) - 1] + 1
+    before = text[max(0, start - SNIPPET_RADIUS) : start].replace("\n", " ")
+    after = text[end : end + SNIPPET_RADIUS].replace("\n", " ")
+    return f"{'…' if start > SNIPPET_RADIUS else ''}{before}[[{text[start:end]}]]{after}…"
 
 
 def search_people(db: Session, q: str, limit: int = 10) -> list[Person]:

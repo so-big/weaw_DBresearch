@@ -82,13 +82,14 @@ def list_documents(
     ids = [d.id for d in documents]
     owners = search.owners(db, ids)
     extras = search.proposal_rows(db, ids)
+    found = search.snippets(db, documents, q)
     items = []
     for document in documents:
         item = DocumentSummary.model_validate(document)
         item.owners = owners.get(document.id, [])
         for name, value in extras.get(document.id, {}).items():
             setattr(item, name, value)
-        item.snippet = search.snippet(db, document, q)
+        item.snippet = found.get(document.id)
         items.append(item)
     return SearchOut(
         items=items,

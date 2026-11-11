@@ -69,6 +69,35 @@ def test_text_search_ignores_spaces_case_and_finds_ocr_text(client, login):
     assert ids(client.get("/documents", params={"q": "%"})) == []  # LIKE wildcards are literal
 
 
+def add_pages(doc_id: str, texts: list[str]) -> None:
+    with new_session() as db:
+        document = db.get(Document, doc_id)
+        for n, text in enumerate(texts, 1):
+            db.add(DocumentPage(version_id=document.current_version_id, page_no=n, text=text))
+        db.flush()
+        document.search_text = search_text.build(db, document)
+        db.commit()
+
+
+def test_snippet_on_late_page_across_ocr_spacing_and_metadata_only(client, login):
+    login()
+    late = create(
+        client, title="Alpha", reference_no="R2568E101", categories=[], people=[], tags=[]
+    )
+    meta = create(
+        client, title="วิจัยดินเค็ม", reference_no="R2568E102", categories=[], people=[], tags=[]
+    )
+    filler = ["หน้าที่ไม่เกี่ยวข้อง " * 5] * 30
+    add_pages(late, [*filler, "ผลการศึกษา ดิน เค็ม ใน ภาค อีสาน\nสรุป"])
+    add_pages(meta, ["ไม่มีคำค้นในหน้านี้"])
+
+    items = {i["id"]: i for i in client.get("/documents", params={"q": "ดินเค็ม"}).json()["items"]}
+    assert set(items) == {late, meta}
+    assert "[[ดิน เค็ม]]" in items[late]["snippet"]  # OCR spacing kept, match spans the spaces
+    assert items[late]["snippet"].endswith("ภาค อีสาน สรุป…")
+    assert items[meta]["snippet"] is None  # hit is in the title only
+
+
 def test_filters_and_category_logic(client, login):
     me = login()
     plan = category("research_type", "เพื่อการวางแผนพัฒนา")

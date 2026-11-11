@@ -1,5 +1,5 @@
 <script>
-  import { get, errorText } from '../../lib/api.js';
+  import { get, post, errorText } from '../../lib/api.js';
   import { thDateTime } from '../../lib/format.js';
 
   const ACTIONS = [
@@ -20,7 +20,7 @@
     'share.create': 'สร้างลิงก์', 'share.revoke': 'ยกเลิกลิงก์', 'share.new_password': 'รหัสลิงก์ใหม่',
     'auth.login': 'เข้าสู่ระบบ', 'auth.logout': 'ออกจากระบบ', 'auth.login_failed': 'เข้าสู่ระบบไม่สำเร็จ',
     'auth.login_blocked': 'ถูกระงับชั่วคราว', 'auth.logout_all': 'ออกจากระบบทุกอุปกรณ์',
-    'auth.provider_error': 'ระบบมหาวิทยาลัยไม่ตอบ',
+    'auth.provider_error': 'ระบบมหาวิทยาลัยไม่ตอบ', 'auth.login_unlocked': 'ปลดล็อกการเข้าสู่ระบบ',
     'user.create': 'เพิ่มผู้ใช้', 'user.update': 'แก้ไขผู้ใช้', 'user.password_reset': 'ตั้งรหัสผ่านใหม่',
     'user.sessions_revoked': 'ให้ออกจากระบบทุกอุปกรณ์',
     'category.create': 'เพิ่มหมวดหมู่', 'category.update': 'แก้ไขหมวดหมู่', 'category.delete': 'ลบหมวดหมู่',
@@ -36,7 +36,19 @@
   const reason = (v) => REASON[v] || (String(v).startsWith('type_not_allowed:') ? `ประเภทบัญชีไม่ได้รับอนุญาต (${v.split(':')[1]})` : v);
 
   let security = $state(null);
-  get('/admin/security').then((r) => (security = r)).catch(() => {});
+  const loadSecurity = () => get('/admin/security').then((r) => (security = r)).catch(() => {});
+  loadSecurity();
+
+  // Clear a brute-force lock (testers lock themselves out); written to the audit log.
+  async function unlock(kind, key) {
+    try {
+      await post('/admin/security/unlock', { kind, key });
+      await loadSecurity();
+      load();
+    } catch (err) {
+      error = errorText(err);
+    }
+  }
 
   let action = $state('');
   let rows = $state(null);
@@ -88,7 +100,7 @@
                 <span class="label">{title}</span>
                 <ul>
                   {#each list as x (x.key)}
-                    <li><span class:mono>{x.key}</span> <small class="muted">{x.failures} ครั้ง</small>{#if x.locked} <span class="badge failed">ระงับอยู่</span>{/if}</li>
+                    <li><span class:mono>{x.key}</span> <small class="muted">{x.failures} ครั้ง</small>{#if x.locked} <span class="badge failed">ระงับอยู่</span> <button class="btn small ghost" onclick={() => unlock(mono ? 'ip' : 'username', x.key)}>ปลดล็อก</button>{/if}</li>
                   {/each}
                 </ul>
               </div>

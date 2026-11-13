@@ -1,6 +1,6 @@
 ﻿# ======================================================================
 # DBresearch OCR Worker - Management Console
-# Universal Clean ASCII / English for 100% Guaranteed Legibility
+# Standard English Interface for 100% Guaranteed Legibility
 # ======================================================================
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

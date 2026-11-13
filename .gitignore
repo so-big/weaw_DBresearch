@@ -6,6 +6,12 @@ secrets/
 *.key
 *.pem
 
+# Credentials and sensitive JSON files (plain passwords)
+sqlpass.json
+ocr-worker-PRIVATE.json
+mysql-ca.pem
+!sqlpass.7z
+
 # Real documents are confidential — never commit scans
 samples/
 *.pdf
@@ -29,4 +35,3 @@ backup.env
 
 # Local data & blobs
 data/
-

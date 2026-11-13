@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
-# Default port
-PORT="${PORT:-8120}"
-ROOT_ARG=""
+SETTING_FILE_ARG=""
 CUSTOM_COMMAND=()
 
 # Parse CLI arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --root)
-      ROOT_ARG="$2"
+    --setting|--root)
+      SETTING_FILE_ARG="$2"
       shift 2
       ;;
     --port)
@@ -24,12 +22,25 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Resolve settings from setting.txt / root.txt if available
+RESOLVED_PORT=$(python -c "
+from dbresearch.settings_parser import get_web_credentials
+p, u, _ = get_web_credentials('$SETTING_FILE_ARG' if '$SETTING_FILE_ARG' else None)
+print(p)
+" 2>/dev/null || echo "8120")
+
+RESOLVED_USER=$(python -c "
+from dbresearch.settings_parser import get_web_credentials
+p, u, _ = get_web_credentials('$SETTING_FILE_ARG' if '$SETTING_FILE_ARG' else None)
+print(u)
+" 2>/dev/null || echo "admin")
+
+PORT="${PORT:-$RESOLVED_PORT}"
 export PORT
 
 # 1. Standalone PostgreSQL check (if DATABASE_URL is not set)
 if [ -z "$DATABASE_URL" ]; then
     echo "[INFO] No DATABASE_URL provided. Starting internal PostgreSQL..."
-    # Ensure postgres directory ownership
     if [ "$(id -u)" = "0" ]; then
         service postgresql start || true
         su - postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname = 'dbresearch'\" | grep -q 1 || psql -c \"CREATE USER dbresearch WITH PASSWORD 'dbresearch'; CREATE DATABASE dbresearch OWNER dbresearch;\"" || true
@@ -72,10 +83,10 @@ if [ "${#CUSTOM_COMMAND[@]}" -eq 0 ] || [[ "${CUSTOM_COMMAND[*]}" != *"dbresearc
     echo "[INFO] Applying database migrations..."
     alembic upgrade head || true
 
-    # 4. Provision / Update Admin User from root.txt, arguments, or environment variables
+    # 4. Provision / Update Admin User from setting.txt
     SETUP_ARGS=()
-    if [ -n "$ROOT_ARG" ]; then
-        SETUP_ARGS+=("--root" "$ROOT_ARG")
+    if [ -n "$SETTING_FILE_ARG" ]; then
+        SETUP_ARGS+=("--setting" "$SETTING_FILE_ARG")
     fi
     python -m dbresearch.setup_admin "${SETUP_ARGS[@]}" || true
 fi
@@ -87,23 +98,13 @@ if [ "${#CUSTOM_COMMAND[@]}" -gt 0 ]; then
 fi
 
 # 5. Print Web and API URLs banner
-# Determine admin username for display
-ADMIN_DISPLAY_USER="${ADMIN_USERNAME:-}"
-if [ -z "$ADMIN_DISPLAY_USER" ]; then
-    CRED_FILE="${ROOT_ARG:-${ROOT_FILE:-root.txt}}"
-    if [ -f "$CRED_FILE" ]; then
-        ADMIN_DISPLAY_USER=$(head -n 1 "$CRED_FILE" | tr -d '\r\n')
-    fi
-fi
-ADMIN_DISPLAY_USER="${ADMIN_DISPLAY_USER:-admin}"
-
 echo ""
 echo "======================================================================"
 echo "          DBresearch System Started Successfully!"
 echo "======================================================================"
 echo "  Web URL:      http://localhost:${PORT}"
 echo "  API Docs URL: http://localhost:${PORT}/api/docs"
-echo "  Admin User:   ${ADMIN_DISPLAY_USER}"
+echo "  Admin User:   ${RESOLVED_USER}"
 echo "  Port:         ${PORT}"
 echo "======================================================================"
 echo ""

@@ -1,5 +1,4 @@
-"""Idempotent admin setup from root.txt, arguments, or environment variables."""
-import os
+"""Idempotent admin setup from setting.txt, arguments, or environment variables."""
 import sys
 from pathlib import Path
 from sqlalchemy import select
@@ -7,45 +6,7 @@ from sqlalchemy import select
 from dbresearch.auth import add_local_identity, hash_password, normalize_username
 from dbresearch.db import new_session
 from dbresearch.models import AuthIdentity, User, UserRole
-
-
-def get_credentials(argv: list[str]) -> tuple[str, str]:
-    # 1. Check CLI args for --root <path>
-    filepath = None
-    for i, arg in enumerate(argv):
-        if arg == "--root" and i + 1 < len(argv):
-            filepath = Path(argv[i + 1])
-            break
-
-    # 2. Check env var ROOT_FILE or CREDENTIALS_FILE
-    if not filepath:
-        env_path = os.environ.get("ROOT_FILE") or os.environ.get("CREDENTIALS_FILE")
-        if env_path:
-            filepath = Path(env_path)
-
-    # 3. Check default root.txt candidates
-    if not filepath:
-        for candidate in [Path("root.txt"), Path("/app/root.txt"), Path("/root.txt")]:
-            if candidate.is_file():
-                filepath = candidate
-                break
-
-    username = os.environ.get("ADMIN_USERNAME") or os.environ.get("ROOT_USER")
-    password = os.environ.get("ADMIN_PASSWORD") or os.environ.get("ROOT_PASSWORD")
-
-    if filepath and filepath.is_file():
-        try:
-            lines = [line.strip() for line in filepath.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
-            if len(lines) >= 1 and not username:
-                username = lines[0]
-            if len(lines) >= 2 and not password:
-                password = lines[1]
-        except Exception as exc:
-            print(f"[WARN] Failed to read credentials from {filepath}: {exc}", file=sys.stderr)
-
-    username = username or "admin"
-    password = password or "admin123456"
-    return username, password
+from dbresearch.settings_parser import get_web_credentials
 
 
 def ensure_admin(username: str, password: str, email: str | None = None, display_name: str | None = None) -> None:
@@ -79,7 +40,14 @@ def ensure_admin(username: str, password: str, email: str | None = None, display
 
 
 def main():
-    username, password = get_credentials(sys.argv[1:])
+    target_file = None
+    argv = sys.argv[1:]
+    for i, arg in enumerate(argv):
+        if arg in ("--root", "--setting", "-c") and i + 1 < len(argv):
+            target_file = Path(argv[i + 1])
+            break
+
+    _, username, password = get_web_credentials(target_file)
     ensure_admin(username, password)
 
 

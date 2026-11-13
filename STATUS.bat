@@ -3,11 +3,14 @@
 title DBresearch - Status
 color 0E
 
-:: Read PORT from .env or default to 8120
 set APP_PORT=8120
-if exist .env (
-    for /f "tokens=1,2 delims==" %%a in (.env) do (
-        if "%%a"=="PORT" set APP_PORT=%%b
+if exist setting.txt (
+    for /f "tokens=1,2 delims==" %%a in (setting.txt) do (
+        set "key=%%a"
+        set "val=%%b"
+        call set "key=%%key: =%%"
+        call set "val=%%val: =%%"
+        if /i "%%key%%"=="port" set APP_PORT=%%val%%
     )
 )
 
@@ -16,6 +19,7 @@ echo                  DBresearch System Status
 echo ======================================================================
 echo.
 
+wsl bash -c "docker ps --filter name=dbresearch --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep -v 'healthy'"
 wsl bash -c "docker ps --filter name=dbresearch --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
 
 echo.

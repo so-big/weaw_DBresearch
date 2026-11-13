@@ -32,9 +32,9 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
 
 # Dependencies first (cached layer), then the project itself.
 COPY --chown=app:app pyproject.toml uv.lock .python-version ./
-RUN uv sync --locked --no-install-project --all-extras
+RUN uv sync --no-install-project --all-extras
 COPY --chown=app:app . .
-RUN uv sync --locked --all-extras
+RUN uv sync --all-extras
 COPY --from=web --chown=app:app /web/dist /app/web/dist
 
 # Entrypoint script

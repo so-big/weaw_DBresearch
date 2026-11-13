@@ -9,119 +9,93 @@
 ไฟล์ `Dockerfile` นี้ถูกออกแบบมาให้เป็น **All-in-One Container Image** ที่พร้อมใช้งานทันที:
 1. **Frontend + Backend:** รวบรวมเว็บแอปพลิเคชัน (Svelte 5 + Vite) และ FastAPI Web API ในตัวเดียว
 2. **OCR Engine:** ติดตั้งชุดเครื่องมือ Tesseract OCR ภาษาไทย (`tesseract-ocr-tha`) และภาษาอังกฤษ (`tesseract-ocr-eng`)
-3. **Database Integration:** รองรับทั้งการต่อฐานข้อมูลภายนอก (PostgreSQL ใน Docker Compose) และการทำงานแบบ Standalone
-4. **Auto Provisioning:** จัดการ Master Key (KEK), Database Migration (Alembic) และสร้าง/อัปเดตบัญชีผู้ดูแลระบบ (Admin) จากไฟล์ `root.txt` โดยอัตโนมัติ
-5. **Configurable Runtime:** สามารถปรับเปลี่ยน Port, Username และ Password ได้ง่ายดายผ่านตัวแปร (Environment Variables) หรือไฟล์กำหนดค่าในทุกๆ การรัน
+3. **Database Integration:** รองรับทั้งการต่อฐานข้อมูลภายนอก (PostgreSQL ใน Docker Compose หรือ MySQL Server ภายนอก) และการทำงานแบบ Standalone
+4. **Auto Provisioning:** จัดการ Master Key (KEK), Database Migration (Alembic) และสร้าง/อัปเดตบัญชีผู้ดูแลระบบ (Admin) จากไฟล์ `setting.txt` โดยอัตโนมัติ
+5. **Configurable Runtime:** สามารถปรับเปลี่ยน Port, Username และ Password ได้ง่ายดายผ่านไฟล์ `setting.txt` หรือ Environment Variables ในทุกๆ การรัน
 
 ---
 
-## 🛠 วิธีติดตั้ง Docker (Docker Installation Guide)
+## ⚙️ โครงสร้างไฟล์การตั้งค่า `setting.txt` (Configuration Structure)
 
-### สำหรับ Windows
-1. ติดตั้ง **WSL 2** โดยเปิด PowerShell (Run as Administrator) แล้วพิมพ์:
-   ```powershell
-   wsl --install
-   ```
-2. ดาวน์โหลดและติดตั้ง **Docker Desktop for Windows** จากเว็บไซต์ทางการ:
-   [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/)
-3. เปิด Docker Desktop เข้าไปที่ **Settings -> General** และเปิดใช้งาน **Use the WSL 2 based engine**
+ระบบใช้ไฟล์ **`setting.txt`** ที่ Root ของโปรเจกต์ในการรวมศูนย์การตั้งค่าทุกบริการ:
+- **กฎการคอมเมนต์:** บรรทัดที่ขึ้นต้นด้วยเครื่องหมาย `#` หรือบรรทัดว่าง ระบบจะถือว่าเป็น Comment และ**จะไม่นำไปประมวลผล**
+- **การจัดกลุ่ม:** แยกตามหมวดหมู่บริการด้วยวงเล็บก้ามปู เช่น `[web]` และ `[mysql]`
+- **รูปแบบ:** กำหนดค่าแบบ `key = value` อย่างเป็นทางการ
 
-### สำหรับ Linux (Ubuntu / Debian)
-```bash
-sudo apt update
-sudo apt install -y ca-certificates curl gnupg
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
+```ini
+# ======================================================================
+# DBresearch Configuration File (setting.txt)
+# ======================================================================
+# บรรทัดที่ขึ้นต้นด้วย '#' หรือบรรทัดว่าง จะถูกข้าม (Ignored)
 
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+# ----------------------------------------------------------------------
+# 1. บริการ: Web Application & API
+# ----------------------------------------------------------------------
+[web]
+port = 8120
+username = admin
+password = admin123456
 
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+# ----------------------------------------------------------------------
+# 2. บริการ: MySQL Database (dbroot / ฐานข้อมูลภายนอกสำหรับ OCR & ข้อมูล)
+# ----------------------------------------------------------------------
+[mysql]
+host = 10.27.50.43
+port = 3307
+database = dbresearch
+username = ocr_worker
+password = 
+ssl_ca = mysql-ca.pem
 ```
 
 ---
 
-## 🚀 วิธี Build และสั่งรัน Dockerfile
+## 🔐 การจัดการรหัสผ่าน MySQL และการอัปโหลดขึ้น GitHub อย่างปลอดภัย
 
-### 1. การ Build Image
-เปิด Terminal / PowerShell ในโฟลเดอร์ของโปรเจกต์ แล้วสั่ง:
-```bash
-docker build -t dbresearch .
-```
-
-### 2. การกำหนด Port, Username, และ Password
-
-#### 📌 กำหนด Username & Password ผ่านไฟล์ `root.txt` (ค่าเริ่มต้น)
-ที่โฟลเดอร์ Root ของโปรเจกต์จะมีไฟล์ `root.txt`:
-```text
-admin
-admin123456
-```
-- **บรรทัดที่ 1:** Username
-- **บรรทัดที่ 2:** Password (ความยาวอย่างน้อย 10 ตัวอักษร)
-
-#### 📌 กำหนดผ่านไฟล์กำหนดค่าอื่นๆ (`--root` หรือ `ROOT_FILE`)
-- **ผ่าน CLI Flag:**
-  ```bash
-  docker run -p 8120:8120 -v /path/to/my_credentials.txt:/app/custom.txt dbresearch --root /app/custom.txt
-  ```
-- **ผ่าน Environment Variable:**
-  ```bash
-  docker run -p 8120:8120 -e ROOT_FILE=/app/custom.txt -v /path/to/my_credentials.txt:/app/custom.txt dbresearch
-  ```
-
-#### 📌 กำหนดผ่าน Environment Variable โดยตรง (GUI หรือ CLI)
-- **หากใช้งานผ่าน GUI (Docker Desktop / Portainer):**
-  ในหน้าตั้งค่า Container ให้ใส่ค่าในช่องกรอกข้อความ (Textbox) ของ Environment Variables:
-  - `PORT`: ใส่เลขพอร์ต เช่น `9000`
-  - `ADMIN_USERNAME`: ชื่อผู้ดูแลระบบ เช่น `myadmin`
-  - `ADMIN_PASSWORD`: รหัสผ่าน เช่น `StrongPassword123`
-- **หากใช้งานผ่าน CLI:**
-  ```bash
-  docker run -d -p 9000:9000 -e PORT=9000 -e ADMIN_USERNAME=myadmin -e ADMIN_PASSWORD=StrongPassword123 dbresearch
-  ```
+ตามข้อกำหนดความปลอดภัย **ห้ามนำรหัสผ่านจริงขึ้น GitHub เด็ดขาด**:
+1. ไฟล์รหัสผ่าน MySQL จริงจะถูกเก็บไว้ใน `sqlpass.json` หรือ `ocr-worker-PRIVATE.json` (ซึ่งถูกใส่ไว้ใน `.gitignore` เรียบร้อยแล้ว)
+2. หากต้องการนำไฟล์รหัสผ่านขึ้น GitHub ให้อัดเป็นไฟล์บีบอัด **7-Zip (`sqlpass.7z`)** พร้อมตั้งรหัสผ่าน **`nuttertools@2026-2`**:
+   - **เข้ารหัสไฟล์:** ดับเบิลคลิก `PACK_SQLPASS_7Z.bat` (จะสร้าง `sqlpass.7z` ที่เข้ารหัสและนำขึ้น Git ได้อย่างปลอดภัย)
+   - **ถอดรหัสไฟล์:** ดับเบิลคลิก `UNPACK_SQLPASS_7Z.bat` (จะคลายไฟล์ `sqlpass.json` ออกมาใช้งาน)
 
 ---
 
-## 🎯 ผลลัพธ์เมื่อ Container เริ่มทำงาน
+## 🤖 MySQL OCR Worker Adapter (การรับงานและส่งผลกับ MySQL 10.27.50.43:3307)
 
-เมื่อรัน Container เรียบร้อย ระบบจะแสดง URL และ API ใน Console Log ทันที:
-```text
-======================================================================
-          DBresearch System Started Successfully!
-======================================================================
-  Web URL:      http://localhost:8120
-  API Docs URL: http://localhost:8120/api/docs
-  Admin User:   admin
-  Port:         8120
-======================================================================
-```
-- **เข้าใช้งานหน้าเว็บหลัก:** `http://localhost:<PORT>`
-- **เข้าดูเอกสาร API (Swagger UI):** `http://localhost:<PORT>/api/docs`
+OCR Worker รองรับการเชื่อมต่อกับ MySQL Server ตามข้อกำหนดผ่านโมดูล `src/dbresearch/mysql_adapter.py`:
+
+### 1. Stored Procedures ที่รองรับ
+- **`CALL ocr_claim_job(worker_id)`:** ดึงงาน OCR ลำดับถัดไปจากคิว (หากไม่มีคิวงาน คืนค่า 0 แถว ถือเป็นผลปกติ)
+- **`CALL ocr_heartbeat(job_id, worker_id)`:** ส่งสัญญาณ Heartbeat ขณะกำลังประมวลผลเอกสาร
+- **`CALL ocr_complete_job(job_id, worker_id, result_json, extracted_meta)`:** ส่งผลลัพธ์ข้อความ OCR และ Metadata เมื่อเสร็จสิ้น
+- **`CALL ocr_fail_job(job_id, worker_id, error_message, can_retry)`:** แจ้งข้อผิดพลาดพร้อมสถานะการลองใหม่ (Retry)
+
+### 2. มาตรฐานความปลอดภัยและข้อกำหนดทางเทคนิค
+- **TLS/SSL:** ตรวจสอบ CA (`mysql-ca.pem`) และตรวจสอบ Hostname อย่างเคร่งครัด
+- **Encoding & Timezone:** รองรับ UTF-8 (`utf8mb4`) และเวลาสากล `UTC`
+- **Result Sets:** ปิดและเคลียร์ Result sets ทุกรอบ (`cursor.nextset()`) เพื่อป้องกัน Connection lock
+- **Data Integrity:** ตรวจสอบ SHA-256 Hash ของไฟล์ PDF ก่อนเริ่มประมวลผล OCR
+- **Security:** ไม่พิมพ์รหัสผ่าน Token หรือข้อความในเอกสารลง Log
+
+### 3. การทดสอบการเชื่อมต่อ MySQL
+สามารถทดสอบการเชื่อมต่อได้โดยดับเบิลคลิก:
+- **`TEST_MYSQL.bat`** (หรือรัน `python -m dbresearch.mysql_adapter`)
 
 ---
 
-## 🖥 การใช้งานบน Windows ผ่านไฟล์ `.bat` (แยก OCR Server และ Web Server)
-
-สำหรับเครื่องที่ติดตั้งไว้ที่ `E:\wear_DBresearch` สามารถดับเบิลคลิกไฟล์ `.bat` เพื่อควบคุมระบบได้ง่ายๆ:
+## 🖥 การใช้งานบน Windows ผ่านไฟล์ `.bat`
 
 | ไฟล์ `.bat` | หน้าที่การทำงาน |
 |---|---|
-| **`1_START_OCR_SERVER.bat`** | **เปิดเซิร์ฟเวอร์ OCR** (Container: `dbresearch-ocr`) พร้อม Database |
+| **`1_START_OCR_SERVER.bat`** | **เปิดเซิร์ฟเวอร์ OCR** (Container: `dbresearch-ocr`) |
 | **`2_START_WEB_SERVER.bat`** | **เปิดเว็บจริง** (Container: `dbresearch-web`) และเปิด Browser ให้อัตโนมัติ |
 | **`START_ALL.bat`** | **เปิดทั้งหมดตามลำดับ** (เปิด OCR Server ก่อน แล้วค่อยเปิดเว็บจริง) |
-| **`STOP_OCR_SERVER.bat`** | **ปิดเฉพาะเซิร์ฟเวอร์ OCR** (ช่วยประหยัด CPU/RAM เมื่องานถอดข้อความเสร็จแล้ว) |
+| **`STOP_OCR_SERVER.bat`** | ปิดเฉพาะเซิร์ฟเวอร์ OCR (ช่วยประหยัด CPU/RAM) |
 | **`RESTART_OCR_SERVER.bat`** | รีสตาร์ทเซิร์ฟเวอร์ OCR |
 | **`STOP_WEB_SERVER.bat`** | ปิดเฉพาะเซิร์ฟเวอร์เว็บ |
 | **`RESTART_WEB_SERVER.bat`** | รีสตาร์ทเซิร์ฟเวอร์เว็บ |
 | **`STOP_ALL.bat`** | ปิดการทำงานของระบบทั้งหมด |
 | **`STATUS.bat`** | แสดงสถานะของ Container ทุกตัว และตรวจสอบ Health Check |
-| **`CREATE_ADMIN.bat`** | สร้างบัญชีผู้ดูแลระบบเพิ่มเติมแบบ Interactive |
-
----
-
-## 🔒 ความปลอดภัยและการเก็บรักษาข้อมูล
-
-- **Master Key (KEK):** อยู่ที่ `secrets/kek.json` ถูกสร้างอัตโนมัติในการรันครั้งแรก จัดเก็บแยกต่างหากจาก Git ห้ามลบไฟล์นี้เนื่องจากเป็นกุญแจหลักในการถอดรหัสเอกสารทั้งหมด
-- **ที่เก็บไฟล์เอกสาร (Blobs):** ข้อมูลที่ถูกอัปโหลดจะถูกเก็บที่โฟลเดอร์ `data/blobs` ในรูปแบบไฟล์ Ciphertext ที่เข้ารหัสแล้วเท่านั้น
+| **`TEST_MYSQL.bat`** | **ทดสอบการเชื่อมต่อไปยัง MySQL Server (10.27.50.43:3307)** |
+| **`PACK_SQLPASS_7Z.bat`** | **บีบอัดและเข้ารหัส `sqlpass.json` เป็น `sqlpass.7z` ด้วยรหัสผ่าน `nuttertools@2026-2`** |
+| **`UNPACK_SQLPASS_7Z.bat`** | ถอดรหัส `sqlpass.7z` ออกมาเป็น `sqlpass.json` |

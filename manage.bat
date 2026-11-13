@@ -23,12 +23,12 @@ if "%1"=="test" (
     call "%~dp0manage\prod\test_mysql.bat"
     exit /b %ERRORLEVEL%
 )
-if "%1"=="dev" (
-    call "%~dp0manage\dev\start_dev.bat"
+if "%1"=="pack" (
+    call "%~dp0manage\security\pack_setting_7z.bat"
     exit /b %ERRORLEVEL%
 )
-if "%1"=="dev-stop" (
-    call "%~dp0manage\dev\stop_dev.bat"
+if "%1"=="unpack" (
+    call "%~dp0manage\security\unpack_setting_7z.bat"
     exit /b %ERRORLEVEL%
 )
 
@@ -36,10 +36,10 @@ if "%1"=="dev-stop" (
 cls
 color 0B
 echo ======================================================================
-echo             DBresearch Management Console (ระบบจัดการโครงการ)
+echo             DBresearch Management Console (ระบบจัดการ OCR Worker)
 echo ======================================================================
 echo.
-echo   [PRODUCTION - OCR WORKER]
+echo   [OCR WORKER MANAGEMENT]
 echo     1. Start Production OCR Worker   (เปิดเซิร์ฟเวอร์ OCR)
 echo     2. Stop Production OCR Worker    (ปิดเซิร์ฟเวอร์ OCR)
 echo     3. Restart Production OCR Worker (รีสตาร์ท OCR Worker)
@@ -50,15 +50,11 @@ echo   [SECURITY AND CREDENTIALS]
 echo     6. Encrypt setting.txt to 7z     (เข้ารหัส setting.7z ด้วย 7-Zip)
 echo     7. Decrypt setting.7z to txt     (ถอดรหัส setting.7z กลับมาใช้งาน)
 echo.
-echo   [DEVELOPMENT - LOCAL SANDBOX]
-echo     8. Start Dev Stack (Web + DB)    (เปิดสภาพแวดล้อมทดสอบในเครื่อง)
-echo     9. Stop Dev Stack                (ปิดสภาพแวดล้อมทดสอบ)
-echo.
 echo     0. Exit                          (ออกจากโปรแกรม)
 echo.
 echo ======================================================================
 set choice=
-set /p choice="เลือกเมนูการทำงาน [0-9]: "
+set /p choice="เลือกเมนูการทำงาน [0-7]: "
 
 if "%choice%"=="1" (
     call "%~dp0manage\prod\start_ocr.bat"
@@ -88,17 +84,11 @@ if "%choice%"=="7" (
     call "%~dp0manage\security\unpack_setting_7z.bat"
     goto menu
 )
-if "%choice%"=="8" (
-    call "%~dp0manage\dev\start_dev.bat"
-    goto menu
-)
-if "%choice%"=="9" (
-    call "%~dp0manage\dev\stop_dev.bat"
-    goto menu
-)
 if "%choice%"=="0" (
     exit /b 0
 )
 
-echo [!] กรุณาเลือกตัวเลขที่ถูกต้อง
+echo.
+echo กรุณาเลือกตัวเลือกที่ถูกต้อง (0-7)
+timeout /t 2 >nul
 goto menu

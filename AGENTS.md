@@ -19,21 +19,17 @@
 
 ---
 
-## 🏛 การแยกส่วนโปรเจกต์ (Production vs Development vs Management)
+## 🏛 โครงสร้างสถาปัตยกรรมระบบ (OCR Worker Dedicated Stack)
 
-ระบบถูกจัดระเบียบตามมาตรฐานอุตสาหกรรม โดยแยกขาดออกจากกัน:
-
-1. **ฝั่ง Production (`docker-compose.yml`):**
+โปรเจกต์นี้ได้รับการปรับแต่งเพื่อทำหน้าที่เป็น **Dedicated OCR Worker Service** เพียงอย่างเดียว:
+- **ฐานข้อมูลที่ใช้:** MySQL (`10.27.50.43:3307`) เพียงตัวเดียว โดยสื่อสารผ่าน Stored Procedures ของคิวงาน
+- **ตัดส่วนที่ไม่ใช้ออก 100%:** ไม่มี PostgreSQL, ไม่มี Alembic migrations, ไม่มี Local Web Server
+- **Production Stack (`docker-compose.yml`):**
    - รันเฉพาะ **`dbresearch-ocr`** (Worker Container)
-   - ไม่มีการรัน local postgres หรือ local web server
-   - เชื่อมต่อตรงกับ MySQL (`10.27.50.43:3307`) ผ่าน `setting.txt`
-2. **ฝั่ง Development Sandbox (`docker-compose.dev.yml`):**
-   - ใช้สำหรับงานทดสอบภายใน / ออฟไลน์
-   - รัน PostgreSQL 17 + Web Svelte UI + Local Worker
-3. **ฝ่ายจัดการสคริปต์ (`manage/` และ `manage.bat`):**
-   - `manage.bat` — ศูนย์ควบคุมหลัก (Central Interactive Console) ที่ Root Directory
-   - `manage/prod/` — สคริปต์ควบคุมฝั่ง Production (`start_ocr.bat`, `stop_ocr.bat`, `status_ocr.bat`, `test_mysql.bat`)
-   - `manage/dev/` — สคริปต์ควบคุมฝั่ง Dev (`start_dev.bat`, `stop_dev.bat`, `create_admin.bat`)
+   - เชื่อมต่อตรงกับ MySQL ผ่านค่าใน `setting.txt`
+- **ศูนย์ควบคุมสคริปต์ (`manage/` และ `manage.bat`):**
+   - `manage.bat` — ศูนย์ควบคุมหลัก (Central Interactive Console)
+   - `manage/prod/` — สคริปต์ควบคุม Worker (`start_ocr.bat`, `stop_ocr.bat`, `restart_ocr.bat`, `status_ocr.bat`, `test_mysql.bat`)
    - `manage/security/` — สคริปต์เข้ารหัส 7-Zip (`pack_setting_7z.bat`, `unpack_setting_7z.bat`)
 
 ---

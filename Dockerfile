@@ -1,19 +1,10 @@
-# Web app (Svelte + Vite): built here, served by the API from /app/web/dist.
-FROM node:24-alpine AS web
-WORKDIR /web
-COPY web/package.json web/package-lock.json ./
-RUN npm ci --no-audit --no-fund
-COPY web/ ./
-RUN npm run build
-
-# One image for api + worker + standalone deployment.
-# Includes OCR toolchain (Tesseract Thai + English) and embedded PostgreSQL for standalone runs.
+# Container image for DBresearch OCR Worker
+# Includes OCR toolchain (Tesseract Thai + English) and python runtime
 FROM python:3.13-slim-trixie
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     tesseract-ocr tesseract-ocr-tha tesseract-ocr-eng \
-    postgresql postgresql-contrib \
     curl \
  && rm -rf /var/lib/apt/lists/*
 
@@ -27,15 +18,13 @@ RUN useradd --system --uid 10001 --create-home app \
 WORKDIR /app
 
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
-    PATH="/app/.venv/bin:$PATH" \
-    PORT=8120
+    PATH="/app/.venv/bin:$PATH"
 
 # Dependencies first (cached layer), then the project itself.
 COPY --chown=app:app pyproject.toml uv.lock .python-version ./
 RUN uv sync --no-install-project --all-extras
 COPY --chown=app:app . .
 RUN uv sync --all-extras
-COPY --from=web --chown=app:app /web/dist /app/web/dist
 
 # Entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
@@ -43,7 +32,5 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 USER app
 
-EXPOSE ${PORT}
-
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD []
+CMD ["python", "-m", "dbresearch.worker"]

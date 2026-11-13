@@ -4,9 +4,9 @@
 
 ---
 
-## 🏛 สถาปัตยกรรมและการแยกส่วน (Architecture Separation)
+## 🏛 สถาปัตยกรรมระบบ (Dedicated OCR Worker Architecture)
 
-โปรเจกต์นี้แยกขาดระหว่าง **ฝั่ง Production** และ **ฝั่ง Development/Manage** ชัดเจน:
+โปรเจกต์นี้ได้รับการจัดโครงสร้างเป็นระบบประมวลผล **OCR Worker เฉพาะทาง (Dedicated Service)** โดยเชื่อมต่อกับคิวงาน MySQL ภายนอก 100%:
 
 ```
 wear_DBresearch/
@@ -18,20 +18,15 @@ wear_DBresearch/
 │   │   ├── restart_ocr.bat     # รีสตาร์ท OCR Worker
 │   │   ├── status_ocr.bat      # เช็คสถานะและดู Logs
 │   │   └── test_mysql.bat      # ทดสอบเชื่อมต่อ MySQL (10.27.50.43:3307)
-│   ├── dev/                    # สคริปต์ควบคุมฝั่ง Development Sandbox (Web + Local DB)
-│   │   ├── start_dev.bat       # เปิด Dev Stack ทดสอบในเครื่อง
-│   │   ├── stop_dev.bat        # ปิด Dev Stack
-│   │   └── create_admin.bat    # สร้างบัญชี Admin ทดสอบ
 │   └── security/               # สคริปต์ความปลอดภัยและการเข้ารหัส
 │       ├── pack_setting_7z.bat # เข้ารหัส setting.txt -> setting.7z ด้วย 7-Zip
 │       └── unpack_setting_7z.bat # ถอดรหัส setting.7z -> setting.txt
-├── docker-compose.yml          # 🏭 Production Compose (เฉพาะ OCR Worker เชื่อม MySQL)
-├── docker-compose.dev.yml      # 🧪 Development Compose (Sandbox: Web UI + Postgres + Worker)
+├── docker-compose.yml          # 🏭 Production Compose (OCR Worker เชื่อมต่อ MySQL)
 ├── setting.txt                 # 🔑 ไฟล์ตั้งค่าหลัก (Single Source of Truth - Gitignored)
 ├── setting.txt.example         # 📄 ไฟล์เทมเพลตสำหรับผู้ใช้ใหม่
 ├── setting.7z                  # 🔒 ไฟล์คอนฟิกที่ถูกเข้ารหัสด้วย 7-Zip (ปลอดภัยบน Git)
 ├── docs/                       # 📚 เอกสารคู่มือและการออกแบบระบบ
-└── src/dbresearch/             # 💻 ซอร์สโค้ด Python (OCR Engine & Worker Adapter)
+└── src/dbresearch/             # 💻 ซอร์สโค้ด Python (OCR Engine & MySQL Worker Adapter)
 ```
 
 ---
@@ -42,10 +37,10 @@ wear_DBresearch/
 
 ```text
 ======================================================================
-             DBresearch Management Console (ระบบจัดการโครงการ)
+            DBresearch Management Console (ระบบจัดการ OCR Worker)
 ======================================================================
 
-  [PRODUCTION - OCR WORKER]
+  [OCR WORKER MANAGEMENT]
     1. Start Production OCR Worker   (เปิดเซิร์ฟเวอร์ OCR)
     2. Stop Production OCR Worker    (ปิดเซิร์ฟเวอร์ OCR)
     3. Restart Production OCR Worker (รีสตาร์ท OCR Worker)
@@ -55,10 +50,6 @@ wear_DBresearch/
   [SECURITY AND CREDENTIALS]
     6. Encrypt setting.txt to 7z     (เข้ารหัส setting.7z ด้วย 7-Zip)
     7. Decrypt setting.7z to txt     (ถอดรหัส setting.7z กลับมาใช้งาน)
-
-  [DEVELOPMENT - LOCAL SANDBOX]
-    8. Start Dev Stack (Web + DB)    (เปิดสภาพแวดล้อมทดสอบในเครื่อง)
-    9. Stop Dev Stack                (ปิดสภาพแวดล้อมทดสอบ)
 
     0. Exit                          (ออกจากโปรแกรม)
 ======================================================================

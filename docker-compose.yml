@@ -1,75 +1,58 @@
-# DBresearch stack. The server is shared: only 127.0.0.1 ports, unique project name.
+# DBresearch stack.
 name: dbresearch
 
 x-app: &app
   build: .
   image: dbresearch-app:dev
   restart: unless-stopped
-  # The app needs no Linux privileges: drop them all, and never gain new ones (setuid).
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
   env_file: .env
   environment:
     DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
     BLOB_DIR: /data/blobs
+    PORT: ${PORT:-8120}
+    ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+    ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    ROOT_FILE: ${ROOT_FILE:-root.txt}
   volumes:
-    - blobs:/data/blobs
-    # KEK (master key), created once with `dbresearch.cli kek-init`. Never in git/backups.
-    # Only this file: the restic and demo passwords next to it stay out of the containers.
+    - ./data/blobs:/data/blobs
     - ./secrets/kek.json:/run/secrets/kek.json:ro
+    - ./root.txt:/app/root.txt:ro
   depends_on:
     db:
       condition: service_healthy
-    migrate:
-      condition: service_completed_successfully
 
 services:
   db:
+    container_name: dbresearch-db
     image: postgres:17.11
     restart: unless-stopped
     environment:
       POSTGRES_DB: dbresearch
       POSTGRES_USER: dbresearch
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      # ICU th-TH is required for pg_trgm to index Thai text (DESIGN §5).
       POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale-provider=icu --icu-locale=th-TH --locale=C.UTF-8
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dbresearch -d dbresearch"]
-      interval: 5s
+      interval: 3s
       timeout: 3s
       retries: 20
 
-  # One-shot: bring the schema to the latest migration before api/worker start.
-  migrate:
-    build: .
-    image: dbresearch-app:dev
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
-    command: ["alembic", "upgrade", "head"]
-    restart: "no"
-    depends_on:
-      db:
-        condition: service_healthy
-
   api:
     <<: *app
+    container_name: dbresearch-web
     ports:
-      - "127.0.0.1:8120:8000"
-    # Uploads are spooled here before encryption: memory only, never disk.
+      - "${PORT:-8120}:${PORT:-8120}"
     tmpfs:
       - /tmp:size=1g,mode=1777
 
   worker:
     <<: *app
+    container_name: dbresearch-ocr
     command: ["python", "-m", "dbresearch.worker"]
-    # Decrypted files may only exist in memory-backed storage (CLAUDE.md rule). TMPDIR
-    # matters too: Tesseract writes each rendered page image to the temp folder, and the
-    # container's plain /tmp is on disk.
     environment:
       DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
       BLOB_DIR: /data/blobs
@@ -77,9 +60,8 @@ services:
     tmpfs:
       - /tmp/work:size=1g,mode=0700,uid=10001,gid=10001
     volumes:
-      - blobs:/data/blobs
+      - ./data/blobs:/data/blobs
       - ./secrets/kek.json:/run/secrets/kek.json:ro
 
 volumes:
   pgdata:
-  blobs:

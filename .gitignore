@@ -26,3 +26,7 @@ CLAUDE.local.md
 
 # Backup configuration (server only)
 backup.env
+
+# Local data & blobs
+data/
+

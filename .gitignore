@@ -6,9 +6,10 @@ secrets/
 *.key
 *.pem
 
-# Configuration with real passwords (local only)
+# Configuration with real passwords (local plain text only)
 setting.txt
 !setting.txt.example
+!setting.7z
 *.json.private
 ocr-worker-PRIVATE.json
 sqlpass.json

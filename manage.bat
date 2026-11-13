@@ -1,34 +1,41 @@
-@echo off
+﻿@echo off
 @chcp 65001 >nul
 title DBresearch Management Console
 
 :: Check CLI arguments
 if "%1"=="start" (
     call "%~dp0manage\prod\start_ocr.bat"
+    if %ERRORLEVEL% NEQ 0 pause
     exit /b %ERRORLEVEL%
 )
 if "%1"=="stop" (
     call "%~dp0manage\prod\stop_ocr.bat"
+    if %ERRORLEVEL% NEQ 0 pause
     exit /b %ERRORLEVEL%
 )
 if "%1"=="restart" (
     call "%~dp0manage\prod\restart_ocr.bat"
+    if %ERRORLEVEL% NEQ 0 pause
     exit /b %ERRORLEVEL%
 )
 if "%1"=="status" (
     call "%~dp0manage\prod\status_ocr.bat"
+    if %ERRORLEVEL% NEQ 0 pause
     exit /b %ERRORLEVEL%
 )
 if "%1"=="test" (
     call "%~dp0manage\prod\test_mysql.bat"
+    if %ERRORLEVEL% NEQ 0 pause
     exit /b %ERRORLEVEL%
 )
 if "%1"=="pack" (
     call "%~dp0manage\security\pack_setting_7z.bat"
+    if %ERRORLEVEL% NEQ 0 pause
     exit /b %ERRORLEVEL%
 )
 if "%1"=="unpack" (
     call "%~dp0manage\security\unpack_setting_7z.bat"
+    if %ERRORLEVEL% NEQ 0 pause
     exit /b %ERRORLEVEL%
 )
 
@@ -53,8 +60,8 @@ echo.
 echo     0. Exit                          (ออกจากโปรแกรม)
 echo.
 echo ======================================================================
-set choice=
-set /p choice="เลือกเมนูการทำงาน [0-7]: "
+set "choice="
+set /p "choice=เลือกเมนูการทำงาน [0-7]: "
 
 if "%choice%"=="1" (
     call "%~dp0manage\prod\start_ocr.bat"
@@ -85,10 +92,17 @@ if "%choice%"=="7" (
     goto menu
 )
 if "%choice%"=="0" (
+    echo.
+    echo ขอบคุณที่ใช้งาน DBresearch Management Console
+    timeout /t 1 >nul
     exit /b 0
 )
 
 echo.
-echo กรุณาเลือกตัวเลือกที่ถูกต้อง (0-7)
-timeout /t 2 >nul
+color 0C
+echo ======================================================================
+echo  [ERROR] ตัวเลือกไม่ถูกต้อง! กรุณาพิมพ์ตัวเลข 0 ถึง 7 เท่านั้น
+echo ======================================================================
+echo กดปุ่มใดๆ เพื่อลองใหม่อีกครั้ง...
+pause >nul
 goto menu

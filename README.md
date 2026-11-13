@@ -10,7 +10,8 @@
 
 ```
 wear_DBresearch/
-├── manage.bat                  # 🚀 ศูนย์ควบคุมหลัก (Central Management Console)
+├── docker_manage.bat           # 🚀 ศูนย์ควบคุมหลัก (Central Console)
+├── manage.bat                  # 🚀 ศูนย์ควบคุมหลัก (ชื่อย่อ)
 ├── manage/                     # 📂 รวมสคริปต์จัดการระบบ (.bat)
 │   ├── prod/                   # สคริปต์ควบคุมฝั่ง Production (OCR Worker)
 │   │   ├── start_ocr.bat       # เริ่มต้น OCR Worker

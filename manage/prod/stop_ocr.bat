@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 @chcp 65001 >nul
 title Stop Production OCR Worker
 color 0C
@@ -9,10 +9,20 @@ echo ======================================================================
 echo.
 
 wsl bash -c "cd /mnt/e/wear_DBresearch && docker compose stop ocr"
+set ERR=%ERRORLEVEL%
 
 echo.
-echo ======================================================================
-echo  [SUCCESS] Production OCR Worker stopped.
-echo ======================================================================
+if %ERR% EQU 0 (
+    echo ======================================================================
+    echo  [SUCCESS] Production OCR Worker stopped.
+    echo ======================================================================
+) else (
+    echo ======================================================================
+    echo  [ERROR] เกิดข้อผิดพลาดในการหยุด OCR Worker (Error Code: %ERR%)
+    echo ======================================================================
+)
+
 echo.
-pause
+echo กดปุ่มใดๆ เพื่อกลับสู่เมนูหลัก...
+pause >nul
+exit /b %ERR%

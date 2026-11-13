@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 @chcp 65001 >nul
 title Pack setting.txt to setting.7z
 color 0B
@@ -11,8 +11,13 @@ echo.
 cd /d "%~dp0\..\.."
 
 if not exist setting.txt (
-    echo [ERROR] ไม่พบไฟล์ setting.txt ใน root directory
-    pause
+    color 0C
+    echo ======================================================================
+    echo  [ERROR] ไม่พบไฟล์ setting.txt ใน root directory
+    echo ======================================================================
+    echo.
+    echo กดปุ่มใดๆ เพื่อกลับสู่เมนูหลัก...
+    pause >nul
     exit /b 1
 )
 
@@ -22,24 +27,34 @@ if not exist %SEVENZIP% (
     if %ERRORLEVEL% EQU 0 (
         set SEVENZIP=7z
     ) else (
-        echo [ERROR] ไม่พบโปรแกรม 7-Zip ในระบบ (C:\Program Files\7-Zip\7z.exe)
-        pause
+        color 0C
+        echo ======================================================================
+        echo  [ERROR] ไม่พบโปรแกรม 7-Zip ในระบบ (C:\Program Files\7-Zip\7z.exe)
+        echo ======================================================================
+        echo.
+        echo กดปุ่มใดๆ เพื่อกลับสู่เมนูหลัก...
+        pause >nul
         exit /b 1
     )
 )
 
 %SEVENZIP% a -p"nuttertools@2026-2" -mhe=on setting.7z setting.txt
+set ERR=%ERRORLEVEL%
 
-if %ERRORLEVEL% EQU 0 (
-    echo.
+echo.
+if %ERR% EQU 0 (
     echo ======================================================================
     echo  [SUCCESS] เข้ารหัสไฟล์เป็น setting.7z สำเร็จ!
     echo  - รหัสผ่านที่ใช้เข้ารหัส: nuttertools@2026-2
     echo ======================================================================
 ) else (
-    echo.
-    echo [ERROR] การเข้ารหัสล้มเหลว
+    color 0C
+    echo ======================================================================
+    echo  [ERROR] การเข้ารหัสล้มเหลว (Error Code: %ERR%)
+    echo ======================================================================
 )
 
 echo.
-pause
+echo กดปุ่มใดๆ เพื่อกลับสู่เมนูหลัก...
+pause >nul
+exit /b %ERR%

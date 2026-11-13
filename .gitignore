@@ -6,11 +6,12 @@ secrets/
 *.key
 *.pem
 
-# Credentials and sensitive JSON files (plain passwords)
-sqlpass.json
+# Configuration with real passwords (local only)
+setting.txt
+!setting.txt.example
+*.json.private
 ocr-worker-PRIVATE.json
-mysql-ca.pem
-!sqlpass.7z
+sqlpass.json
 
 # Real documents are confidential — never commit scans
 samples/

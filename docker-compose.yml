@@ -11,19 +11,14 @@ x-app: &app
   environment:
     DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
     BLOB_DIR: /data/blobs
-    PORT: ${PORT:-8120}
+    PORT: ${PORT:-}
     ADMIN_USERNAME: ${ADMIN_USERNAME:-}
     ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     SETTING_FILE: ${SETTING_FILE:-setting.txt}
-    MYSQL_HOST: ${MYSQL_HOST:-10.27.50.43}
-    MYSQL_PORT: ${MYSQL_PORT:-3307}
-    MYSQL_DATABASE: ${MYSQL_DATABASE:-dbresearch}
-    MYSQL_USERNAME: ${MYSQL_USERNAME:-ocr_worker}
   volumes:
     - ./data/blobs:/data/blobs
     - ./secrets/kek.json:/run/secrets/kek.json:ro
     - ./setting.txt:/app/setting.txt:ro
-    - ./root.txt:/app/root.txt:ro
   depends_on:
     db:
       condition: service_healthy
@@ -62,10 +57,6 @@ services:
       DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
       BLOB_DIR: /data/blobs
       TMPDIR: /tmp/work
-      MYSQL_HOST: ${MYSQL_HOST:-10.27.50.43}
-      MYSQL_PORT: ${MYSQL_PORT:-3307}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-dbresearch}
-      MYSQL_USERNAME: ${MYSQL_USERNAME:-ocr_worker}
     tmpfs:
       - /tmp/work:size=1g,mode=0700,uid=10001,gid=10001
     volumes:

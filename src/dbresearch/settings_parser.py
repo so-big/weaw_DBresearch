@@ -1,6 +1,5 @@
-"""Robust parser for setting.txt and credentials files."""
+"""Parser for setting.txt (Single source of truth)."""
 import configparser
-import json
 import os
 import re
 from pathlib import Path
@@ -8,29 +7,25 @@ from typing import Any, Dict
 
 
 def parse_setting_file(filepath: Path | str | None = None) -> Dict[str, Dict[str, Any]]:
-    """Parse setting.txt (or fallback to root.txt / json files).
+    """Parse setting.txt exclusively.
     
-    Ignores lines starting with '#' or ';' (comments).
-    Supports section headers [web], [mysql], [database].
+    - Ignores lines starting with '#' or ';' (comments).
+    - Ignores empty lines.
+    - Parses sections [web] and [mysql].
     """
     candidates = []
     if filepath:
         candidates.append(Path(filepath))
-    
-    # Priority order
-    env_file = os.environ.get("SETTING_FILE") or os.environ.get("ROOT_FILE")
+
+    env_file = os.environ.get("SETTING_FILE")
     if env_file:
         candidates.append(Path(env_file))
-        
+
     candidates.extend([
         Path("setting.txt"),
         Path("/app/setting.txt"),
-        Path("root.txt"),
-        Path("/app/root.txt"),
-        Path("sqlpass.json"),
-        Path("/app/sqlpass.json"),
-        Path("ocr-worker-PRIVATE.json"),
-        Path("/app/ocr-worker-PRIVATE.json"),
+        Path("setting.txt.example"),
+        Path("/app/setting.txt.example"),
     ])
 
     resolved_path = None
@@ -48,29 +43,16 @@ def parse_setting_file(filepath: Path | str | None = None) -> Dict[str, Dict[str
         "mysql": {
             "host": "10.27.50.43",
             "port": 3307,
-            "database": "dbresearch",
-            "username": "ocr_worker",
+            "database": "weaw_dbresearch",
+            "username": "weaw_ocr",
             "password": "",
             "ssl_ca": "mysql-ca.pem",
-        }
+        },
     }
 
     if not resolved_path:
         return result
 
-    # If JSON file
-    if resolved_path.suffix.lower() == ".json":
-        try:
-            data = json.loads(resolved_path.read_text(encoding="utf-8-sig"))
-            if "mysql" in data:
-                result["mysql"].update(data["mysql"])
-            if "web" in data:
-                result["web"].update(data["web"])
-            return result
-        except Exception:
-            return result
-
-    # Text / INI file: filter comments
     raw_lines = resolved_path.read_text(encoding="utf-8-sig").splitlines()
     clean_lines = []
     for line in raw_lines:
@@ -79,7 +61,6 @@ def parse_setting_file(filepath: Path | str | None = None) -> Dict[str, Dict[str
             continue
         clean_lines.append(stripped)
 
-    # Check if it has section headers [section]
     has_sections = any(re.match(r"^\[.+\]$", line) for line in clean_lines)
 
     if has_sections:
@@ -96,14 +77,8 @@ def parse_setting_file(filepath: Path | str | None = None) -> Dict[str, Dict[str
                         result["mysql"][k.lower()] = int(v) if k.lower() == "port" and v.isdigit() else v
         except Exception:
             pass
-    else:
-        # Legacy 2-line format (Line 1: user, Line 2: pass)
-        if len(clean_lines) >= 1:
-            result["web"]["username"] = clean_lines[0]
-        if len(clean_lines) >= 2:
-            result["web"]["password"] = clean_lines[1]
 
-    # Environment variables override
+    # Environment variables override (if provided)
     if os.environ.get("PORT") and os.environ["PORT"].isdigit():
         result["web"]["port"] = int(os.environ["PORT"])
     if os.environ.get("ADMIN_USERNAME"):

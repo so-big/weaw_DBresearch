@@ -1,6 +1,6 @@
 [project]
 name = "dbresearch"
-version = "0.1.0"
+version = "0.2.0"
 description = "Encrypted document store for department contracts and research grants"
 authors = [
     { name = "someact", email = "sharpbyact@gmail.com" }

@@ -1,18 +1,18 @@
 @echo off
 @chcp 65001 >nul
-title DBresearch - Restart Web Server
-color 0A
+title Stop Production OCR Worker
+color 0C
 
 echo ======================================================================
-echo                 Restarting Web Server...
+echo           Stopping DBresearch Production OCR Worker...
 echo ======================================================================
 echo.
 
-wsl bash -c "cd /mnt/e/wear_DBresearch && docker compose restart api"
+wsl bash -c "cd /mnt/e/wear_DBresearch && docker compose stop ocr"
 
 echo.
 echo ======================================================================
-echo  [SUCCESS] Web Server restarted!
+echo  [SUCCESS] Production OCR Worker stopped.
 echo ======================================================================
 echo.
 pause

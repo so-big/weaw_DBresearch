@@ -8,8 +8,10 @@ echo       ถอดรหัสไฟล์ setting.7z เป็น setting.txt
 echo ======================================================================
 echo.
 
+cd /d "%~dp0\..\.."
+
 if not exist setting.7z (
-    echo [ERROR] ไม่พบไฟล์ setting.7z ในโฟลเดอร์นี้
+    echo [ERROR] ไม่พบไฟล์ setting.7z ใน root directory
     pause
     exit /b 1
 )
@@ -31,11 +33,11 @@ if not exist %SEVENZIP% (
 if %ERRORLEVEL% EQU 0 (
     echo.
     echo ======================================================================
-    echo  [SUCCESS] ถอดรหัสไฟล์ setting.txt สำเร็จ พร้อมใช้งานทันที!
+    echo  [SUCCESS] ถอดรหัสไฟล์ setting.txt สำเร็จ!
     echo ======================================================================
 ) else (
     echo.
-    echo [ERROR] การถอดรหัสล้มเหลว กรุณาตรวจสอบรหัสผ่าน
+    echo [ERROR] การถอดรหัสล้มเหลว
 )
 
 echo.

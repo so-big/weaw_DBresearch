@@ -1,60 +1,24 @@
-# DBresearch stack.
-name: dbresearch
-
-x-app: &app
-  build: .
-  image: dbresearch-app:dev
-  restart: unless-stopped
-  cap_drop: [ALL]
-  security_opt: [no-new-privileges:true]
-  env_file: .env
-  environment:
-    DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
-    BLOB_DIR: /data/blobs
-    PORT: ${PORT:-}
-    ADMIN_USERNAME: ${ADMIN_USERNAME:-}
-    ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-    SETTING_FILE: ${SETTING_FILE:-setting.txt}
-  volumes:
-    - ./data/blobs:/data/blobs
-    - ./secrets/kek.json:/run/secrets/kek.json:ro
-    - ./setting.txt:/app/setting.txt:ro
-  depends_on:
-    db:
-      condition: service_healthy
+# ======================================================================
+# DBresearch - Production Stack (OCR Worker Only)
+# Note: Web Server has moved to an external server.
+# This stack runs the OCR Worker connected to MySQL (10.27.50.43:3307).
+# ======================================================================
+name: dbresearch-prod
 
 services:
-  db:
-    container_name: dbresearch-db
-    image: postgres:17.11
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: dbresearch
-      POSTGRES_USER: dbresearch
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale-provider=icu --icu-locale=th-TH --locale=C.UTF-8
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dbresearch -d dbresearch"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
-
-  api:
-    <<: *app
-    container_name: dbresearch-web
-    ports:
-      - "${PORT:-8120}:${PORT:-8120}"
-    tmpfs:
-      - /tmp:size=1g,mode=1777
-
-  worker:
-    <<: *app
+  ocr:
+    build: .
+    image: dbresearch-ocr:latest
     container_name: dbresearch-ocr
+    restart: unless-stopped
     command: ["python", "-m", "dbresearch.worker"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    env_file:
+      - path: .env
+        required: false
     environment:
-      DATABASE_URL: postgresql+psycopg://dbresearch:${POSTGRES_PASSWORD}@db:5432/dbresearch
+      SETTING_FILE: setting.txt
       BLOB_DIR: /data/blobs
       TMPDIR: /tmp/work
     tmpfs:
@@ -63,6 +27,3 @@ services:
       - ./data/blobs:/data/blobs
       - ./secrets/kek.json:/run/secrets/kek.json:ro
       - ./setting.txt:/app/setting.txt:ro
-
-volumes:
-  pgdata:

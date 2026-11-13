@@ -1,21 +1,18 @@
 @echo off
 @chcp 65001 >nul
-title DBresearch - Stop OCR Server
+title Stop Development Sandbox Stack
 color 0C
 
 echo ======================================================================
-echo                  Stopping OCR Server (Worker)...
+echo              Stopping Development Sandbox Stack...
 echo ======================================================================
 echo.
 
-wsl bash -c "docker stop dbresearch-ocr"
+wsl bash -c "cd /mnt/e/wear_DBresearch && docker compose -f docker-compose.dev.yml down"
 
 echo.
 echo ======================================================================
-echo  [SUCCESS] OCR Server stopped.
-echo ======================================================================
-echo  - Container dbresearch-ocr is now stopped (saving CPU/RAM).
-echo  - Web Server is still running.
+echo  [SUCCESS] Development Sandbox stopped.
 echo ======================================================================
 echo.
 pause

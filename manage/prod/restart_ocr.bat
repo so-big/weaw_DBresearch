@@ -1,18 +1,18 @@
 @echo off
 @chcp 65001 >nul
-title DBresearch - Stop All Services
-color 0C
+title Restart Production OCR Worker
+color 0B
 
 echo ======================================================================
-echo                  Stopping all DBresearch services...
+echo           Restarting DBresearch Production OCR Worker...
 echo ======================================================================
 echo.
 
-wsl bash -c "cd /mnt/e/wear_DBresearch && docker compose down"
+wsl bash -c "cd /mnt/e/wear_DBresearch && docker compose restart ocr"
 
 echo.
 echo ======================================================================
-echo  [SUCCESS] All services stopped (Web, OCR, Database).
+echo  [SUCCESS] Production OCR Worker restarted.
 echo ======================================================================
 echo.
 pause

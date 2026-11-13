@@ -8,7 +8,7 @@ echo        ทดสอบการเชื่อมต่อไปยัง M
 echo ======================================================================
 echo.
 
-wsl bash -c "cd /mnt/e/wear_DBresearch && docker compose exec api python -m dbresearch.mysql_adapter"
+wsl bash -c "cd /mnt/e/wear_DBresearch && docker compose run --rm --no-deps ocr python -m dbresearch.mysql_adapter"
 
 echo.
 pause

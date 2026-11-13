@@ -8,8 +8,10 @@ echo       เข้ารหัสไฟล์การตั้งค่า se
 echo ======================================================================
 echo.
 
+cd /d "%~dp0\..\.."
+
 if not exist setting.txt (
-    echo [ERROR] ไม่พบไฟล์ setting.txt ในโฟลเดอร์นี้
+    echo [ERROR] ไม่พบไฟล์ setting.txt ใน root directory
     pause
     exit /b 1
 )
@@ -32,7 +34,6 @@ if %ERRORLEVEL% EQU 0 (
     echo.
     echo ======================================================================
     echo  [SUCCESS] เข้ารหัสไฟล์เป็น setting.7z สำเร็จ!
-    echo  - สามารถนำไฟล์ setting.7z ขึ้น GitHub ได้อย่างปลอดภัย
     echo  - รหัสผ่านที่ใช้เข้ารหัส: nuttertools@2026-2
     echo ======================================================================
 ) else (

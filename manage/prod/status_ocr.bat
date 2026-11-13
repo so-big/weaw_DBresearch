@@ -1,5 +1,5 @@
-﻿@echo off
 @chcp 65001 >nul
+@echo off
 title Production OCR Worker Status
 color 0E
 

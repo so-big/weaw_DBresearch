@@ -1,5 +1,5 @@
-﻿@echo off
 @chcp 65001 >nul
+@echo off
 title Restart Production OCR Worker
 color 0B
 

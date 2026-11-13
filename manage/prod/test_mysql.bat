@@ -1,5 +1,5 @@
-﻿@echo off
 @chcp 65001 >nul
+@echo off
 title Test MySQL Connection (10.27.50.43:3307)
 color 0B
 

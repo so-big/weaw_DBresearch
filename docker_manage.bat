@@ -1,5 +1,5 @@
-﻿@echo off
 @chcp 65001 >nul
+@echo off
 title DBresearch Management Console
 call "%~dp0manage.bat" %*
 if %ERRORLEVEL% NEQ 0 (

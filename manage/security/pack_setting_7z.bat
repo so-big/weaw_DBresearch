@@ -1,5 +1,5 @@
-﻿@echo off
 @chcp 65001 >nul
+@echo off
 title Pack setting.txt to setting.7z
 color 0B
 
